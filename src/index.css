@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f3f4f8;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/** Barre de défilement fine, invisible au repos, visible seulement au survol/scroll — pour les
+ * listes longues (ex. nav de la Sidebar) où le défilement reste nécessaire mais la barre épaisse
+ * par défaut de Windows/Chrome est visuellement lourde en permanence. */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.thin-scrollbar:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+.thin-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.print-page {
+  width: 794px;
+  min-height: 1123px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.print-page-landscape {
+  width: 1123px;
+  height: 794px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  @page schedule-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+  .print-page-landscape {
+    page: schedule-landscape;
+    box-shadow: none;
+    width: auto;
+  }
+  html,
+  body {
+    height: auto !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  #root {
+    display: none !important;
+  }
+  .print-preview-overlay {
+    position: static !important;
+    background: none;
+    height: auto !important;
+    display: block !important;
+  }
+  .print-modal-chrome {
+    display: none;
+  }
+  .print-scroll-area {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .print-pages-wrapper {
+    display: block !important;
+    gap: 0;
+    width: auto !important;
+    margin: 0 !important;
+  }
+  .print-page {
+    box-shadow: none;
+    width: auto;
+  }
+  .print-page tr {
+    break-inside: avoid;
+  }
+  .print-page h2 {
+    break-after: avoid;
+  }
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+}

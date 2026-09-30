@@ -1,0 +1,16 @@
+-- Migration 033 : accès individuels par module (Aperçu/Éditer par personne).
+--
+-- Remplace le catalogue de rôles fixes qui devait occuper ce numéro de migration — jamais codé, voir
+-- Décisions actées §6 : l'utilisateur a explicitement demandé des accès modulables par personne
+-- plutôt que par catégorie de rôle, après avoir vu l'éditeur de permissions du second screenshot.
+--
+-- jsonb plutôt qu'une table profile_permissions(profile_id, module_key, view, edit) : toujours
+-- lu/écrit en un seul bloc par personne, jamais interrogé à travers plusieurs personnes — même
+-- convention que les colonnes jsonb de student_extras (015_student_extras.sql, voir son propre
+-- commentaire d'en-tête), pas de nouvelle policy RLS à écrire.
+--
+-- Défaut permissif : une clé de module absente du blob (compte existant avant cette migration, ou
+-- module ajouté après coup) vaut accès complet (Aperçu + Éditer). Un défaut restrictif verrouillerait
+-- silencieusement tout le monde, y compris le compte admin réel, au moment même où cette migration
+-- est appliquée.
+alter table public.profiles add column permissions jsonb not null default '{}'::jsonb;
