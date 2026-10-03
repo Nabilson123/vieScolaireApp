@@ -591,7 +591,6 @@ export default function PrintableReportsBI({
   const toWatch = [...rows].filter((r) => r.absencesCount > 0).sort((a, b) => b.heuresManquees - a.heuresManquees).slice(0, 3)
 
   // --- Section 04 : effectifs/démographie -------------------------------------------------------
-  const genreYear = anneeData.reduce<AnneeEffectifPoint | null>((best, a) => (!best || a.effectif > best.effectif ? a : best), null)
   const previousAnnee = anneeData.length >= 2 ? anneeData[anneeData.length - 2] : null
   const currentAnnee = anneeData.length >= 1 ? anneeData[anneeData.length - 1] : null
   const effectifDeltaPct = previousAnnee && currentAnnee && previousAnnee.effectif > 0
@@ -869,19 +868,26 @@ export default function PrintableReportsBI({
             </div>
             <div style={{ background: C.paperTint, padding: '10px 12px' }}>
               <p style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
-                Genre — {genreYear?.label ?? '—'}
+                Genre par année
               </p>
-              {genreYear ? (
-                <>
-                  <div style={{ display: 'flex', height: 14, overflow: 'hidden' }}>
-                    <div style={{ background: C.accentBlue, width: `${genreYear.pctGarcons}%` }} />
-                    <div style={{ background: 'oklch(0.62 0.15 15)', width: `${genreYear.pctFilles}%` }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt', color: C.muted, marginTop: 6 }}>
-                    <span>Garçons {genreYear.pctGarcons}%</span>
-                    <span>Filles {genreYear.pctFilles}%</span>
-                  </div>
-                </>
+              {anneeData.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {anneeData.map((a) => (
+                    <div key={a.anneeId}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, width: 34, flexShrink: 0 }}>{a.label}</span>
+                        <div style={{ display: 'flex', flex: 1, height: 12, overflow: 'hidden' }}>
+                          <div style={{ background: C.accentBlue, width: `${a.pctGarcons}%` }} />
+                          <div style={{ background: 'oklch(0.62 0.15 15)', width: `${a.pctFilles}%` }} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', color: C.muted, marginTop: 2, paddingLeft: 42 }}>
+                        <span>Garçons {fr1(a.pctGarcons)} %</span>
+                        <span>Filles {fr1(a.pctFilles)} %</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <p style={{ fontSize: '9pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>Aucune donnée.</p>
               )}
