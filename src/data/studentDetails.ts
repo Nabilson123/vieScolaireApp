@@ -65,6 +65,31 @@ export interface CompteRenduRDV {
   decisions?: CompteRenduRdvDecision[]
 }
 
+export type RdvDemandeurType = 'parent1' | 'parent2' | 'administration' | 'enseignant' | 'autre'
+
+/** Qui a demandé le rendez-vous. `nom` est le nom résolu au moment de l'enregistrement (parent de la
+ * fiche élève, enseignant choisi, texte libre) — vide pour « administration ». */
+export interface RdvDemandeur {
+  type: RdvDemandeurType
+  nom: string
+}
+
+export function demandeurLabel(d: RdvDemandeur | undefined): string {
+  if (!d) return ''
+  switch (d.type) {
+    case 'parent1':
+      return d.nom ? `Parent 1 — ${d.nom}` : 'Parent 1'
+    case 'parent2':
+      return d.nom ? `Parent 2 — ${d.nom}` : 'Parent 2'
+    case 'administration':
+      return 'Administration'
+    case 'enseignant':
+      return d.nom ? `Enseignant — ${d.nom}` : 'Enseignant'
+    case 'autre':
+      return d.nom
+  }
+}
+
 export interface RendezVousRecord {
   date: string
   heure: string
@@ -74,8 +99,25 @@ export interface RendezVousRecord {
   lieu: string
   motif: string
   notesParents?: string
-  enseignant: string
+  /** Enseignants concernés (liste vide = rencontre avec l'administration seulement). */
+  enseignants: string[]
+  demandeur?: RdvDemandeur
+  /** Personne de l'administration (compte de l'app) qui anime le rendez-vous. */
+  animateur?: string
   compteRendu?: CompteRenduRDV
+}
+
+/** Forme stockée en base : les rendez-vous créés avant le passage à plusieurs enseignants n'ont
+ * qu'un champ texte `enseignant`. */
+export type StoredRendezVousRecord = Omit<RendezVousRecord, 'enseignants'> & { enseignant?: string; enseignants?: string[] }
+
+/** Ramène les anciens enregistrements (un seul `enseignant`) à la forme actuelle — appelé une seule
+ * fois à la lecture, pour que tout le reste du code ne connaisse que `enseignants`. */
+export function normalizeRendezVous(list: StoredRendezVousRecord[] | null | undefined): RendezVousRecord[] {
+  return (list ?? []).map(({ enseignant, enseignants, ...rest }) => ({
+    ...rest,
+    enseignants: enseignants ?? (enseignant ? [enseignant] : []),
+  }))
 }
 
 export interface DisciplineEvent {

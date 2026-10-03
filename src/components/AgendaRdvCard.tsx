@@ -4,7 +4,9 @@ import { CalendarClock, MapPin, Plus, ArrowRight, Video } from 'lucide-react'
 import { getStudentsSnapshot } from '../services/studentsService'
 import type { RendezVousRecord } from '../data/studentDetails'
 import { getStudentExtraSnapshot, updateStudentRendezVous } from '../services/studentDetailsService'
-import PlanifierRdvModal, { type PlanifierRdvPayload } from './PlanifierRdvModal'
+import PlanifierRdvModal, { rdvFieldsFromPayload, type PlanifierRdvPayload } from './PlanifierRdvModal'
+import PartagerRdvModal from './PartagerRdvModal'
+import { buildRdvMessage } from '../utils/whatsapp'
 
 interface AgendaRdvCardProps {
   onNavigateToStudent: (id: string) => void
@@ -44,23 +46,16 @@ export default function AgendaRdvCard({ onNavigateToStudent, onViewAll }: Agenda
   const queryClient = useQueryClient()
   const [, setRefresh] = useState(0)
   const [showPlanifier, setShowPlanifier] = useState(false)
+  const [shareMessage, setShareMessage] = useState<string | null>(null)
   const upcoming = computeUpcoming(5)
 
   const handleCreate = async (payload: PlanifierRdvPayload) => {
-    const record: RendezVousRecord = {
-      date: payload.date,
-      heure: payload.heure,
-      duree: payload.duree,
-      statut: 'Planifié',
-      mode: payload.mode,
-      lieu: payload.lieu,
-      motif: payload.motif,
-      notesParents: payload.notesParents || undefined,
-      enseignant: payload.enseignant,
-    }
+    const record: RendezVousRecord = { ...rdvFieldsFromPayload(payload), statut: 'Planifié' }
     const existing = getStudentExtraSnapshot(payload.studentId).rendezVous
     await updateStudentRendezVous(payload.studentId, [record, ...existing])
     await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
+    const student = getStudentsSnapshot().find((s) => s.id === payload.studentId)
+    setShareMessage(buildRdvMessage({ studentName: student?.name ?? '', classe: student?.classe ?? '', record }))
     setShowPlanifier(false)
     setRefresh((v) => v + 1)
   }
@@ -135,6 +130,7 @@ export default function AgendaRdvCard({ onNavigateToStudent, onViewAll }: Agenda
       )}
 
       {showPlanifier && <PlanifierRdvModal onClose={() => setShowPlanifier(false)} onSubmit={handleCreate} />}
+      {shareMessage && <PartagerRdvModal message={shareMessage} justCreated onClose={() => setShareMessage(null)} />}
     </div>
   )
 }

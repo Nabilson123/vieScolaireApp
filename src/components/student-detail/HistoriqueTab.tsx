@@ -302,7 +302,7 @@ function HistoryYearDetail({ year, onBack }: { year: HistoryYear; onBack: () => 
                 <span className="font-semibold text-slate-700">
                   {r.date} {r.heure}
                 </span>{' '}
-                · {r.motif} avec {r.enseignant} <span className="text-slate-400">({r.statut})</span>
+                · {r.motif} avec {r.enseignants.length > 0 ? r.enseignants.join(', ') : "l'administration"} <span className="text-slate-400">({r.statut})</span>
               </li>
             ))}
           </ul>

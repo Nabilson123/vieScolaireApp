@@ -398,7 +398,7 @@ export function buildRecentEvents(today: string, limit = 20): RecentEvent[] {
         classe: s.classe,
         time: v.heure,
         label: `RDV — ${v.motif}`,
-        detail: `${v.mode} · ${v.lieu} · avec ${v.enseignant}`,
+        detail: `${v.mode} · ${v.lieu} · avec ${v.enseignants.length > 0 ? v.enseignants.join(', ') : "l'administration"}`,
         index: index++,
       })
     })

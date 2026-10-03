@@ -51,23 +51,26 @@ const FALLBACK_DECISION = {
 
 export default function PrintableCompteRenduRdv({ record, studentName, classe }: PrintableCompteRenduRdvProps) {
   const cr = record.compteRendu
+  const hasEnseignants = record.enseignants.length > 0
+  const roleEnseignant = record.enseignants.length > 1 ? 'Enseignants' : 'Enseignant'
+  const nomsEnseignants = record.enseignants.join(', ')
   const champs: [string, string][] = [
     ['Mode', MODE_LABEL[record.mode]],
     ['Lieu · Durée', `${record.lieu?.trim() ? record.lieu : '— non renseigné'} · ${record.duree} min`],
     ['Motif', record.motif],
-    record.enseignant ? ['Enseignant', record.enseignant] : ['Interlocuteur', 'Administration seulement'],
+    hasEnseignants ? [roleEnseignant, nomsEnseignants] : ['Interlocuteur', 'Administration seulement'],
   ]
   const avis = [
     { role: 'Administration', icon: '🏛️', auteur: cr?.redacteur ?? '—', texte: cr?.administration, color: 'oklch(0.48 0.15 300)', soft: 'oklch(0.97 0.02 305)' },
     { role: 'Parents', icon: '👪', auteur: familleDe(studentName), texte: cr?.parents, color: 'oklch(0.52 0.17 5)', soft: 'oklch(0.97 0.02 10)' },
-    ...(record.enseignant
-      ? [{ role: 'Enseignant', icon: '🧑‍🏫', auteur: record.enseignant, texte: cr?.enseignant, color: 'oklch(0.45 0.13 160)', soft: 'oklch(0.96 0.02 165)' }]
+    ...(hasEnseignants
+      ? [{ role: roleEnseignant, icon: '🧑‍🏫', auteur: nomsEnseignants, texte: cr?.enseignant, color: 'oklch(0.45 0.13 160)', soft: 'oklch(0.96 0.02 165)' }]
       : []),
   ]
   const decisions = cr?.decisions?.length ? cr.decisions : [FALLBACK_DECISION]
   const signataires = [
     { role: 'Direction / Administration', nom: cr?.redacteur ?? '—' },
-    ...(record.enseignant ? [{ role: 'Enseignant', nom: record.enseignant }] : []),
+    ...(hasEnseignants ? [{ role: roleEnseignant, nom: nomsEnseignants }] : []),
     { role: 'Parent', nom: familleDe(studentName) },
   ]
 

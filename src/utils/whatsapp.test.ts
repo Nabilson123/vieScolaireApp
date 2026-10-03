@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage } from './whatsapp'
+import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage } from './whatsapp'
 
 describe('toWhatsAppPhone', () => {
   it('converts a local Moroccan number (leading 0) to international format', () => {
@@ -65,5 +65,46 @@ describe('buildRemplacementMessage', () => {
       matiere: 'Français',
     })
     expect(withoutConsignes).not.toContain('Consignes')
+  })
+})
+
+describe('buildRdvMessage', () => {
+  const base = { date: '2026-10-05', heure: '10:00', duree: 30, motif: "Difficultés d'assiduité" }
+
+  it('inclut élève, date, demandeur, enseignants concernés, sujet et animateur', () => {
+    const message = buildRdvMessage({
+      studentName: 'Loujaine HAMZAOUI',
+      classe: 'CE1-A',
+      record: { ...base, enseignants: ['Saida AMGHAR', 'Sara ERRAIDI'], demandeur: { type: 'parent1', nom: 'Said HAMZAOUI' }, animateur: 'Nabil Lahrache' },
+    })
+    expect(message).toBe(
+      [
+        '*Rendez-vous parent*',
+        '*Élève :* Loujaine HAMZAOUI (CE1-A)',
+        '*Date :* lundi 05/10/2026 à 10:00 (30 min)',
+        '*Demandé par :* Parent 1 — Said HAMZAOUI',
+        '*Enseignants concernés :* Saida AMGHAR, Sara ERRAIDI',
+        "*Sujet :* Difficultés d'assiduité",
+        '*Animé par :* Nabil Lahrache',
+      ].join('\n')
+    )
+  })
+
+  it('accorde le libellé au singulier pour un seul enseignant', () => {
+    const message = buildRdvMessage({ studentName: 'A B', classe: 'CE1-A', record: { ...base, enseignants: ['Saida AMGHAR'] } })
+    expect(message).toContain('*Enseignant concerné :* Saida AMGHAR')
+  })
+
+  it("omet le demandeur et l'animateur quand ils ne sont pas renseignés", () => {
+    const message = buildRdvMessage({ studentName: 'A B', classe: 'CE1-A', record: { ...base, enseignants: ['Saida AMGHAR'] } })
+    expect(message).not.toContain('Demandé par')
+    expect(message).not.toContain('Animé par')
+  })
+
+  it("indique l'administration seule quand aucun enseignant n'est concerné", () => {
+    const message = buildRdvMessage({ studentName: 'A B', classe: '', record: { ...base, enseignants: [], demandeur: { type: 'administration', nom: '' } } })
+    expect(message).toContain('*Élève :* A B\n')
+    expect(message).toContain('*Demandé par :* Administration')
+    expect(message).toContain('*Enseignant concerné :* aucun (rencontre avec l’administration)')
   })
 })

@@ -121,7 +121,7 @@ export function computeCalendarEvents(target: CalendarTarget, filters: CalendarF
           classe: s.classe,
           motif: r.motif,
           statutRdv: r.statut,
-          rdvWith: r.enseignant,
+          rdvWith: r.enseignants.join(', '),
         })
       })
     })
@@ -150,7 +150,7 @@ export function computeCalendarEvents(target: CalendarTarget, filters: CalendarF
       getStudentsSnapshot().forEach((s) => {
         const sExtra = getStudentExtraSnapshot(s.id)
         sExtra.rendezVous.forEach((r, idx) => {
-          if (r.enseignant !== name) return
+          if (!r.enseignants.includes(name)) return
           events.push({
             id: `${t.id}-rdv-${s.id}-${idx}`,
             date: r.date,

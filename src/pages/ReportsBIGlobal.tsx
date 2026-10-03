@@ -51,6 +51,7 @@ import {
   computeDisciplineElevesParMoisEtCycle,
   computeCurrentMonthActivityTiles,
 } from '../utils/activiteMensuelleAggregation'
+import { computeInfirmerieBilan, computeRdvBilan } from '../utils/infirmerieRdvBilan'
 import {
   getAllRemplacementsFlat,
   computeClasseBreakdown,
@@ -168,6 +169,8 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
   // scolaire complète (reclamationsParType ci-dessus, inchangé).
   const reclamationsParTypePeriode = computeReclamationsParTypeForPeriod(students, studentExtras, periodStart, periodEnd)
   const currentMonthActivity = computeCurrentMonthActivityTiles(students, studentExtras, teachers, teacherExtras)
+  const infirmerieBilan = computeInfirmerieBilan(students, studentExtras, periodStart, periodEnd)
+  const rdvBilan = computeRdvBilan(students, studentExtras, periodStart, periodEnd)
   const anneeLibelle = getAnneesScolairesSnapshot().find((a) => a.id === viewedYearId)?.libelle ?? `${anneeDebut}/${anneeDebut + 1}`
   const absencesProfsParMois = computeAbsencesProfsParMois(teachers, teacherExtras, monthBuckets)
   const absencesElevesParMois = computeAbsencesElevesParMois(students, studentExtras, monthBuckets)
@@ -379,6 +382,8 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
             retardsParMoisEtCycle={retardsParMoisEtCycle}
             disciplineParMoisEtCycle={disciplineParMoisEtCycle}
             currentMonthActivity={currentMonthActivity}
+            infirmerieBilan={infirmerieBilan}
+            rdvBilan={rdvBilan}
             onClose={() => setShowPrint(false)}
           />
         </Suspense>

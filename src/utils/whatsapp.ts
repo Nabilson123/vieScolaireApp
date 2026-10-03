@@ -1,3 +1,5 @@
+import { demandeurLabel, type RendezVousRecord } from '../data/studentDetails'
+
 const MOROCCO_COUNTRY_CODE = '212'
 
 /** Convertit un numéro marocain local (ex: "0655-456041") au format international attendu par WhatsApp (ex: "212655456041"). */
@@ -151,6 +153,35 @@ export function buildRetourSortieAnticipeeTransportMessage(info: SortieAnticipee
     'شكرا لتفهمكم.',
     'مجموعة مدارس موندريان',
   ].join('\n')
+}
+
+const JOURS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+
+interface RdvWhatsAppInfo {
+  studentName: string
+  classe: string
+  record: Pick<RendezVousRecord, 'date' | 'heure' | 'duree' | 'motif' | 'enseignants' | 'demandeur' | 'animateur'>
+}
+
+/** Récapitulatif d'un rendez-vous parent à coller dans WhatsApp (gras via *…*) : élève, date,
+ * demandeur, enseignants concernés, sujet, animateur. Les lignes sans valeur (demandeur, animateur)
+ * sont omises plutôt que laissées vides. */
+export function buildRdvMessage({ studentName, classe, record: r }: RdvWhatsAppInfo): string {
+  const d = new Date(`${r.date}T00:00:00`)
+  const dateLongue = Number.isNaN(d.getTime())
+    ? r.date
+    : `${JOURS_FR[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  const lines = ['*Rendez-vous parent*', `*Élève :* ${studentName}${classe ? ` (${classe})` : ''}`, `*Date :* ${dateLongue} à ${r.heure} (${r.duree} min)`]
+  const demandeur = demandeurLabel(r.demandeur)
+  if (demandeur) lines.push(`*Demandé par :* ${demandeur}`)
+  lines.push(
+    r.enseignants.length > 0
+      ? `*${r.enseignants.length > 1 ? 'Enseignants concernés' : 'Enseignant concerné'} :* ${r.enseignants.join(', ')}`
+      : '*Enseignant concerné :* aucun (rencontre avec l’administration)'
+  )
+  lines.push(`*Sujet :* ${r.motif}`)
+  if (r.animateur) lines.push(`*Animé par :* ${r.animateur}`)
+  return lines.join('\n')
 }
 
 const SCHEDULE_DAY_LABELS: Record<string, string> = { LUNDI: 'Lundi', MARDI: 'Mardi', MERCREDI: 'Mercredi', JEUDI: 'Jeudi', VENDREDI: 'Vendredi' }

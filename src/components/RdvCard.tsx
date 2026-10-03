@@ -1,5 +1,5 @@
-import { Building2, Video, FileText, PenLine, Clock, MapPin, Pencil, Ban, Trash2, Download } from 'lucide-react'
-import type { RendezVousRecord } from '../data/studentDetails'
+import { Building2, Video, FileText, PenLine, Clock, MapPin, Pencil, Ban, Trash2, Download, MessageCircle } from 'lucide-react'
+import { demandeurLabel, type RendezVousRecord } from '../data/studentDetails'
 
 const MODE_STYLES: Record<RendezVousRecord['mode'], { badge: string; Icon: typeof Building2 }> = {
   Présentiel: { badge: 'bg-purple-50 text-purple-600', Icon: Building2 },
@@ -21,12 +21,15 @@ interface RdvCardProps {
   onDelete: () => void
   onRedigerCR: () => void
   onDownloadCR: () => void
+  onShare: () => void
 }
 
-export default function RdvCard({ record, studentName, classe, onEdit, onCancel, onDelete, onRedigerCR, onDownloadCR }: RdvCardProps) {
+export default function RdvCard({ record, studentName, classe, onEdit, onCancel, onDelete, onRedigerCR, onDownloadCR, onShare }: RdvCardProps) {
   const modeStyle = MODE_STYLES[record.mode]
   const ModeIcon = modeStyle.Icon
   const isVirtuel = record.mode === 'Virtuel'
+  const hasEnseignants = record.enseignants.length > 0
+  const demandeur = demandeurLabel(record.demandeur)
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -91,7 +94,7 @@ export default function RdvCard({ record, studentName, classe, onEdit, onCancel,
               </span>
             </div>
           </div>
-          <div className={`grid grid-cols-1 gap-3 ${record.enseignant ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+          <div className={`grid grid-cols-1 gap-3 ${hasEnseignants ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             <div>
               <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-purple-600">Administration</p>
               <p className="text-xs text-slate-600">{record.compteRendu.administration || '—'}</p>
@@ -100,9 +103,9 @@ export default function RdvCard({ record, studentName, classe, onEdit, onCancel,
               <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-pink-600">Parents</p>
               <p className="text-xs text-slate-600">{record.compteRendu.parents || '—'}</p>
             </div>
-            {record.enseignant && (
+            {hasEnseignants && (
               <div>
-                <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-emerald-600">Enseignant</p>
+                <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-emerald-600">{record.enseignants.length > 1 ? 'Enseignants' : 'Enseignant'}</p>
                 <p className="text-xs text-slate-600">{record.compteRendu.enseignant || '—'}</p>
               </div>
             )}
@@ -122,17 +125,35 @@ export default function RdvCard({ record, studentName, classe, onEdit, onCancel,
               )}
             </span>
           )}
-          {record.enseignant ? (
+          {hasEnseignants ? (
             <span>
-              Professeur : <span className="font-semibold text-slate-700">{record.enseignant}</span>
+              {record.enseignants.length > 1 ? 'Professeurs' : 'Professeur'} : <span className="font-semibold text-slate-700">{record.enseignants.join(', ')}</span>
             </span>
           ) : (
             <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
               Rencontre avec l'administration
             </span>
           )}
+          {demandeur && (
+            <span>
+              Demandé par : <span className="font-semibold text-slate-700">{demandeur}</span>
+            </span>
+          )}
+          {record.animateur && (
+            <span>
+              Animé par : <span className="font-semibold text-slate-700">{record.animateur}</span>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onShare}
+            className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Partager
+          </button>
           {record.statut === 'Planifié' && (
             <>
               <button

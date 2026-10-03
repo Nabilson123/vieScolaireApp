@@ -187,7 +187,7 @@ function FicheCard({ r }: { r: EnrichedRdv }) {
     ['Mode', MODE_LABEL[r.mode]],
     ['Lieu · Durée', `${r.lieu?.trim() ? r.lieu : '— non renseigné'} · ${r.duree} min`],
     ['Motif', r.motif],
-    r.enseignant ? ['Enseignant', r.enseignant] : ['Interlocuteur', 'Administration seulement'],
+    r.enseignants.length > 0 ? [r.enseignants.length > 1 ? 'Enseignants' : 'Enseignant', r.enseignants.join(', ')] : ['Interlocuteur', 'Administration seulement'],
   ]
 
   return (
@@ -256,12 +256,12 @@ function FicheCard({ r }: { r: EnrichedRdv }) {
                 {r.compteRendu.signeParent ? 'Signé par le parent' : 'Non signé par le parent'}
               </span>
             </div>
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${r.enseignant ? 3 : 2}, 1fr)` }}>
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${r.enseignants.length > 0 ? 3 : 2}, 1fr)` }}>
               {[
                 { role: 'Administration', texte: r.compteRendu.administration, color: 'oklch(0.48 0.15 300)', soft: 'oklch(0.97 0.02 305)' },
                 { role: 'Parents', texte: r.compteRendu.parents, color: 'oklch(0.52 0.17 5)', soft: 'oklch(0.97 0.02 10)' },
-                ...(r.enseignant
-                  ? [{ role: 'Enseignant', texte: r.compteRendu.enseignant, color: 'oklch(0.45 0.13 160)', soft: 'oklch(0.96 0.02 165)' }]
+                ...(r.enseignants.length > 0
+                  ? [{ role: r.enseignants.length > 1 ? 'Enseignants' : 'Enseignant', texte: r.compteRendu.enseignant, color: 'oklch(0.45 0.13 160)', soft: 'oklch(0.96 0.02 165)' }]
                   : []),
               ].map((a) => (
                 <div key={a.role} className="rounded-[9px] px-2.5 py-[7px]" style={{ background: a.soft }}>

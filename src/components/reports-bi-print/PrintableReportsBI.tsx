@@ -12,6 +12,7 @@ import { computeCantineCountsByRefectoire, computeCantinePrescolaireSousSol } fr
 import type { ServicesCapacite } from '../../services/servicesCapaciteService'
 import type { CycleSnapshotTiles, MonthCycleStack, CurrentMonthActivityTiles } from '../../utils/activiteMensuelleAggregation'
 import { cycleOfClasse } from '../../utils/alertEngine'
+import type { InfirmerieBilan, RdvBilan, CountRow } from '../../utils/infirmerieRdvBilan'
 
 export interface PrintableReportsBIProps {
   periodStart: string
@@ -45,6 +46,8 @@ export interface PrintableReportsBIProps {
   retardsParMoisEtCycle: MonthCycleStack[]
   disciplineParMoisEtCycle: MonthCycleStack[]
   currentMonthActivity: CurrentMonthActivityTiles
+  infirmerieBilan: InfirmerieBilan
+  rdvBilan: RdvBilan
 }
 
 // Palette partagée avec le Cockpit Opérationnel (Phase 25) — mêmes tokens oklch, IBM Plex Sans/Mono
@@ -250,6 +253,34 @@ function LabeledBars({ rows, color, emptyText, labelWidth = 40 }: { rows: BarRow
       ))}
     </div>
   )
+}
+
+/** Barres horizontales à libellé libre (motifs saisis à la main) : libellé tronqué à gauche, valeur à droite. */
+function CountBars({ rows, color, emptyText, labelWidth = 150 }: { rows: CountRow[]; color: string; emptyText: string; labelWidth?: number }) {
+  if (rows.length === 0) {
+    return <p style={{ fontSize: '8.5pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>{emptyText}</p>
+  }
+  const max = Math.max(1, ...rows.map((r) => r.value))
+  return (
+    <div>
+      {rows.map((r) => (
+        <div key={r.label} style={{ display: 'grid', gridTemplateColumns: `${labelWidth}px minmax(0,1fr) 24px`, alignItems: 'center', gap: 6, padding: '2px 0' }}>
+          <span title={r.label} style={{ fontSize: '8.5pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {r.label}
+          </span>
+          <div style={{ height: 7, background: C.ruleSoft }}>
+            <div style={{ height: '100%', width: `${Math.round((r.value / max) * 100)}%`, background: color }} />
+          </div>
+          <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600 }}>{r.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatDateCourte(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
 }
 
 function TitledBars({ title, color, rows, emptyText, labelWidth }: { title: string; color: string; rows: BarRow[]; emptyText: string; labelWidth?: number }) {
@@ -525,6 +556,8 @@ export default function PrintableReportsBI({
   retardsParMoisEtCycle,
   disciplineParMoisEtCycle,
   currentMonthActivity,
+  infirmerieBilan,
+  rdvBilan,
 }: PrintableReportsBIProps) {
   const totalHeuresManquees = rows.reduce((s, r) => s + r.heuresManquees, 0)
   const totalPointsSanction = rows.reduce((s, r) => s + r.pointsSanction, 0)
@@ -673,6 +706,44 @@ export default function PrintableReportsBI({
       )
     }
   }
+  // Partie 6 — infirmerie
+  if (infirmerieBilan.passages > 0) {
+    const topMotif = infirmerieBilan.parMotif.find((m) => m.label !== 'Autres motifs')
+    bullets.push(
+      <>
+        <strong>
+          {infirmerieBilan.passages} passage{infirmerieBilan.passages > 1 ? 's' : ''} à l'infirmerie
+        </strong>{' '}
+        ({infirmerieBilan.eleves} élève{infirmerieBilan.eleves > 1 ? 's' : ''})
+        {topMotif ? (
+          <>
+            , motif le plus fréquent : <strong>{topMotif.label}</strong>
+          </>
+        ) : null}
+        .
+      </>
+    )
+  }
+  // Partie 7 — rendez-vous avec les parents
+  if (rdvBilan.total > 0) {
+    bullets.push(
+      <>
+        <strong>
+          {rdvBilan.total} rendez-vous avec les parents
+        </strong>{' '}
+        ({rdvBilan.realises} réalisé{rdvBilan.realises > 1 ? 's' : ''}, {rdvBilan.planifies} planifié{rdvBilan.planifies > 1 ? 's' : ''}, {rdvBilan.annules} annulé{rdvBilan.annules > 1 ? 's' : ''})
+        {rdvBilan.enAttenteSignature > 0 ? (
+          <>
+            , dont{' '}
+            <strong>
+              {rdvBilan.enAttenteSignature} compte{rdvBilan.enAttenteSignature > 1 ? 's' : ''}-rendu{rdvBilan.enAttenteSignature > 1 ? 's' : ''} en attente de signature
+            </strong>
+          </>
+        ) : null}
+        .
+      </>
+    )
+  }
   const aRetenirBullets: ReactNode[] = bullets.length > 0 ? bullets : ['Aucun signal particulier à relever sur la période.']
 
   // --- Blocs paginés : 5 grandes parties, chacune ouverte par un bandeau PartTitle -----------------
@@ -715,6 +786,24 @@ export default function PrintableReportsBI({
         formatDureeCourte(p.heures),
         <span key="c" style={{ fontWeight: 700, color: p.couvertes === p.seances ? C.greenText : p.couvertes === 0 ? C.redDark : C.amberDark }}>
           {p.couvertes}/{p.seances}
+        </span>,
+      ])}
+    />
+  )
+
+  const rdvChunks = chunk(rdvBilan.rows, 10)
+  const rdvStatutColor = { Réalisé: C.greenText, Planifié: C.accentBlue, Annulé: C.redDark } as const
+  const rdvTable = (rows: typeof rdvBilan.rows) => (
+    <SimpleTable
+      columns="0.95fr 1.7fr 1.5fr 1.6fr 0.9fr"
+      headers={['Date', 'Élève', 'Enseignants', 'Motif', 'Statut']}
+      rows={rows.map((r) => [
+        `${formatDateCourte(r.date)} ${r.heure}`,
+        `${r.studentName} (${r.classe})`,
+        r.enseignants.length > 0 ? r.enseignants.join(', ') : 'Administration',
+        r.motif,
+        <span key="s" style={{ fontWeight: 700, color: rdvStatutColor[r.statut] }}>
+          {r.statut}
         </span>,
       ])}
     />
@@ -1183,6 +1272,114 @@ export default function PrintableReportsBI({
         </Section>
       ),
     },
+
+    // ==================================== PARTIE 6 — INFIRMERIE ====================================
+    {
+      key: 'p6-infirmerie',
+      breakBefore: true,
+      node: flowRoot(
+        <div>
+          <PartTitle
+            num={6}
+            title="Infirmerie"
+            subtitle={`${infirmerieBilan.passages} passage(s) · ${infirmerieBilan.eleves} élève(s) concerné(s)`}
+          />
+          <div style={{ marginTop: 10 }}>
+            <Section num="6.1" title="Vue d'ensemble" annotation="période sélectionnée">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
+                <KpiTile
+                  value={String(infirmerieBilan.passages)}
+                  color={infirmerieBilan.passages === 0 ? C.green : C.accentBlue}
+                  label="Passages à l'infirmerie"
+                  sub={`sur ${periodeJours(periodStart, periodEnd)} jour(s)`}
+                />
+                <KpiTile value={String(infirmerieBilan.eleves)} color={C.ink} label="Élèves concernés" sub={`sur ${effectif} inscrits`} />
+                <KpiTile
+                  value={infirmerieBilan.eleves > 0 ? fr1(infirmerieBilan.passages / infirmerieBilan.eleves) : '—'}
+                  color={C.ink}
+                  label="Passages par élève"
+                  sub="moyenne sur la période"
+                />
+              </div>
+            </Section>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'p6-infirmerie-classes',
+      node: flowRoot(
+        <Section num="6.2" title="Passages par classe" annotation={`${infirmerieBilan.parClasse.length} classe(s) concernée(s)`}>
+          <CountBars rows={infirmerieBilan.parClasse} color={C.accentBlue} emptyText="Aucun passage à l'infirmerie enregistré sur la période." labelWidth={56} />
+        </Section>
+      ),
+    },
+    {
+      key: 'p6-infirmerie-motifs',
+      node: flowRoot(
+        <Section num="6.3" title="Motifs les plus fréquents" annotation="motifs saisis à l'infirmerie">
+          <CountBars rows={infirmerieBilan.parMotif} color={C.green} emptyText="Aucun passage à l'infirmerie enregistré sur la période." labelWidth={300} />
+        </Section>
+      ),
+    },
+
+    // ============================ PARTIE 7 — RENDEZ-VOUS AVEC LES PARENTS ============================
+    {
+      key: 'p7-rdv',
+      breakBefore: true,
+      node: flowRoot(
+        <div>
+          <PartTitle
+            num={7}
+            title="Rendez-vous avec les parents"
+            subtitle={`${rdvBilan.total} rendez-vous · ${rdvBilan.realises} réalisé(s) · ${rdvBilan.planifies} planifié(s) · ${rdvBilan.annules} annulé(s)`}
+          />
+          <div style={{ marginTop: 10 }}>
+            <Section num="7.1" title="Vue d'ensemble" annotation="période sélectionnée">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
+                <KpiTile value={String(rdvBilan.total)} color={C.ink} label="Rendez-vous" sub="tous statuts confondus" />
+                <KpiTile value={String(rdvBilan.realises)} color={C.green} label="Réalisés" sub="entretien tenu" />
+                <KpiTile value={String(rdvBilan.planifies)} color={C.accentBlue} label="Planifiés" sub="à venir ou à clôturer" />
+                <KpiTile value={String(rdvBilan.annules)} color={rdvBilan.annules === 0 ? C.green : C.amber} label="Annulés" sub="n'ont pas eu lieu" />
+                <KpiTile value={String(rdvBilan.comptesRendus)} color={C.ink} label="Comptes-rendus rédigés" sub={`sur ${rdvBilan.realises} réalisé(s)`} />
+                <KpiTile
+                  value={String(rdvBilan.enAttenteSignature)}
+                  color={rdvBilan.enAttenteSignature === 0 ? C.green : C.amber}
+                  label="En attente de signature"
+                  sub="signature du parent"
+                />
+              </div>
+            </Section>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'p7-rdv-repartition',
+      node: flowRoot(
+        <Section num="7.2" title="Répartition" annotation="hors rendez-vous annulés">
+          <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 20 }}>
+            <div>
+              <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.accentBlue, marginBottom: 4 }}>Par motif</p>
+              <CountBars rows={rdvBilan.parMotif} color={C.accentBlue} emptyText="Aucun rendez-vous sur la période." labelWidth={210} />
+            </div>
+            <div>
+              <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.green, marginBottom: 4 }}>Par classe</p>
+              <CountBars rows={rdvBilan.parClasse} color={C.green} emptyText="Aucun rendez-vous sur la période." labelWidth={56} />
+            </div>
+          </div>
+        </Section>
+      ),
+    },
+    {
+      key: 'p7-rdv-liste',
+      node: flowRoot(
+        <Section num="7.3" title="Liste des rendez-vous" annotation={`${rdvBilan.rows.length} rendez-vous · du plus récent au plus ancien`}>
+          {rdvChunks.length === 0 ? <p style={emptyPanel}>Aucun rendez-vous avec les parents sur la période.</p> : rdvTable(rdvChunks[0])}
+        </Section>
+      ),
+    },
+    ...rdvChunks.slice(1).map((c, i) => ({ key: `p7-rdv-liste-${i + 1}`, node: flowRoot(rdvTable(c)) })),
   ]
 
   return (

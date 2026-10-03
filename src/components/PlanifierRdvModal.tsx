@@ -4,6 +4,10 @@ import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
+import { getProfilesSnapshot } from '../services/profilesService'
+import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
+import { ROLE_LABELS } from '../data/profiles'
+import type { RdvDemandeur, RdvDemandeurType, RendezVousRecord } from '../data/studentDetails'
 
 export interface PlanifierRdvPayload {
   studentId: string
@@ -14,7 +18,26 @@ export interface PlanifierRdvPayload {
   lieu: string
   motif: string
   notesParents: string
-  enseignant: string
+  enseignants: string[]
+  demandeur?: RdvDemandeur
+  animateur?: string
+}
+
+/** Champs du rendez-vous communs à la création et à la modification — un seul endroit pour les
+ * recopier du formulaire vers l'enregistrement (création/édition, 3 écrans). */
+export function rdvFieldsFromPayload(payload: PlanifierRdvPayload): Omit<RendezVousRecord, 'statut' | 'compteRendu'> {
+  return {
+    date: payload.date,
+    heure: payload.heure,
+    duree: payload.duree,
+    mode: payload.mode,
+    lieu: payload.lieu,
+    motif: payload.motif,
+    notesParents: payload.notesParents || undefined,
+    enseignants: payload.enseignants,
+    demandeur: payload.demandeur,
+    animateur: payload.animateur || undefined,
+  }
 }
 
 interface PlanifierRdvModalProps {
@@ -30,6 +53,8 @@ function todayISO() {
 
 const DUREE_OPTIONS = [15, 30, 45, 60]
 
+const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none'
+
 export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, initial }: PlanifierRdvModalProps) {
   const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
   const staffNames = getTeachersSnapshot()
@@ -40,11 +65,14 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
 
   const [classe, setClasse] = useState(fixedStudent?.classe ?? realClasses[0])
   const [studentId, setStudentId] = useState(initial?.studentId ?? fixedStudentId ?? '')
-  const [enseignant, setEnseignant] = useState(initial?.enseignant ?? '')
-  // Rencontre purement administrative (direction/CPE avec la famille, sans prof concerné) : pas de
-  // nouveau champ séparé — enseignant reste '' comme avant, seule la validation change (n'était
-  // jamais possible de soumettre avec enseignant vide auparavant).
-  const [adminSeulement, setAdminSeulement] = useState(!initial?.enseignant && !!initial)
+  const [enseignants, setEnseignants] = useState<string[]>(initial?.enseignants ?? [])
+  const [filtreEnseignant, setFiltreEnseignant] = useState('')
+  // Rencontre purement administrative (direction/CPE avec la famille, sans prof concerné) : la liste
+  // d'enseignants reste vide, seule la validation change.
+  const [adminSeulement, setAdminSeulement] = useState(!!initial && initial.enseignants.length === 0)
+  const [demandeurType, setDemandeurType] = useState<RdvDemandeurType | ''>(initial?.demandeur?.type ?? '')
+  const [demandeurNom, setDemandeurNom] = useState(initial?.demandeur?.type === 'enseignant' || initial?.demandeur?.type === 'autre' ? initial.demandeur.nom : '')
+  const [animateur, setAnimateur] = useState(initial?.animateur ?? '')
   const [date, setDate] = useState(initial?.date ?? todayISO())
   const [heure, setHeure] = useState(initial?.heure ?? '10:00')
   const [duree, setDuree] = useState(initial?.duree ?? 30)
@@ -55,10 +83,50 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
 
   const elevesDeLaClasse = fixedStudent ? [fixedStudent] : getStudentsSnapshot().filter((s) => s.classe === classe)
 
+  const identity = studentId ? getStudentIdentitySnapshot(studentId) : undefined
+  const parent1Nom = identity?.parent1Nom.trim() ?? ''
+  const parent2Nom = identity?.parent2Nom.trim() ?? ''
+
+  // Comptes actifs de l'app (Direction, CPE, Surveillant, AED, Secrétariat…) ; l'animateur déjà
+  // enregistré reste proposé même si son compte a été désactivé depuis.
+  const animateurOptions = getProfilesSnapshot()
+    .filter((p) => p.actif)
+    .map((p) => {
+      const nom = p.nomComplet || p.email
+      return { value: nom, label: `${nom} — ${ROLE_LABELS[p.role] ?? p.role}` }
+    })
+    .sort((a, b) => a.label.localeCompare(b.label))
+  if (animateur && !animateurOptions.some((o) => o.value === animateur)) animateurOptions.push({ value: animateur, label: animateur })
+
+  const nomsAffiches = Array.from(new Set([...staffNames, ...enseignants])).sort((a, b) => a.localeCompare(b))
+  const nomsFiltres = nomsAffiches.filter((n) => n.toLowerCase().includes(filtreEnseignant.trim().toLowerCase()))
+
+  const toggleEnseignant = (name: string) => {
+    setEnseignants((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]))
+  }
+
   const isEdit = !!initial
 
+  const buildDemandeur = (): RdvDemandeur | undefined => {
+    switch (demandeurType) {
+      case 'parent1':
+        return { type: 'parent1', nom: parent1Nom }
+      case 'parent2':
+        return { type: 'parent2', nom: parent2Nom }
+      case 'administration':
+        return { type: 'administration', nom: '' }
+      case 'enseignant':
+      case 'autre':
+        return demandeurNom.trim() ? { type: demandeurType, nom: demandeurNom.trim() } : undefined
+      default:
+        return undefined
+    }
+  }
+
+  const canSubmit = !!studentId && (adminSeulement || enseignants.length > 0) && !!lieu.trim() && !!motif.trim()
+
   const handleSubmit = () => {
-    if (!studentId || (!adminSeulement && !enseignant) || !date || !heure || !lieu.trim() || !motif.trim()) return
+    if (!canSubmit || !date || !heure) return
     onSubmit({
       studentId,
       date,
@@ -68,7 +136,9 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
       lieu: lieu.trim(),
       motif: motif.trim(),
       notesParents: notesParents.trim(),
-      enseignant: adminSeulement ? '' : enseignant,
+      enseignants: adminSeulement ? [] : enseignants,
+      demandeur: buildDemandeur(),
+      animateur: animateur || undefined,
     })
   }
 
@@ -100,7 +170,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
                     setClasse(e.target.value)
                     setStudentId('')
                   }}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                  className={inputClass}
                 >
                   {realClasses.map((c) => (
                     <option key={c} value={c}>
@@ -111,11 +181,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné*</label>
-                <select
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-                >
+                <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className={inputClass}>
                   <option value="">Sélectionnez un élève...</option>
                   {elevesDeLaClasse.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -128,29 +194,74 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
           )}
 
           <div>
-            <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
-              Enseignant concerné{adminSeulement ? '' : '*'}
-            </label>
-            <select
-              value={enseignant}
-              onChange={(e) => setEnseignant(e.target.value)}
-              disabled={adminSeulement}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">Sélectionnez un enseignant...</option>
-              {staffNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Rendez-vous demandé par</label>
+            <select value={demandeurType} onChange={(e) => setDemandeurType(e.target.value as RdvDemandeurType | '')} className={inputClass}>
+              <option value="">Non précisé</option>
+              {parent1Nom && <option value="parent1">Parent 1 — {parent1Nom}</option>}
+              {parent2Nom && <option value="parent2">Parent 2 — {parent2Nom}</option>}
+              <option value="administration">Administration</option>
+              <option value="enseignant">Un enseignant</option>
+              <option value="autre">Autre (saisie libre)</option>
             </select>
+            {demandeurType === 'enseignant' && (
+              <select value={demandeurNom} onChange={(e) => setDemandeurNom(e.target.value)} className={`${inputClass} mt-2`}>
+                <option value="">Sélectionnez l'enseignant demandeur...</option>
+                {staffNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {demandeurType === 'autre' && (
+              <input
+                type="text"
+                value={demandeurNom}
+                onChange={(e) => setDemandeurNom(e.target.value)}
+                placeholder="ex: Grand-mère de l'élève, Inspecteur..."
+                className={`${inputClass} mt-2`}
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1.5 flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+              <span>Enseignants concernés{adminSeulement ? '' : '*'}</span>
+              {!adminSeulement && <span className="text-xs font-medium text-slate-400">{enseignants.length} sélectionné(s)</span>}
+            </label>
+            <input
+              type="text"
+              value={filtreEnseignant}
+              onChange={(e) => setFiltreEnseignant(e.target.value)}
+              disabled={adminSeulement}
+              placeholder="Rechercher un enseignant..."
+              className={`${inputClass} mb-1.5 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400`}
+            />
+            <div className={`max-h-40 overflow-y-auto rounded-lg border border-slate-200 p-1 ${adminSeulement ? 'opacity-50' : ''}`}>
+              {nomsFiltres.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-slate-400">Aucun enseignant trouvé.</p>
+              ) : (
+                nomsFiltres.map((name) => (
+                  <label key={name} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-slate-700 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={enseignants.includes(name)}
+                      onChange={() => toggleEnseignant(name)}
+                      disabled={adminSeulement}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
+                    />
+                    {name}
+                  </label>
+                ))
+              )}
+            </div>
             <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
               <input
                 type="checkbox"
                 checked={adminSeulement}
                 onChange={(e) => {
                   setAdminSeulement(e.target.checked)
-                  if (e.target.checked) setEnseignant('')
+                  if (e.target.checked) setEnseignants([])
                 }}
                 className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
               />
@@ -158,35 +269,33 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
             </label>
           </div>
 
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Administration — personne qui anime le rendez-vous</label>
+            <select value={animateur} onChange={(e) => setAnimateur(e.target.value)} className={inputClass}>
+              <option value="">Non précisé</option>
+              {animateurOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Date*</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Heure (HH:MM)*</label>
-              <input
-                type="time"
-                value={heure}
-                onChange={(e) => setHeure(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              />
+              <input type="time" value={heure} onChange={(e) => setHeure(e.target.value)} className={inputClass} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Durée*</label>
-              <select
-                value={duree}
-                onChange={(e) => setDuree(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
+              <select value={duree} onChange={(e) => setDuree(Number(e.target.value))} className={inputClass}>
                 {DUREE_OPTIONS.map((d) => (
                   <option key={d} value={d}>
                     {d} minutes
@@ -196,11 +305,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Mode de rencontre*</label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as 'Présentiel' | 'Virtuel')}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
+              <select value={mode} onChange={(e) => setMode(e.target.value as 'Présentiel' | 'Virtuel')} className={inputClass}>
                 <option value="Présentiel">Présentiel</option>
                 <option value="Virtuel">Virtuel</option>
               </select>
@@ -208,15 +313,13 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-              Lieu de rencontre / Lien Visioconférence*
-            </label>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Lieu de rencontre / Lien Visioconférence*</label>
             <input
               type="text"
               value={lieu}
               onChange={(e) => setLieu(e.target.value)}
               placeholder="ex: Salle 4, ou lien de visioconférence"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className={inputClass}
             />
           </div>
 
@@ -227,7 +330,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
               value={motif}
               onChange={(e) => setMotif(e.target.value)}
               placeholder="ex: Difficultés d'assiduité, Bilan d'orientation..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className={inputClass}
             />
           </div>
 
@@ -238,7 +341,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
               onChange={(e) => setNotesParents(e.target.value)}
               rows={2}
               placeholder="ex: Souhaite parler du comportement aux récréations..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className={inputClass}
             />
           </div>
         </div>
@@ -254,7 +357,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!studentId || (!adminSeulement && !enseignant) || !lieu.trim() || !motif.trim()}
+            disabled={!canSubmit}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Enregistrer

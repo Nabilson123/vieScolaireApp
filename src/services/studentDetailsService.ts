@@ -12,6 +12,8 @@ import {
   type SanteInfo,
   type ReclamationRecord,
   type RendezVousRecord,
+  type StoredRendezVousRecord,
+  normalizeRendezVous,
   type ProjetPersonnelInfo,
 } from '../data/studentDetails'
 import { logAudit } from './auditLogService'
@@ -27,7 +29,7 @@ interface StudentExtraRow {
   projet: ProjetPersonnelInfo
   sante: SanteInfo
   reclamations: ReclamationRecord[]
-  rendez_vous: RendezVousRecord[]
+  rendez_vous: StoredRendezVousRecord[]
 }
 
 function rowToExtra(row: StudentExtraRow): StudentExtra {
@@ -41,7 +43,7 @@ function rowToExtra(row: StudentExtraRow): StudentExtra {
     projet: { ...defaultExtra.projet, ...row.projet },
     sante: { ...defaultExtra.sante, ...row.sante },
     reclamations: row.reclamations ?? defaultExtra.reclamations,
-    rendezVous: row.rendez_vous ?? defaultExtra.rendezVous,
+    rendezVous: row.rendez_vous ? normalizeRendezVous(row.rendez_vous) : defaultExtra.rendezVous,
   }
 }
 

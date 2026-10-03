@@ -195,7 +195,7 @@ export function collectTeacherRendezVous(teacher: Teacher, periodStart: string, 
   const rows: TeacherRdvRow[] = []
   getStudentsSnapshot().forEach((s) => {
     getStudentExtraSnapshot(s.id).rendezVous.forEach((r) => {
-      if (matchesTeacher(r.enseignant, teacher) && isWithinPeriod(r.date, periodStart, periodEnd)) {
+      if (r.enseignants.some((e) => matchesTeacher(e, teacher)) && isWithinPeriod(r.date, periodStart, periodEnd)) {
         rows.push({ date: r.date, studentName: s.name, motif: r.motif, statut: r.statut })
       }
     })

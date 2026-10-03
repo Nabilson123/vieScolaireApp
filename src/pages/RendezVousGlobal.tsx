@@ -5,7 +5,9 @@ import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import type { RendezVousRecord, CompteRenduRDV } from '../data/studentDetails'
 import { getStudentExtraSnapshot, updateStudentRendezVous } from '../services/studentDetailsService'
 import { isWithinPeriod } from '../utils/period'
-import PlanifierRdvModal, { type PlanifierRdvPayload } from '../components/PlanifierRdvModal'
+import PlanifierRdvModal, { rdvFieldsFromPayload, type PlanifierRdvPayload } from '../components/PlanifierRdvModal'
+import PartagerRdvModal from '../components/PartagerRdvModal'
+import { buildRdvMessage } from '../utils/whatsapp'
 import RedigerCompteRenduModal from '../components/RedigerCompteRenduModal'
 import RdvCard from '../components/RdvCard'
 import RdvPrintPreviewModal from '../components/rdv-print/RdvPrintPreviewModal'
@@ -70,6 +72,7 @@ export default function RendezVousGlobal() {
   const [editingItem, setEditingItem] = useState<FlatRdv | null>(null)
   const [crItem, setCrItem] = useState<FlatRdv | null>(null)
   const [crPrintItem, setCrPrintItem] = useState<FlatRdv | null>(null)
+  const [share, setShare] = useState<{ message: string; justCreated: boolean } | null>(null)
   const [showPrint, setShowPrint] = useState(false)
 
   const flat: FlatRdv[] = useMemo(() => {
@@ -87,7 +90,8 @@ export default function RendezVousGlobal() {
     const matchesSearch =
       !q ||
       r.studentName.toLowerCase().includes(q) ||
-      r.enseignant.toLowerCase().includes(q) ||
+      r.enseignants.some((e) => e.toLowerCase().includes(q)) ||
+      (r.animateur ?? '').toLowerCase().includes(q) ||
       r.lieu.toLowerCase().includes(q)
     const matchesPeriod = isWithinPeriod(r.date, periodStart, periodEnd)
     const matchesStatut = statutFilter === 'Tous' || r.statut === statutFilter
@@ -112,36 +116,18 @@ export default function RendezVousGlobal() {
   }
 
   const handleCreate = async (payload: PlanifierRdvPayload) => {
-    const record: RendezVousRecord = {
-      date: payload.date,
-      heure: payload.heure,
-      duree: payload.duree,
-      statut: 'Planifié',
-      mode: payload.mode,
-      lieu: payload.lieu,
-      motif: payload.motif,
-      notesParents: payload.notesParents || undefined,
-      enseignant: payload.enseignant,
-    }
+    const record: RendezVousRecord = { ...rdvFieldsFromPayload(payload), statut: 'Planifié' }
     const updated = [record, ...(rdvMap[payload.studentId] ?? [])]
     setRdvMap((prev) => ({ ...prev, [payload.studentId]: updated }))
     await persist(payload.studentId, updated)
+    const student = getStudentsSnapshot().find((s) => s.id === payload.studentId)
+    setShare({ message: buildRdvMessage({ studentName: student?.name ?? '', classe: student?.classe ?? '', record }), justCreated: true })
     setShowPlanifierModal(false)
   }
 
   const handleEditSubmit = async (payload: PlanifierRdvPayload) => {
     if (!editingItem) return
-    await updateOne(editingItem.studentId, editingItem.id, (r) => ({
-      ...r,
-      date: payload.date,
-      heure: payload.heure,
-      duree: payload.duree,
-      mode: payload.mode,
-      lieu: payload.lieu,
-      motif: payload.motif,
-      notesParents: payload.notesParents || undefined,
-      enseignant: payload.enseignant,
-    }))
+    await updateOne(editingItem.studentId, editingItem.id, (r) => ({ ...r, ...rdvFieldsFromPayload(payload) }))
     setEditingItem(null)
   }
 
@@ -331,6 +317,7 @@ export default function RendezVousGlobal() {
               onDelete={() => handleDelete(item)}
               onRedigerCR={() => setCrItem(item)}
               onDownloadCR={() => setCrPrintItem(item)}
+              onShare={() => setShare({ message: buildRdvMessage({ studentName: item.studentName, classe: item.classe, record: item }), justCreated: false })}
             />
           ))}
         </div>
@@ -352,15 +339,19 @@ export default function RendezVousGlobal() {
             lieu: editingItem.lieu,
             motif: editingItem.motif,
             notesParents: editingItem.notesParents ?? '',
-            enseignant: editingItem.enseignant,
+            enseignants: editingItem.enseignants,
+            demandeur: editingItem.demandeur,
+            animateur: editingItem.animateur,
           }}
         />
       )}
 
+      {share && <PartagerRdvModal message={share.message} justCreated={share.justCreated} onClose={() => setShare(null)} />}
+
       {crItem && (
         <RedigerCompteRenduModal
           motif={crItem.motif}
-          hasEnseignant={!!crItem.enseignant}
+          hasEnseignant={crItem.enseignants.length > 0}
           initial={crItem.compteRendu}
           onClose={() => setCrItem(null)}
           onSubmit={handleCompteRenduSubmit}

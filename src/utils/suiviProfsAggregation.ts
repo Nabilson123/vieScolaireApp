@@ -28,7 +28,7 @@ export function isVacataireAbsentThatDay(teacher: Teacher, date: string): boolea
 }
 
 /** Intervalles occupés d'un prof à une date donnée : cours réels ce jour-là, RDV parents déjà pris
- * (matchés par nom, seul lien disponible sur RendezVousRecord.enseignant), et autres suivis profs
+ * (matchés par nom, seul lien disponible sur RendezVousRecord.enseignants), et autres suivis profs
  * déjà planifiés où il figure — tout sauf 'Annulé'. Un vacataire sans cours ce jour-là est traité
  * comme absent toute la journée (cf. isVacataireAbsentThatDay) plutôt que "entièrement libre". */
 function getBusyIntervals(teacher: Teacher, date: string, excludeSuiviId?: string): TimeInterval[] {
@@ -45,7 +45,7 @@ function getBusyIntervals(teacher: Teacher, date: string, excludeSuiviId?: strin
   const nom = teacherName(teacher)
   getStudentsSnapshot().forEach((s) => {
     getStudentExtraSnapshot(s.id).rendezVous.forEach((r) => {
-      if (r.enseignant !== nom || r.date !== date || r.statut === 'Annulé') return
+      if (!r.enseignants.includes(nom) || r.date !== date || r.statut === 'Annulé') return
       busy.push({ start: r.heure, end: minutesToTime(timeToMinutes(r.heure) + r.duree) })
     })
   })

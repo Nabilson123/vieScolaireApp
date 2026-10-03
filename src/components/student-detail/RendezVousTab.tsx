@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { CalendarClock, PlusCircle } from 'lucide-react'
 import type { RendezVousRecord, CompteRenduRDV } from '../../data/studentDetails'
-import PlanifierRdvModal, { type PlanifierRdvPayload } from '../PlanifierRdvModal'
+import PlanifierRdvModal, { rdvFieldsFromPayload, type PlanifierRdvPayload } from '../PlanifierRdvModal'
+import PartagerRdvModal from '../PartagerRdvModal'
 import RedigerCompteRenduModal from '../RedigerCompteRenduModal'
 import RdvCard from '../RdvCard'
 import CompteRenduRdvPrintPreviewModal from '../rdv-print/CompteRenduRdvPrintPreviewModal'
 import { getStudentsSnapshot } from '../../services/studentsService'
+import { buildRdvMessage } from '../../utils/whatsapp'
 
 interface RendezVousTabProps {
   studentId: string
@@ -18,41 +20,25 @@ export default function RendezVousTab({ studentId, rendezVous, onChange }: Rende
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [crIndex, setCrIndex] = useState<number | null>(null)
   const [crPrintIndex, setCrPrintIndex] = useState<number | null>(null)
+  const [share, setShare] = useState<{ message: string; justCreated: boolean } | null>(null)
   const student = getStudentsSnapshot().find((s) => s.id === studentId)
+
+  const shareMessageFor = (record: RendezVousRecord) => buildRdvMessage({ studentName: student?.name ?? '', classe: student?.classe ?? '', record })
 
   const updateAt = (idx: number, updater: (r: RendezVousRecord) => RendezVousRecord) => {
     onChange(rendezVous.map((r, i) => (i === idx ? updater(r) : r)))
   }
 
   const handleCreate = (payload: PlanifierRdvPayload) => {
-    const record: RendezVousRecord = {
-      date: payload.date,
-      heure: payload.heure,
-      duree: payload.duree,
-      statut: 'Planifié',
-      mode: payload.mode,
-      lieu: payload.lieu,
-      motif: payload.motif,
-      notesParents: payload.notesParents || undefined,
-      enseignant: payload.enseignant,
-    }
+    const record: RendezVousRecord = { ...rdvFieldsFromPayload(payload), statut: 'Planifié' }
     onChange([record, ...rendezVous])
+    setShare({ message: shareMessageFor(record), justCreated: true })
     setShowPlanifier(false)
   }
 
   const handleEditSubmit = (payload: PlanifierRdvPayload) => {
     if (editingIndex === null) return
-    updateAt(editingIndex, (r) => ({
-      ...r,
-      date: payload.date,
-      heure: payload.heure,
-      duree: payload.duree,
-      mode: payload.mode,
-      lieu: payload.lieu,
-      motif: payload.motif,
-      notesParents: payload.notesParents || undefined,
-      enseignant: payload.enseignant,
-    }))
+    updateAt(editingIndex, (r) => ({ ...r, ...rdvFieldsFromPayload(payload) }))
     setEditingIndex(null)
   }
 
@@ -104,6 +90,7 @@ export default function RendezVousTab({ studentId, rendezVous, onChange }: Rende
               onDelete={() => handleDelete(idx)}
               onRedigerCR={() => setCrIndex(idx)}
               onDownloadCR={() => setCrPrintIndex(idx)}
+              onShare={() => setShare({ message: shareMessageFor(r), justCreated: false })}
             />
           ))}
         </div>
@@ -127,15 +114,19 @@ export default function RendezVousTab({ studentId, rendezVous, onChange }: Rende
             lieu: editingRecord.lieu,
             motif: editingRecord.motif,
             notesParents: editingRecord.notesParents ?? '',
-            enseignant: editingRecord.enseignant,
+            enseignants: editingRecord.enseignants,
+            demandeur: editingRecord.demandeur,
+            animateur: editingRecord.animateur,
           }}
         />
       )}
 
+      {share && <PartagerRdvModal message={share.message} justCreated={share.justCreated} onClose={() => setShare(null)} />}
+
       {crRecord && (
         <RedigerCompteRenduModal
           motif={crRecord.motif}
-          hasEnseignant={!!crRecord.enseignant}
+          hasEnseignant={crRecord.enseignants.length > 0}
           initial={crRecord.compteRendu}
           onClose={() => setCrIndex(null)}
           onSubmit={handleCompteRenduSubmit}

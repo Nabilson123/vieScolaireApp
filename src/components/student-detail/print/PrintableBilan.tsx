@@ -433,7 +433,7 @@ export default function PrintableBilan({ student, extra, view, periodLabel, eval
                         </div>
                       )}
                       <p className="mt-1 text-[8.5px]" style={{ color: '#94969B' }}>
-                        Enseignant : {r.enseignant}
+                        {r.enseignants.length > 1 ? 'Enseignants' : 'Enseignant'} : {r.enseignants.length > 0 ? r.enseignants.join(', ') : 'Administration seulement'}
                       </p>
                     </div>
                   ))}
