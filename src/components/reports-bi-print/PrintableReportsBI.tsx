@@ -495,37 +495,6 @@ function MonthCycleTable({ title, color, data }: { title: string; color: string;
   )
 }
 
-/** Pour "Classes à surveiller" : la métrique la plus extrême de CETTE classe par rapport au reste
- * de l'école, parmi absences/présence/retards — ordre de départage absences > présence > retards. */
-function pickWorstMetric(row: ClasseStatsRow, all: ClasseStatsRow[]): string {
-  const byAbsDesc = [...all].sort((a, b) => b.absencesCount - a.absencesCount)
-  const byPresenceAsc = [...all].sort((a, b) => a.tauxPresence - b.tauxPresence)
-  const byRetDesc = [...all].sort((a, b) => b.retardsCount - a.retardsCount)
-  const rankAbs = byAbsDesc.findIndex((r) => r.classe === row.classe)
-  const rankPresence = byPresenceAsc.findIndex((r) => r.classe === row.classe)
-  const rankRet = byRetDesc.findIndex((r) => r.classe === row.classe)
-  const best = Math.min(rankAbs, rankPresence, rankRet)
-  if (rankAbs === best) return `${row.absencesCount} absences`
-  if (rankPresence === best) return `${fr1(row.tauxPresence)} % présence`
-  return `${row.retardsCount} retards`
-}
-
-/** Groupe par cycle si TOUTES les classes du cycle sont à 100% de présence, sinon liste les
- * classes individuellement à 100% (mélange possible entre cycles groupés et classes isolées). */
-function buildPresenceExemplaireRows(rows: ClasseStatsRow[]): string[] {
-  const result: string[] = []
-  CYCLE_DEFS.forEach((def) => {
-    const groupRows = rows.filter((r) => cycleOfClasse(r.classe) === def.key)
-    if (groupRows.length === 0) return
-    if (groupRows.every((r) => r.tauxPresence >= 100)) {
-      result.push(`${groupRows.map((r) => r.classe).join(', ')} (${def.name.toLowerCase()})`)
-    } else {
-      groupRows.filter((r) => r.tauxPresence >= 100).forEach((r) => result.push(r.classe))
-    }
-  })
-  return result
-}
-
 export default function PrintableReportsBI({
   periodStart,
   periodEnd,
@@ -587,8 +556,6 @@ export default function PrintableReportsBI({
     conduite: rows.length > 0 ? rows.reduce((s, r) => s + r.moyenneConduite, 0) / rows.length : 0,
   }
 
-  const presenceExemplaireRows = buildPresenceExemplaireRows(rows)
-  const toWatch = [...rows].filter((r) => r.absencesCount > 0).sort((a, b) => b.heuresManquees - a.heuresManquees).slice(0, 3)
 
   // --- Section 04 : effectifs/démographie -------------------------------------------------------
   const previousAnnee = anneeData.length >= 2 ? anneeData[anneeData.length - 2] : null
@@ -762,7 +729,13 @@ export default function PrintableReportsBI({
     }
     return out
   }
-  const impactChunks = chunk(remplacementsParClasse, 5)
+  // Impact par classe : les classes sont déjà dans l'ordre PS-A → 3APIC ; on coupe par cycle
+  // (Maternelle / Primaire / Collège) plutôt que toutes les 5 lignes, pour que les séparations
+  // tombent entre les cycles et jamais au milieu d'un niveau (entre CE3-A et CE3-B par exemple).
+  const impactChunks = [
+    ...CYCLE_DEFS.map((def) => remplacementsParClasse.filter((r) => cycleOfClasse(r.classe) === def.key)),
+    remplacementsParClasse.filter((r) => !CYCLE_DEFS.some((def) => def.key === cycleOfClasse(r.classe))),
+  ].filter((g) => g.length > 0)
   const remplacantsChunks = chunk(remplacants, 8)
 
   const impactRow = (r: ClasseBreakdownRow) => (
@@ -1047,45 +1020,6 @@ export default function PrintableReportsBI({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '8pt', color: C.muted, marginTop: 6 }}>
             <span style={{ display: 'inline-block', width: 9, height: 9, background: C.flagRow, border: `1px solid ${C.flagBorder}` }} />
             Classe à signaler (≥ 1 sanction ou ≥ 10 absences) sur la période sélectionnée
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'p3-highlights',
-      node: flowRoot(
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-          <div style={{ background: C.paperTint, padding: '8px 12px' }}>
-            <p style={{ textAlign: 'center', fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.green, marginBottom: 6 }}>
-              Présence exemplaire
-            </p>
-            {presenceExemplaireRows.length === 0 ? (
-              <p style={{ textAlign: 'center', fontSize: '9pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>Aucune classe à 100 % de présence sur la période.</p>
-            ) : (
-              presenceExemplaireRows.map((label) => (
-                <div key={label} style={{ textAlign: 'center', fontSize: '9.5pt', padding: '2px 0' }}>
-                  {label}
-                </div>
-              ))
-            )}
-          </div>
-          <div style={{ background: C.paperTint, padding: '8px 12px' }}>
-            <p style={{ textAlign: 'center', fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.red, marginBottom: 6 }}>
-              Classes à surveiller
-            </p>
-            {toWatch.length === 0 ? (
-              <p style={{ textAlign: 'center', fontSize: '9pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>Aucune classe à surveiller.</p>
-            ) : (
-              toWatch.map((r) => (
-                <div key={r.classe} style={{ fontSize: '9.5pt', padding: '2px 4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 600 }}>{r.classe}</span>
-                    <span style={{ fontWeight: 600 }}>{heuresDecimalFR(r.heuresManquees)} manq.</span>
-                  </div>
-                  <div style={{ fontFamily: MONO, fontSize: '7.5pt', color: C.muted }}>({pickWorstMetric(r, rows)})</div>
-                </div>
-              ))
-            )}
           </div>
         </div>
       ),

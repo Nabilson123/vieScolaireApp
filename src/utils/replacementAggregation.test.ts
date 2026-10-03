@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { subtractCoveredIntervals, intervalHours } from './replacementAggregation'
+import { subtractCoveredIntervals, intervalHours, buildClasseBreakdownAllClasses, type FlatRemplacement } from './replacementAggregation'
 
 describe('subtractCoveredIntervals', () => {
   it('returns the full slot when nothing is covered', () => {
@@ -38,5 +38,38 @@ describe('intervalHours', () => {
 
   it('computes a full hour correctly', () => {
     expect(intervalHours({ start: '10:00', end: '11:00' })).toBe(1)
+  })
+})
+
+describe('buildClasseBreakdownAllClasses', () => {
+  const classes = [
+    { nom: '3APIC-A', niveau: '3APIC', statut: 'Active' },
+    { nom: 'CE1-B', niveau: 'CE1', statut: 'Active' },
+    { nom: 'PS-A', niveau: 'PS', statut: 'Active' },
+    { nom: 'CE1-A', niveau: 'CE1', statut: 'Active' },
+    { nom: 'GS-A', niveau: 'GS', statut: 'Active' },
+    { nom: 'CE9-A', niveau: 'CE9', statut: 'Archivée' },
+  ]
+  const remplacement = (classe: string, heures: number) => ({ classe, heures }) as FlatRemplacement
+
+  it("liste toutes les classes actives dans l'ordre PS-A → 3APIC, sans tenir compte des heures", () => {
+    const result = buildClasseBreakdownAllClasses(classes, [remplacement('3APIC-A', 5), remplacement('CE1-B', 2)])
+    expect(result.map((r) => r.classe)).toEqual(['PS-A', 'GS-A', 'CE1-A', 'CE1-B', '3APIC-A'])
+  })
+
+  it('garde les heures cumulées par classe et met 0 pour les classes sans remplacement', () => {
+    const result = buildClasseBreakdownAllClasses(classes, [remplacement('CE1-B', 2), remplacement('CE1-B', 1.5)])
+    expect(result.find((r) => r.classe === 'CE1-B')).toMatchObject({ count: 2, heures: 3.5 })
+    expect(result.find((r) => r.classe === 'PS-A')).toMatchObject({ count: 0, heures: 0 })
+  })
+
+  it("range à sa place une classe qui n'existe plus mais figure dans l'historique", () => {
+    const result = buildClasseBreakdownAllClasses(classes, [remplacement('CE2-A', 1)])
+    expect(result.map((r) => r.classe)).toEqual(['PS-A', 'GS-A', 'CE1-A', 'CE1-B', 'CE2-A', '3APIC-A'])
+  })
+
+  it("exclut les classes non actives qui n'ont aucun remplacement", () => {
+    const result = buildClasseBreakdownAllClasses(classes, [])
+    expect(result.some((r) => r.classe === 'CE9-A')).toBe(false)
   })
 })

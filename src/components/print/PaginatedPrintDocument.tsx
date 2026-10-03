@@ -54,8 +54,11 @@ export default function PaginatedPrintDocument({
       const headerH0 = headerRef.current?.getBoundingClientRect().height ?? 0
       const headerHRest = headerRestRef.current?.getBoundingClientRect().height ?? headerH0
       const footerH = footerRef.current?.getBoundingClientRect().height ?? 0
-      const available0 = PAGE_HEIGHT_PX - paddingYPx * 2 - headerH0 - footerH - gapPx * 2
-      const availableRest = PAGE_HEIGHT_PX - paddingYPx * 2 - headerHRest - footerH - gapPx * 2
+      // Trois espaces à réserver, pas deux : en-tête → premier bloc, dernier bloc → ressort (flex-1),
+      // ressort → pied de page. Le ressort garde ses deux espaces même quand il mesure 0 px ; avec
+      // seulement deux espaces réservés, une page remplie à fond débordait de `gapPx` sous le A4.
+      const available0 = PAGE_HEIGHT_PX - paddingYPx * 2 - headerH0 - footerH - gapPx * 3
+      const availableRest = PAGE_HEIGHT_PX - paddingYPx * 2 - headerHRest - footerH - gapPx * 3
       const measured = blocks.map((b) => ({ key: b.key, height: blockRefs.current[b.key]?.getBoundingClientRect().height ?? 0, breakBefore: b.breakBefore }))
       setPageGroups(packBlocksIntoPages(measured, (pageIndex) => (pageIndex === 0 ? available0 : availableRest), gapPx))
     }

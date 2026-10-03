@@ -432,31 +432,41 @@ export function computeClasseBreakdown(historique: FlatRemplacement[]): ClasseBr
   return Object.values(map).sort((a, b) => b.count - a.count)
 }
 
-/** Variante de computeClasseBreakdown qui n'omet jamais une classe : le rapport imprimé doit
- * montrer tout l'effectif de classes, y compris celles à 0h de remplacement (computeClasseBreakdown
- * lui-même reste inchangé — toujours utilisé tel quel par le graphe écran, qui n'a pas cette
- * exigence). Classes seedées dans l'ordre réel du cycle (via NIVEAUX), puis remplacements
- * superposés ; tri final stable par heures décroissantes, donc les ex-æquo à 0h gardent l'ordre
- * d'insertion cycle déjà correct. */
-export function computeClasseBreakdownAllClasses(historique: FlatRemplacement[]): ClasseBreakdownRow[] {
+interface ClasseRef {
+  nom: string
+  niveau: string
+  statut: string
+}
+
+/** Version pure de computeClasseBreakdownAllClasses (sans lire le cache des classes) : toutes les
+ * classes actives, y compris celles à 0h, dans l'ordre pédagogique réel PS-A → 3APIC (rang du niveau
+ * via NIVEAUX, puis nom). Une classe qui n'apparaît que dans l'historique (archivée depuis) est
+ * rangée au bon endroit grâce à son niveau déduit du nom. */
+export function buildClasseBreakdownAllClasses(classes: ClasseRef[], historique: FlatRemplacement[]): ClasseBreakdownRow[] {
   const rang = (niveau: string) => {
     const i = NIVEAUX.indexOf(niveau)
     return i === -1 ? NIVEAUX.length : i
   }
-  const classesActives = getClassesSnapshot()
-    .filter((c) => c.statut === 'Active')
-    .sort((a, b) => rang(a.niveau) - rang(b.niveau) || a.nom.localeCompare(b.nom))
-
   const map: Record<string, ClasseBreakdownRow> = {}
-  classesActives.forEach((c) => {
-    map[c.nom] = { classe: c.nom, niveau: c.niveau, count: 0, heures: 0 }
-  })
+  classes
+    .filter((c) => c.statut === 'Active')
+    .forEach((c) => {
+      map[c.nom] = { classe: c.nom, niveau: c.niveau, count: 0, heures: 0 }
+    })
   historique.forEach((r) => {
-    if (!map[r.classe]) map[r.classe] = { classe: r.classe, niveau: r.classe, count: 0, heures: 0 }
+    if (!map[r.classe]) map[r.classe] = { classe: r.classe, niveau: r.classe.replace(/-[A-Z]$/, ''), count: 0, heures: 0 }
     map[r.classe].count += 1
     map[r.classe].heures += r.heures
   })
-  return Object.values(map).sort((a, b) => b.heures - a.heures)
+  return Object.values(map).sort((a, b) => rang(a.niveau) - rang(b.niveau) || a.classe.localeCompare(b.classe))
+}
+
+/** Variante de computeClasseBreakdown qui n'omet jamais une classe : le rapport imprimé doit
+ * montrer tout l'effectif de classes, y compris celles à 0h de remplacement, dans l'ordre PS-A →
+ * 3APIC (computeClasseBreakdown lui-même reste inchangé — toujours utilisé tel quel par le graphe
+ * écran, qui n'a pas cette exigence). */
+export function computeClasseBreakdownAllClasses(historique: FlatRemplacement[]): ClasseBreakdownRow[] {
+  return buildClasseBreakdownAllClasses(getClassesSnapshot(), historique)
 }
 
 export interface OccupancyCell {
