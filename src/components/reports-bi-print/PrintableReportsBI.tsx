@@ -10,7 +10,7 @@ import type { AnneeEffectifPoint } from '../../utils/multiYearAggregation'
 import type { ServicesGlobalCounts, ServiceNiveauPoint } from '../../utils/servicesNiveauAggregation'
 import { computeCantineCountsByRefectoire, computeCantinePrescolaireSousSol } from '../../utils/servicesNiveauAggregation'
 import type { ServicesCapacite } from '../../services/servicesCapaciteService'
-import type { CycleSnapshotTiles, MonthCycleStack, CurrentMonthActivityTiles } from '../../utils/activiteMensuelleAggregation'
+import type { CycleSnapshotTiles, MonthCycleStack } from '../../utils/activiteMensuelleAggregation'
 import { cycleOfClasse } from '../../utils/alertEngine'
 import type { InfirmerieBilan, RdvBilan, CountRow } from '../../utils/infirmerieRdvBilan'
 
@@ -45,7 +45,6 @@ export interface PrintableReportsBIProps {
   absencesParMoisEtCycle: MonthCycleStack[]
   retardsParMoisEtCycle: MonthCycleStack[]
   disciplineParMoisEtCycle: MonthCycleStack[]
-  currentMonthActivity: CurrentMonthActivityTiles
   infirmerieBilan: InfirmerieBilan
   rdvBilan: RdvBilan
 }
@@ -523,7 +522,6 @@ export default function PrintableReportsBI({
   absencesParMoisEtCycle,
   retardsParMoisEtCycle,
   disciplineParMoisEtCycle,
-  currentMonthActivity,
   infirmerieBilan,
   rdvBilan,
 }: PrintableReportsBIProps) {
@@ -1113,25 +1111,25 @@ export default function PrintableReportsBI({
     {
       key: 'p3-activite',
       node: flowRoot(
-        <Section num="3.4" title="Activité mensuelle" annotation={currentMonthActivity.monthLabel}>
+        <Section num="3.4" title="Activité mensuelle" annotation={formatPeriodLabel(periodStart, periodEnd)}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
             <KpiTile
-              value={String(currentMonthActivity.absencesEleves)}
-              color={currentMonthActivity.absencesEleves === 0 ? C.green : C.red}
+              value={String(cycleTiles.absencesSeances.total)}
+              color={cycleTiles.absencesSeances.total === 0 ? C.green : C.red}
               label="Séances manquées — élèves"
-              sub={currentMonthActivity.monthLabel}
+              sub={formatPeriodLabel(periodStart, periodEnd)}
             />
             <KpiTile
-              value={String(currentMonthActivity.retards)}
-              color={currentMonthActivity.retards === 0 ? C.green : C.amber}
+              value={String(cycleTiles.retardsSeances.total)}
+              color={cycleTiles.retardsSeances.total === 0 ? C.green : C.amber}
               label="Séances en retard — élèves"
-              sub={currentMonthActivity.monthLabel}
+              sub={formatPeriodLabel(periodStart, periodEnd)}
             />
             <KpiTile
-              value={String(currentMonthActivity.incidents)}
-              color={currentMonthActivity.incidents === 0 ? C.green : C.red}
+              value={String(totalIncidents)}
+              color={totalIncidents === 0 ? C.green : C.red}
               label="Incidents disciplinaires"
-              sub={currentMonthActivity.monthLabel}
+              sub={formatPeriodLabel(periodStart, periodEnd)}
             />
           </div>
         </Section>

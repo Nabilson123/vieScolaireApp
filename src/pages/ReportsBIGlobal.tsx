@@ -49,7 +49,6 @@ import {
   computeAbsencesElevesParMoisEtCycle,
   computeRetardsElevesParMoisEtCycle,
   computeDisciplineElevesParMoisEtCycle,
-  computeCurrentMonthActivityTiles,
 } from '../utils/activiteMensuelleAggregation'
 import { computeInfirmerieBilan, computeRdvBilan } from '../utils/infirmerieRdvBilan'
 import {
@@ -168,7 +167,6 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
   // contrairement à l'onglet écran "Activité Mensuelle" qui reste volontairement sur l'année
   // scolaire complète (reclamationsParType ci-dessus, inchangé).
   const reclamationsParTypePeriode = computeReclamationsParTypeForPeriod(students, studentExtras, periodStart, periodEnd)
-  const currentMonthActivity = computeCurrentMonthActivityTiles(students, studentExtras, teachers, teacherExtras)
   const infirmerieBilan = computeInfirmerieBilan(students, studentExtras, periodStart, periodEnd)
   const rdvBilan = computeRdvBilan(students, studentExtras, periodStart, periodEnd)
   const anneeLibelle = getAnneesScolairesSnapshot().find((a) => a.id === viewedYearId)?.libelle ?? `${anneeDebut}/${anneeDebut + 1}`
@@ -381,7 +379,6 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
             absencesParMoisEtCycle={absencesParMoisEtCycle}
             retardsParMoisEtCycle={retardsParMoisEtCycle}
             disciplineParMoisEtCycle={disciplineParMoisEtCycle}
-            currentMonthActivity={currentMonthActivity}
             infirmerieBilan={infirmerieBilan}
             rdvBilan={rdvBilan}
             onClose={() => setShowPrint(false)}
