@@ -769,6 +769,44 @@ export default function PrintableReportsBI({
     />
   )
 
+  const serviceRow = (s: (typeof servicesRows)[number]) => {
+    const pct = occupancyPct(s.value, s.capacity)
+    const color = OCCUPANCY_COLORS[occupancyLevel(s.value, s.capacity)]
+    return (
+      <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '150px minmax(0,1fr) 134px', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <span style={{ fontSize: '9.5pt', fontWeight: 600 }}>{s.name}</span>
+        <div style={{ height: 9, background: C.ruleSoft }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: color }} />
+        </div>
+        <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600 }}>
+          {s.value} / {s.capacity} · {pct}%
+        </span>
+      </div>
+    )
+  }
+  const servicesChunks = chunk(servicesRows, 3)
+
+  // Motifs de réclamation : les deux colonnes sont découpées par tranches de lignes (même indice dans
+  // les deux colonnes) pour que la pagination puisse remplir le bas d'une page ; un reliquat de moins
+  // de 3 lignes est rattaché à la tranche précédente.
+  const motifRow = (r: (typeof allMotifs)[number]) => (
+    <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', opacity: r.value > 0 ? 1 : 0.5 }}>
+      <span style={{ width: 9, height: 9, borderRadius: '50%', background: r.value > 0 ? (RECLAMATION_COLORS[r.label] ?? C.accentBlue) : C.dashGrey, flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.inkMuted }}>{r.label}</span>
+      <strong style={{ fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.dashGrey }}>{r.value}</strong>
+    </div>
+  )
+  const maxMotifRows = Math.max(0, ...allMotifsCols.map((c) => c.length))
+  const motifBounds: number[] = []
+  for (let i = 0; i < maxMotifRows; i += 5) motifBounds.push(i)
+  if (motifBounds.length > 1 && maxMotifRows - motifBounds[motifBounds.length - 1] < 3) motifBounds.pop()
+  const motifGrids = motifBounds.map((from, i) => (
+    <div key={from} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', columnGap: 20 }}>
+      {allMotifsCols.map((col, colIdx) => (
+        <div key={colIdx}>{col.slice(from, motifBounds[i + 1]).map(motifRow)}</div>
+      ))}
+    </div>
+  ))
   const rdvChunks = chunk(rdvBilan.rows, 10)
   const rdvStatutColor = { Réalisé: C.greenText, Planifié: C.accentBlue, Annulé: C.redDark } as const
   const rdvTable = (rows: typeof rdvBilan.rows) => (
@@ -1128,28 +1166,15 @@ export default function PrintableReportsBI({
           <PartTitle num={4} title="Services périscolaires" subtitle="Transport · cantine · garde — inscrits / capacité" />
           <div style={{ marginTop: 10 }}>
             <Section num="4.1" title="Occupation des services" annotation={`${servicesRows.length} services`}>
-              <div>
-                {servicesRows.map((s) => {
-                  const pct = occupancyPct(s.value, s.capacity)
-                  const color = OCCUPANCY_COLORS[occupancyLevel(s.value, s.capacity)]
-                  return (
-                    <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '150px minmax(0,1fr) 134px', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                      <span style={{ fontSize: '9.5pt', fontWeight: 600 }}>{s.name}</span>
-                      <div style={{ height: 9, background: C.ruleSoft }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: color }} />
-                      </div>
-                      <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600 }}>
-                        {s.value} / {s.capacity} · {pct}%
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+              <div>{(servicesChunks[0] ?? []).map(serviceRow)}</div>
             </Section>
           </div>
         </div>
       ),
     },
+    // Suite de la liste des services : un bloc séparé pour que la pagination puisse remplir le bas
+    // d'une page au lieu de reporter tout le bloc quand il manque quelques pixels.
+    ...servicesChunks.slice(1).map((c, i) => ({ key: `p4-services-${i + 1}`, node: flowRoot(<div>{c.map(serviceRow)}</div>) })),
     {
       key: 'p4-services-niveau',
       node: flowRoot(
@@ -1187,25 +1212,14 @@ export default function PrintableReportsBI({
               {reclTotal === 0 ? (
                 <p style={emptyPanel}>Aucune réclamation enregistrée sur la période.</p>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', columnGap: 20 }}>
-                  {allMotifsCols.map((col, colIdx) => (
-                    <div key={colIdx}>
-                      {col.map((r) => (
-                        <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', opacity: r.value > 0 ? 1 : 0.5 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: r.value > 0 ? (RECLAMATION_COLORS[r.label] ?? C.accentBlue) : C.dashGrey, flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.inkMuted }}>{r.label}</span>
-                          <strong style={{ fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.dashGrey }}>{r.value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                motifGrids[0] ?? null
               )}
             </Section>
           </div>
         </div>
       ),
     },
+    ...(reclTotal === 0 ? [] : motifGrids.slice(1).map((g, i) => ({ key: `p5-reclamations-${i + 1}`, node: flowRoot(g) }))),
     {
       key: 'p5-reclamations-mois',
       node: flowRoot(
