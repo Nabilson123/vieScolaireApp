@@ -144,8 +144,7 @@ const emptyPanel = {
   color: C.inkMuted,
 } as const
 
-/** Bandeau d'ouverture d'une des 5 grandes parties du rapport — toujours en tête de page
- * (breakBefore), sauf la partie 1 qui suit la synthèse de la page 1. */
+/** Bandeau d'ouverture d'une des grandes parties du rapport. */
 function PartTitle({ num, title, subtitle }: { num: number; title: string; subtitle: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.ink, color: '#fff', padding: '9px 14px', marginBottom: 2 }}>
@@ -746,15 +745,22 @@ export default function PrintableReportsBI({
   }
   const aRetenirBullets: ReactNode[] = bullets.length > 0 ? bullets : ['Aucun signal particulier à relever sur la période.']
 
-  // --- Blocs paginés : 5 grandes parties, chacune ouverte par un bandeau PartTitle -----------------
-  // Chaque partie (sauf la 1re, qui suit la synthèse de la page 1) commence sur une nouvelle page
-  // (breakBefore). À l'intérieur d'une partie, les longues listes restent découpées en plusieurs
-  // blocs pour que la pagination remplisse les pages au lieu d'en laisser de quasi vides.
+  // --- Blocs paginés : 7 grandes parties, chacune ouverte par un bandeau PartTitle -----------------
+  // Les parties s'enchaînent sans saut de page forcé : un saut avant chaque partie laissait des pages
+  // à moitié vides (parties courtes comme Infirmerie ou Rendez-vous). Le bandeau d'une partie est dans
+  // le même bloc que sa première section, donc jamais isolé en bas de page. Les longues listes restent
+  // découpées en plusieurs blocs pour que la pagination remplisse les pages.
   const maxHeuresRemp = Math.max(1, ...remplacementsParClasse.map((r) => r.heures))
-  // Paquets de 5 lignes : assez fins pour que la pagination comble le bas de chaque page.
+  // Paquets de lignes assez fins pour que la pagination comble le bas de chaque page. Un reliquat de
+  // moins de 3 lignes est rattaché au paquet précédent : sinon une ou deux lignes se retrouvent seules
+  // dans un second tableau, sous un en-tête répété (ex. le 9e enseignant absent sur 9).
   const chunk = <T,>(arr: T[], size: number): T[][] => {
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+    if (out.length > 1 && out[out.length - 1].length < 3) {
+      const reliquat = out.pop() as T[]
+      out[out.length - 1] = [...out[out.length - 1], ...reliquat]
+    }
     return out
   }
   const impactChunks = chunk(remplacementsParClasse, 5)
@@ -888,7 +894,6 @@ export default function PrintableReportsBI({
     // ===================== PARTIE 2 — ABSENCES DES ENSEIGNANTS & REMPLACEMENTS =====================
     {
       key: 'p2-titre-evolution',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle
@@ -966,7 +971,6 @@ export default function PrintableReportsBI({
     // ============================= PARTIE 3 — ASSIDUITÉ & DISCIPLINE =============================
     {
       key: 'p3-titre-tendance',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle
@@ -1179,7 +1183,6 @@ export default function PrintableReportsBI({
     // ================================ PARTIE 4 — SERVICES PÉRISCOLAIRES ================================
     {
       key: 'p4-services',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle num={4} title="Services périscolaires" subtitle="Transport · cantine · garde — inscrits / capacité" />
@@ -1236,7 +1239,6 @@ export default function PrintableReportsBI({
     // ==================================== PARTIE 5 — RÉCLAMATIONS ====================================
     {
       key: 'p5-reclamations',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle num={5} title="Réclamations des parents" subtitle={`${reclTotal} réclamation(s) sur la période · ${activeMotifs.length} motif(s) actif(s) sur ${allMotifs.length}`} />
@@ -1276,7 +1278,6 @@ export default function PrintableReportsBI({
     // ==================================== PARTIE 6 — INFIRMERIE ====================================
     {
       key: 'p6-infirmerie',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle
@@ -1326,7 +1327,6 @@ export default function PrintableReportsBI({
     // ============================ PARTIE 7 — RENDEZ-VOUS AVEC LES PARENTS ============================
     {
       key: 'p7-rdv',
-      breakBefore: true,
       node: flowRoot(
         <div>
           <PartTitle
