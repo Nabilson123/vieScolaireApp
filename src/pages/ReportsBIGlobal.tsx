@@ -367,7 +367,6 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
             servicesGlobalCounts={servicesGlobalCounts}
             servicesParNiveau={servicesParNiveau}
             capacite={capacite}
-            capaciteClasses={capaciteClasses}
             transportCapaciteTotal={transportCapaciteTotal}
             reclamationsParMois={reclamationsParMois}
             reclamationsParType={reclamationsParTypePeriode}

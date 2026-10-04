@@ -32,7 +32,6 @@ export interface PrintableReportsBIProps {
   servicesGlobalCounts: ServicesGlobalCounts
   servicesParNiveau: ServiceNiveauPoint[]
   capacite: ServicesCapacite
-  capaciteClasses: number
   /** Somme des capacités des 5 lignes de transport — remplace capacite.transportCapacite (obsolète). */
   transportCapaciteTotal: number
   reclamationsParMois: { label: string; value: number }[]
@@ -510,7 +509,6 @@ export default function PrintableReportsBI({
   servicesGlobalCounts,
   servicesParNiveau,
   capacite,
-  capaciteClasses,
   transportCapaciteTotal,
   reclamationsParMois,
   reclamationsParType,
@@ -601,7 +599,7 @@ export default function PrintableReportsBI({
           {direction}
           {direction !== 'stable' ? ` de ${fr1(Math.abs(delta))} %` : ''}
         </strong>{' '}
-        par rapport à {previousAnnee.label}, occupation des classes à <strong>{occupancyPct(effectif, capaciteClasses)} %</strong>.
+        par rapport à {previousAnnee.label}.
       </>
     )
   }
@@ -860,7 +858,7 @@ export default function PrintableReportsBI({
             </div>
             <div style={{ background: C.paperTint, padding: '10px 12px' }}>
               <p style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
-                Capacité & occupation
+                Capacité
               </p>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '3px 0' }}>
                 <span>Classes ouvertes</span>
@@ -869,10 +867,6 @@ export default function PrintableReportsBI({
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '3px 0' }}>
                 <span>Ratio élèves/classe</span>
                 <strong>{nbClasses > 0 ? fr1(effectif / nbClasses) : '—'}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '3px 0' }}>
-                <span>Occupation</span>
-                <strong style={{ color: OCCUPANCY_COLORS[occupancyLevel(effectif, capaciteClasses)] }}>{occupancyPct(effectif, capaciteClasses)}%</strong>
               </div>
             </div>
             <div style={{ background: C.paperTint, padding: '10px 12px' }}>
