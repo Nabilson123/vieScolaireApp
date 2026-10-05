@@ -1,7 +1,11 @@
 import { X, CircleDot, CheckCircle2, RotateCcw, Pencil, UserCog, MessageCircle, ArrowRightCircle, Inbox, MailCheck, StickyNote, HeartHandshake, Siren } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReclamationAction, ReclamationRecord } from '../../data/studentDetails'
-import { cleanReclamationText, delaiResolutionJours, formatDateFR, isHorsDelai, joursOuverts } from '../../utils/reclamationsLogic'
+import { cleanReclamationText, delaiResolutionJours, formatDateFR, isAccuseAEnvoyer, isAccuseEnRetard, isHorsDelai, joursOuverts, todayLocalISO } from '../../utils/reclamationsLogic'
+import { NIVEAU_LABELS, delaiResolutionAutorise, niveauOf } from '../../utils/reclamationsPolicy'
+import NotesSection from './NotesSection'
+import StudentContextBlock from './StudentContextBlock'
+import SuiviFamilleSection from './SuiviFamilleSection'
 
 const ACTION_META: Record<ReclamationAction, { label: string; icon: LucideIcon; color: string }> = {
   creee: { label: 'Réclamation enregistrée', icon: Inbox, color: 'bg-slate-100 text-slate-500' },
@@ -25,14 +29,16 @@ function formatWhen(iso: string): string {
 
 interface ReclamationDrawerProps {
   reclamation: ReclamationRecord
+  studentId: string
   studentName: string
   classe: string
+  isEditable: boolean
   onClose: () => void
 }
 
 /** Tiroir de détail : la réclamation et sa frise chronologique (qui a fait quoi, et quand). Les
  * réclamations enregistrées avant la frise n'ont pas d'historique : seule leur réception est connue. */
-export default function ReclamationDrawer({ reclamation, studentName, classe, onClose }: ReclamationDrawerProps) {
+export default function ReclamationDrawer({ reclamation, studentId, studentName, classe, isEditable, onClose }: ReclamationDrawerProps) {
   const hasCreation = reclamation.historique.some((e) => e.action === 'creee')
   const events = [...reclamation.historique].sort((a, b) => (a.at < b.at ? 1 : -1))
   const resolutionDays = delaiResolutionJours(reclamation)
@@ -83,6 +89,26 @@ export default function ReclamationDrawer({ reclamation, studentName, classe, on
               <dt className="text-slate-400">Parent</dt>
               <dd className="font-semibold text-slate-700">{reclamation.parentNom || '—'}</dd>
             </div>
+            <div>
+              <dt className="text-slate-400">Niveau</dt>
+              <dd className={`font-semibold ${niveauOf(reclamation) === 'urgent' ? 'text-orange-600' : 'text-slate-700'}`}>
+                {NIVEAU_LABELS[niveauOf(reclamation)]} · résolution sous {delaiResolutionAutorise(reclamation)} j
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-400">Accusé de réception</dt>
+              <dd
+                className={`font-semibold ${reclamation.accuseLe ? 'text-emerald-600' : isAccuseEnRetard(reclamation) ? 'text-rose-600' : 'text-slate-700'}`}
+              >
+                {reclamation.accuseLe
+                  ? `envoyé le ${formatDateFR(todayLocalISO(new Date(reclamation.accuseLe)))}`
+                  : isAccuseAEnvoyer(reclamation)
+                    ? isAccuseEnRetard(reclamation)
+                      ? 'à envoyer — en retard'
+                      : 'à envoyer'
+                    : '—'}
+              </dd>
+            </div>
             <div className="col-span-2">
               <dt className="text-slate-400">Concernant</dt>
               <dd className="font-semibold text-slate-700">{reclamation.enseignant || '—'}</dd>
@@ -95,6 +121,12 @@ export default function ReclamationDrawer({ reclamation, studentName, classe, on
               <p className="text-sm text-emerald-700">{reclamation.resolution}</p>
             </div>
           )}
+
+          <StudentContextBlock studentId={studentId} classe={classe} excludeId={reclamation.id} />
+
+          <SuiviFamilleSection reclamation={reclamation} studentId={studentId} studentName={studentName} classe={classe} isEditable={isEditable} />
+
+          <NotesSection reclamation={reclamation} studentId={studentId} isEditable={isEditable} />
 
           <div>
             <h3 className="mb-3 text-sm font-bold text-slate-800">Historique</h3>

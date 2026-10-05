@@ -72,7 +72,7 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
         </div>
       )}
 
-      {drawerRecord && <ReclamationDrawer reclamation={drawerRecord} studentName={studentName} classe={classe} onClose={() => setDrawerId(null)} />}
+      {drawerRecord && <ReclamationDrawer reclamation={drawerRecord} studentId={studentId} studentName={studentName} classe={classe} isEditable={isEditable} onClose={() => setDrawerId(null)} />}
 
       {message && (
         <ReclamationMessageModal

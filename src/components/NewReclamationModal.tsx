@@ -6,7 +6,9 @@ import { RECLAMATION_CATEGORIES } from '../data/studentDetails'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
-import { todayLocalISO } from '../utils/reclamationsLogic'
+import { getStudentExtraSnapshot } from '../services/studentDetailsService'
+import { cleanReclamationText, formatDateFR, todayLocalISO } from '../utils/reclamationsLogic'
+import { findSimilarReclamations, type SimilarReclamation } from '../utils/reclamationsDoublons'
 import { parseParentMessage, type IntakeContext, type IntakeResult, type IntakeStudent } from '../utils/reclamationsIntake'
 
 const AUTRE_SENTINEL = '__AUTRE__'
@@ -54,6 +56,12 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
   const [pendingParent, setPendingParent] = useState('')
   const [analysisNote, setAnalysisNote] = useState<string | null>(null)
   const [lowFlags, setLowFlags] = useState<{ student: boolean; items: { category: boolean; concernant: boolean }[] }>({ student: false, items: [] })
+
+  // Avertissement de doublon : réclamations proches déjà enregistrées pour l'élève. Il ne s'affiche qu'une fois
+  // l'objet commencé (la catégorie est toujours pré-remplie), et n'empêche jamais d'enregistrer.
+  const existingReclamations = studentId ? getStudentExtraSnapshot(studentId).reclamations : []
+  const similarOf = (item: ReclamationItem): SimilarReclamation[] =>
+    item.objet.trim().length >= 3 ? findSimilarReclamations(existingReclamations, { category: item.category, objet: item.objet }).slice(0, 2) : []
 
   const parentLabelsOf = (id: string) => {
     const i = getStudentIdentitySnapshot(id)
@@ -350,6 +358,20 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
                         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
                       />
                     </div>
+
+                    {similarOf(item).length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <p className="font-semibold">Une réclamation proche existe déjà pour cet élève</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {similarOf(item).map((s) => (
+                            <li key={s.reclamation.id}>
+                              « {cleanReclamationText(s.reclamation.objet)} » — reçue le {formatDateFR(s.reclamation.date)}, {s.reclamation.statut.toLowerCase()}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-1 text-amber-700">Vérifiez qu'il ne s'agit pas du même sujet. Vous pouvez enregistrer quand même.</p>
+                      </div>
+                    )}
 
                     <div>
                       <label className="mb-1.5 block text-sm font-semibold text-slate-700">Description</label>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CalendarCheck, ChevronDown, ChevronRight, Columns3, List, Megaphone, PlusCircle, Printer, Search, X } from 'lucide-react'
+import { AlertTriangle, CalendarCheck, CheckSquare, ChevronDown, ChevronRight, Columns3, List, ListChecks, MailCheck, Megaphone, PlusCircle, Printer, Search, X } from 'lucide-react'
 import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import { RECLAMATION_CATEGORIES, type ReclamationRecord } from '../data/studentDetails'
-import { useStudentExtras } from '../services/studentDetailsService'
+import { assignerBatch, prendreEnChargeBatch, marquerUrgenteBatch, useStudentExtras } from '../services/studentDetailsService'
+import { buildStaffOptions } from '../utils/staffOptions'
 import NewReclamationModal from '../components/NewReclamationModal'
 import ReclamationCard from '../components/ReclamationCard'
 import EditReclamationModal from '../components/reclamations/EditReclamationModal'
@@ -12,6 +13,8 @@ import { computeReclamationSignals, type ReclamationSignal } from '../utils/recl
 import { delaiResolutionAutorise, niveauOf } from '../utils/reclamationsPolicy'
 import ReclamationAgenda from '../components/reclamations/ReclamationAgenda'
 import { agendaTotal, computeAgenda } from '../utils/reclamationsAgenda'
+import ReclamationQueueModal from '../components/reclamations/ReclamationQueueModal'
+import BulkAccusesModal from '../components/reclamations/BulkAccusesModal'
 import ReclamationBridgeModal from '../components/reclamations/ReclamationBridgeModal'
 import ReclamationDrawer from '../components/reclamations/ReclamationDrawer'
 import ReclamationKanban from '../components/reclamations/ReclamationKanban'
@@ -33,6 +36,7 @@ import {
   isAccuseAEnvoyer,
   isAccuseEnRetard,
   isHorsDelai,
+  isRelanceDue,
 } from '../utils/reclamationsLogic'
 
 interface FlatReclamation extends ReclamationRecord {
@@ -50,7 +54,7 @@ interface MessageTarget {
   banner?: string
 }
 
-type QuickFilter = 'toutes' | 'a_traiter' | 'accuse_a_envoyer' | 'urgentes' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
+type QuickFilter = 'toutes' | 'a_traiter' | 'accuse_a_envoyer' | 'urgentes' | 'a_relancer' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
 type SortMode = 'urgence' | 'recent'
 type View = 'aujourdhui' | 'liste' | 'kanban'
 
@@ -59,6 +63,7 @@ const CHIPS: { key: QuickFilter; label: string }[] = [
   { key: 'a_traiter', label: 'À traiter' },
   { key: 'accuse_a_envoyer', label: 'Accusé à envoyer' },
   { key: 'urgentes', label: 'Urgentes' },
+  { key: 'a_relancer', label: 'À relancer' },
   { key: 'en_attente', label: 'En attente' },
   { key: 'en_cours', label: 'En cours' },
   { key: 'hors_delai', label: 'Hors délai' },
@@ -99,6 +104,14 @@ export default function ReclamationsGlobal() {
     setView(v)
   }
   const [signalsOpen, setSignalsOpen] = useState(false)
+  // Traiter la file / actions groupées.
+  const [queueKeys, setQueueKeys] = useState<{ studentId: string; id: string }[] | null>(null)
+  const [bulkAccuseKeys, setBulkAccuseKeys] = useState<{ studentId: string; id: string }[] | null>(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkConfirm, setBulkConfirm] = useState<'prendre' | 'urgente' | 'assigner' | null>(null)
+  const [bulkAssignee, setBulkAssignee] = useState('')
+  const [bulkEcheance, setBulkEcheance] = useState('')
   const [drawerKey, setDrawerKey] = useState<{ studentId: string; id: string } | null>(null)
   const [resolveTarget, setResolveTarget] = useState<FlatReclamation | null>(null)
   const [hint, setHint] = useState<string | null>(null)
@@ -143,6 +156,7 @@ export default function ReclamationsGlobal() {
     a_traiter: (r) => r.statut !== 'Résolue',
     accuse_a_envoyer: (r) => isAccuseAEnvoyer(r),
     urgentes: (r) => r.statut !== 'Résolue' && niveauOf(r) === 'urgent',
+    a_relancer: (r) => isRelanceDue(r),
     en_attente: (r) => r.statut === 'En attente',
     en_cours: (r) => r.statut === 'En cours',
     hors_delai: (r) => isHorsDelai(r),
@@ -187,6 +201,48 @@ export default function ReclamationsGlobal() {
   const active = filtered.filter((r) => r.statut !== 'Résolue').sort(sort === 'urgence' ? urgency : recent)
   const resolved = filtered.filter((r) => r.statut === 'Résolue').sort(recent)
   const isResolvedExpanded = resolvedOpen || active.length === 0
+
+  // « Traiter la file » : ce qui attend un tri — accusé à envoyer ou pas encore prise en charge —, le plus urgent
+  // d'abord. Respecte la recherche et la catégorie choisies : on peut trier « tout ce qui concerne la cantine ».
+  const queue = kpiBase.filter((r) => r.statut !== 'Résolue' && (isAccuseAEnvoyer(r) || r.statut === 'En attente')).sort(urgency)
+
+  // Sélection pour les actions groupées.
+  const keyOf = (r: { studentId: string; id: string }) => `${r.studentId}|${r.id}`
+  const selectedItems = flat.filter((r) => selected.has(keyOf(r)))
+  const toggleSelected = (r: FlatReclamation) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(keyOf(r))) next.delete(keyOf(r))
+      else next.add(keyOf(r))
+      return next
+    })
+  const exitSelection = () => {
+    setSelectMode(false)
+    setSelected(new Set())
+    setBulkConfirm(null)
+  }
+  const bulkTargets = (kind: 'prendre' | 'urgente' | 'assigner') =>
+    selectedItems.filter((r) => {
+      if (kind === 'prendre') return r.statut === 'En attente'
+      if (kind === 'urgente') return r.statut !== 'Résolue' && niveauOf(r) !== 'urgent'
+      return r.statut !== 'Résolue'
+    })
+  const flashHint = (text: string) => {
+    setHint(text)
+    setTimeout(() => setHint(null), 5000)
+  }
+  const runBulk = async (kind: 'prendre' | 'urgente' | 'assigner') => {
+    const targets = bulkTargets(kind).map((r) => ({ studentId: r.studentId, id: r.id }))
+    setBulkConfirm(null)
+    if (targets.length === 0) return
+    const done = await actions.enLot(targets, (studentId, ids) =>
+      kind === 'prendre' ? prendreEnChargeBatch(studentId, ids) : kind === 'urgente' ? marquerUrgenteBatch(studentId, ids) : assignerBatch(studentId, ids, bulkAssignee, bulkEcheance || undefined)
+    )
+    const s = done > 1 ? 's' : ''
+    const phrase = kind === 'prendre' ? `prise${s} en charge` : kind === 'urgente' ? `rendue${s} urgente${s}` : `assignée${s}`
+    flashHint(`${done} réclamation${s} ${phrase}.`)
+    setSelected(new Set())
+  }
 
   const total = kpiBase.length
   const aTraiter = counts.a_traiter
@@ -262,6 +318,9 @@ export default function ReclamationsGlobal() {
       onHistory={() => setDrawerKey({ studentId: item.studentId, id: item.id })}
       onMarkAccuse={() => actions.marquerAccuse(item.studentId, item.id)}
       onToggleUrgent={() => actions.basculerUrgente(item.studentId, item.id)}
+      selectable={selectMode && item.statut !== 'Résolue'}
+      selected={selected.has(keyOf(item))}
+      onToggleSelect={() => toggleSelected(item)}
       onReopen={() => actions.rouvrir(item.studentId, item.id)}
       onEdit={() => setEditing(item)}
       onDelete={() => actions.supprimer(item.studentId, item.id)}
@@ -281,7 +340,17 @@ export default function ReclamationsGlobal() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setQueueKeys(queue.map((r) => ({ studentId: r.studentId, id: r.id })))}
+            disabled={queue.length === 0}
+            title={queue.length === 0 ? 'Rien en attente de tri' : 'Passer en revue les réclamations à trier, une par une'}
+            className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ListChecks className="h-4 w-4" />
+            Traiter la file ({queue.length})
+          </button>
           <button
             type="button"
             onClick={() => setShowPrint(true)}
@@ -406,6 +475,16 @@ export default function ReclamationsGlobal() {
               </button>
             ))}
           </div>
+          {isEditable && view !== 'aujourdhui' && (
+            <button
+              type="button"
+              onClick={() => (selectMode ? exitSelection() : setSelectMode(true))}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${selectMode ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              Sélectionner
+            </button>
+          )}
           <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
             <Search className="h-4 w-4 text-slate-400" />
             <input
@@ -454,7 +533,9 @@ export default function ReclamationsGlobal() {
                       ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
                       : c.key === 'accuse_a_envoyer' && counts.accuse_a_envoyer > 0
                         ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        : c.key === 'a_relancer' && counts.a_relancer > 0
+                          ? 'bg-violet-50 text-violet-700 hover:bg-violet-100'
+                          : 'bg-white text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {c.label}
@@ -471,6 +552,7 @@ export default function ReclamationsGlobal() {
           isEditable={isEditable}
           onAccuse={(item) => openMessage(item, item, 'accuse')}
           onTakeCharge={handleTakeCharge}
+          onFollowUp={(item) => openMessage(item, item, 'relance')}
           onOpen={(item) => setDrawerKey({ studentId: item.studentId, id: item.id })}
           onShowList={() => chooseView('liste')}
         />
@@ -531,7 +613,7 @@ export default function ReclamationsGlobal() {
       {drawerKey &&
         (() => {
           const current = flat.find((r) => r.studentId === drawerKey.studentId && r.id === drawerKey.id)
-          return current ? <ReclamationDrawer reclamation={current} studentName={current.studentName} classe={current.classe} onClose={() => setDrawerKey(null)} /> : null
+          return current ? <ReclamationDrawer reclamation={current} studentId={current.studentId} studentName={current.studentName} classe={current.classe} isEditable={isEditable} onClose={() => setDrawerKey(null)} /> : null
         })()}
 
       {resolveTarget && (
@@ -565,6 +647,19 @@ export default function ReclamationsGlobal() {
         />
       )}
 
+      {queueKeys && (
+        <ReclamationQueueModal
+          keys={queueKeys}
+          items={flat}
+          isEditable={isEditable}
+          onAccuse={(item) => openMessage(item, item, 'accuse')}
+          onMessage={(item, kind) => openMessage(item, item, kind)}
+          onClose={() => setQueueKeys(null)}
+        />
+      )}
+
+      {bulkAccuseKeys && <BulkAccusesModal keys={bulkAccuseKeys} items={flat} isEditable={isEditable} onClose={() => setBulkAccuseKeys(null)} />}
+
       {messageTarget && (
         <ReclamationMessageModal
           reclamation={messageTarget.reclamation}
@@ -580,6 +675,80 @@ export default function ReclamationsGlobal() {
           }}
           onClose={() => setMessageTarget(null)}
         />
+      )}
+
+      {selectMode && view !== 'aujourdhui' && (
+        <div className="sticky bottom-3 z-30 mt-4 rounded-2xl border border-indigo-200 bg-white p-3 shadow-xl">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-indigo-700">
+              {selected.size} sélectionnée{selected.size > 1 ? 's' : ''}
+            </span>
+            <button type="button" onClick={() => setSelected(new Set(active.map(keyOf)))} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+              Tout sélectionner ({active.length})
+            </button>
+            <button type="button" onClick={() => setSelected(new Set())} disabled={selected.size === 0} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+              Désélectionner
+            </button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <select
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+                aria-label="Assigner à"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none"
+              >
+                <option value="">Assigner à…</option>
+                {buildStaffOptions().map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={bulkEcheance}
+                onChange={(e) => setBulkEcheance(e.target.value)}
+                aria-label="Échéance"
+                title="Échéance (facultative : sinon celle de chaque réclamation)"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none"
+              />
+              <button type="button" disabled={!bulkAssignee || bulkTargets('assigner').length === 0} onClick={() => setBulkConfirm('assigner')} className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40">
+                Assigner
+              </button>
+              <button type="button" disabled={bulkTargets('prendre').length === 0} onClick={() => setBulkConfirm('prendre')} className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40">
+                Prendre en charge
+              </button>
+              <button type="button" disabled={bulkTargets('urgente').length === 0} onClick={() => setBulkConfirm('urgente')} className="rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-40">
+                Rendre urgentes
+              </button>
+              <button
+                type="button"
+                disabled={selectedItems.filter((r) => isAccuseAEnvoyer(r)).length === 0}
+                onClick={() => setBulkAccuseKeys(selectedItems.filter((r) => isAccuseAEnvoyer(r)).sort(urgency).map((r) => ({ studentId: r.studentId, id: r.id })))}
+                className="flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <MailCheck className="h-3.5 w-3.5" />
+                Accusés de réception…
+              </button>
+              <button type="button" onClick={exitSelection} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                Terminer
+              </button>
+            </div>
+          </div>
+          {bulkConfirm && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <span className="font-semibold">
+                {bulkConfirm === 'prendre' ? 'Prendre en charge' : bulkConfirm === 'urgente' ? 'Rendre urgentes' : `Assigner à ${bulkAssignee}`} {bulkTargets(bulkConfirm).length} réclamation
+                {bulkTargets(bulkConfirm).length > 1 ? 's' : ''} ?
+              </span>
+              <button type="button" onClick={() => runBulk(bulkConfirm)} className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-700">
+                Confirmer
+              </button>
+              <button type="button" onClick={() => setBulkConfirm(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-100">
+                Annuler
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {showPrint && <ReclamationsPrintPreviewModal records={filtered} onClose={() => setShowPrint(false)} />}

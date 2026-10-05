@@ -210,7 +210,7 @@ export function buildTeacherScheduleMessage(teacherName: string, scheduleByDay: 
   return lines.join('\n')
 }
 
-export type ReclamationMessageKind = 'accuse' | 'prise_en_charge' | 'resolution'
+export type ReclamationMessageKind = 'accuse' | 'prise_en_charge' | 'resolution' | 'relance'
 
 export interface ReclamationWhatsAppInfo {
   /** Nom du parent réclamant ; vide → « Bonjour, ». */
@@ -284,6 +284,14 @@ export function buildReclamationMessage(kind: ReclamationMessageKind, info: Recl
     const action = ACTION_PAR_CATEGORIE[info.categorie]
     if (action) lines.push('', action)
     if (info.echeance) lines.push('', `Nous reviendrons vers vous au plus tard le ${dateCourte(info.echeance)}.`)
+  } else if (kind === 'relance') {
+    lines.push(
+      `Nous revenons vers vous au sujet de votre réclamation du ${dateCourte(info.date)} concernant ${eleve} (*${info.objet}*), pour laquelle une réponse vous a été apportée.`,
+      '',
+      'La réponse de l\'établissement vous a-t-elle convenu ? Si un point reste à clarifier, répondez simplement à ce message.',
+      '',
+      'Nous restons à votre disposition.'
+    )
   } else {
     lines.push(
       `Suite à votre réclamation du ${dateCourte(info.date)} concernant ${eleve} (*${info.objet}*), voici la réponse de l'établissement :`,

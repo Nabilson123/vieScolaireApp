@@ -135,6 +135,15 @@ describe('buildReclamationMessage', () => {
     expect(buildReclamationMessage('accuse', { ...info, delaiJours: 5 })).toContain('sous 5 jours')
   })
 
+  it('relance : redemande si la réponse a convenu, sans rappeler la solution', () => {
+    const message = buildReclamationMessage('relance', info)
+    expect(message.startsWith('Bonjour Meryem EDDGHOUGHI,\n')).toBe(true)
+    expect(message).toContain('au sujet de votre réclamation du 23/09/2026')
+    expect(message).toContain('vous a-t-elle convenu')
+    expect(message).not.toContain(info.resolution as string)
+    expect(message.endsWith('Direction de la Vie Scolaire — Groupe Scolaire Mondrian')).toBe(true)
+  })
+
   it('prise en charge : responsable, action selon la catégorie et échéance', () => {
     const message = buildReclamationMessage('prise_en_charge', info)
     expect(message).toContain('est prise en charge par Nabil Lahrache')

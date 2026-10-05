@@ -9,12 +9,14 @@ export const MESSAGE_KIND_LABELS: Record<ReclamationMessageKind, string> = {
   accuse: 'Accusé de réception',
   prise_en_charge: 'Prise en charge',
   resolution: 'Réponse',
+  relance: 'Suivi de la famille',
 }
 
 const MESSAGE_TITLES: Record<ReclamationMessageKind, string> = {
   accuse: 'Accusé de réception au parent',
   prise_en_charge: 'Prise en charge — message au parent',
   resolution: 'Réponse au parent',
+  relance: 'Suivi — message à la famille',
 }
 
 /** Quel message proposer quand on ne précise pas : celui qui correspond à l'état de la réclamation. */
@@ -34,9 +36,15 @@ interface ReclamationMessageModalProps {
   onClose: () => void
 }
 
-/** Message au parent d'une réclamation : texte pré-rédigé selon l'étape, numéros des parents de la fiche
- * élève (le parent réclamant en premier) pour ouvrir WhatsApp directement. */
-export default function ReclamationMessageModal({ reclamation, studentId, studentName, classe, kind, banner, onShared, onClose }: ReclamationMessageModalProps) {
+/** Texte pré-rédigé et numéros des parents de la fiche élève (le parent réclamant en premier) pour un message
+ * à la famille — partagé par le message d'une réclamation et par l'envoi groupé des accusés. */
+export function buildReclamationOutbound(
+  reclamation: ReclamationRecord,
+  studentId: string,
+  studentName: string,
+  classe: string,
+  kind: ReclamationMessageKind
+): { message: string; recipients: WhatsAppRecipient[] } {
   const identity = getStudentIdentitySnapshot(studentId)
   const parents = [
     { nom: `${identity.parent1Prenom} ${identity.parent1Nom}`.trim(), fallback: 'Parent 1', phone: identity.parent1Tel },
@@ -60,6 +68,13 @@ export default function ReclamationMessageModal({ reclamation, studentId, studen
     resolution: reclamation.resolution,
     delaiJours: delaiResolutionAutorise(reclamation),
   })
+  return { message, recipients }
+}
+
+/** Message au parent d'une réclamation : texte pré-rédigé selon l'étape, numéros des parents de la fiche
+ * élève (le parent réclamant en premier) pour ouvrir WhatsApp directement. */
+export default function ReclamationMessageModal({ reclamation, studentId, studentName, classe, kind, banner, onShared, onClose }: ReclamationMessageModalProps) {
+  const { message, recipients } = buildReclamationOutbound(reclamation, studentId, studentName, classe, kind)
 
   return (
     <MessageWhatsAppModal

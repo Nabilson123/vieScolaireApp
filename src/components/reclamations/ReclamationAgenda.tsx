@@ -155,7 +155,7 @@ function AgendaRow({
         )}
         <button type="button" onClick={() => onOpen(item)} title="Détail et historique" className={`${btn} border border-slate-200 bg-white text-slate-600 hover:bg-slate-50`}>
           <History className="h-3.5 w-3.5" />
-          Détail
+          {relance ? 'Issue du suivi' : 'Détail'}
         </button>
       </div>
     </div>

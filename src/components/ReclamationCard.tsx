@@ -9,7 +9,9 @@ import {
   isAccuseAEnvoyer,
   isAccuseEnRetard,
   isHorsDelai,
+  isRelanceDue,
   joursOuverts,
+  relanceDueLe,
   todayLocalISO,
   type EcheanceStatut,
 } from '../utils/reclamationsLogic'
@@ -91,6 +93,22 @@ export function AccuseBadge({ reclamation }: { reclamation: ReclamationRecord })
   return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Accusé à envoyer</span>
 }
 
+/** Après la résolution : relance de la famille à faire, prévue, ou issue déjà enregistrée. */
+export function FamilleBadge({ reclamation }: { reclamation: ReclamationRecord }) {
+  const suivi = reclamation.suiviFamille
+  if (suivi) {
+    const label = suivi.issue === 'satisfaite' ? 'Famille satisfaite' : suivi.issue === 'insatisfaite' ? 'Rouverte par la famille' : 'Famille sans réponse'
+    const tone = suivi.issue === 'satisfaite' ? 'bg-emerald-50 text-emerald-600' : suivi.issue === 'insatisfaite' ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-500'
+    return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{label}</span>
+  }
+  const due = relanceDueLe(reclamation)
+  if (!due) return null
+  if (isRelanceDue(reclamation)) {
+    return <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">Relance à faire</span>
+  }
+  return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Relance le {formatDateFR(due)}</span>
+}
+
 interface ReclamationCardProps {
   reclamation: ReclamationRecord
   studentName?: string
@@ -114,6 +132,10 @@ interface ReclamationCardProps {
   onMarkAccuse?: () => void
   /** Marque ou retire l'urgence. */
   onToggleUrgent?: () => void
+  /** Mode sélection (actions groupées) : case à cocher en tête de carte. */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
 }
 
 export default function ReclamationCard({
@@ -133,6 +155,9 @@ export default function ReclamationCard({
   onHistory,
   onMarkAccuse,
   onToggleUrgent,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: ReclamationCardProps) {
   const [showBridges, setShowBridges] = useState(false)
   const [showResolveForm, setShowResolveForm] = useState(false)
@@ -165,9 +190,18 @@ export default function ReclamationCard({
   }
 
   return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${horsDelai ? 'border-rose-200' : urgent ? 'border-orange-200' : 'border-slate-100'}`}>
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${selected ? 'border-indigo-400 ring-2 ring-indigo-300' : horsDelai ? 'border-rose-200' : urgent ? 'border-orange-200' : 'border-slate-100'}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
-        <div>
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label="Sélectionner cette réclamation"
+            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600"
+          />
+        )}
+        <div className="min-w-0 flex-1">
           <span className={`mb-1.5 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${categoryClass}`}>
             {reclamation.type}
           </span>
@@ -183,6 +217,7 @@ export default function ReclamationCard({
           )}
           <DelaiBadge reclamation={reclamation} />
           <AccuseBadge reclamation={reclamation} />
+          <FamilleBadge reclamation={reclamation} />
         </div>
       </div>
 
