@@ -11,14 +11,14 @@ import {
   Sunset,
   Circle,
   Check,
-  Undo2,
+  Pencil,
   Building2,
   DoorOpen,
   LogIn,
   Trash2,
   X,
 } from 'lucide-react'
-import { getClassOptions, parseDuration, type Student } from '../data/students'
+import { getClassOptions, parseDuration, recomputeStudentAttendance, type Student } from '../data/students'
 import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import { useClasses } from '../services/classesService'
 import type { EventRecord } from '../data/studentDetails'
@@ -45,6 +45,7 @@ import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
+import CorrigerSignalementModal from '../components/CorrigerSignalementModal'
 
 function todayISO() {
   const now = new Date()
@@ -150,6 +151,7 @@ export default function AbsencesRetards() {
   const deleteSortie = useDeleteSortieAnticipee()
   const reintegrerSortie = useReintegrerSortieAnticipee()
   const bump = () => setRefreshTick((v) => v + 1)
+  const [correcting, setCorrecting] = useState<{ row: BilanRow; type: 'ABSENCE' | 'RETARD'; matin: boolean } | null>(null)
 
   const toggleRow = async (row: BilanRow) => {
     const next = !row.justified
@@ -157,6 +159,19 @@ export default function AbsencesRetards() {
     const events = getStudentExtraSnapshot(row.studentId).events.map((e) => (rowEvents.has(e) ? { ...e, justified: next } : e))
     await updateStudentEvents(row.studentId, events)
     await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
+    bump()
+  }
+
+  // Supprime tout ce qui a été signalé pour cet élève sur ce créneau (cas d'un signalement fait par erreur).
+  // Repérage par contenu et non par référence d'objet : le cache peut avoir été rechargé depuis l'affichage.
+  const deleteRow = async (row: BilanRow) => {
+    const keyOf = (e: EventRecord) => JSON.stringify([e.date, e.type, e.subject, e.start ?? '', e.duree, e.motif, e.justified, e.sortieAnticipeeId ?? ''])
+    const toRemove = new Set(row.events.map(keyOf))
+    const remaining = getStudentExtraSnapshot(row.studentId).events.filter((e) => !toRemove.has(keyOf(e)))
+    await updateStudentEvents(row.studentId, remaining)
+    await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
+    await recomputeStudentAttendance(row.studentId, remaining)
+    await queryClient.invalidateQueries({ queryKey: ['students'] })
     bump()
   }
 
@@ -400,7 +415,10 @@ export default function AbsencesRetards() {
           label={`Matin (${toHeureFR(heureDebutMatin)} - ${toHeureFR(heureFinMatin)})`}
           rows={absMatin}
           unitLabel="d'absence"
+          type="ABSENCE"
           onToggle={toggleRow}
+          onCorrect={(row) => setCorrecting({ row, type: "ABSENCE", matin: true })}
+          onDeleteRow={deleteRow}
           isEditable={isEditable}
         />
         <BilanBlock
@@ -409,7 +427,10 @@ export default function AbsencesRetards() {
           label={`Après-midi (${toHeureFR(heureDebutApresMidi)} - ${toHeureFR(heureFinApresMidi)})`}
           rows={absApresMidi}
           unitLabel="d'absence"
+          type="ABSENCE"
           onToggle={toggleRow}
+          onCorrect={(row) => setCorrecting({ row, type: "ABSENCE", matin: false })}
+          onDeleteRow={deleteRow}
           isEditable={isEditable}
           last
         />
@@ -427,7 +448,10 @@ export default function AbsencesRetards() {
           label={`Matin (${toHeureFR(heureDebutMatin)} - ${toHeureFR(heureFinMatin)})`}
           rows={retMatin}
           unitLabel="de retard"
+          type="RETARD"
           onToggle={toggleRow}
+          onCorrect={(row) => setCorrecting({ row, type: "RETARD", matin: true })}
+          onDeleteRow={deleteRow}
           isEditable={isEditable}
         />
         <BilanBlock
@@ -436,7 +460,10 @@ export default function AbsencesRetards() {
           label={`Après-midi (${toHeureFR(heureDebutApresMidi)} - ${toHeureFR(heureFinApresMidi)})`}
           rows={retApresMidi}
           unitLabel="de retard"
+          type="RETARD"
           onToggle={toggleRow}
+          onCorrect={(row) => setCorrecting({ row, type: "RETARD", matin: false })}
+          onDeleteRow={deleteRow}
           isEditable={isEditable}
           last
         />
@@ -562,6 +589,20 @@ export default function AbsencesRetards() {
         )}
       </div>
 
+      {correcting && (
+        <CorrigerSignalementModal
+          studentId={correcting.row.studentId}
+          studentName={correcting.row.studentName}
+          classe={correcting.row.classe}
+          date={selectedDate}
+          type={correcting.type}
+          isInPeriod={(e) => isMatin(e.start, heureDebutApresMidi) === correcting.matin}
+          periodLabel={correcting.matin ? 'matin' : 'après-midi'}
+          onChanged={bump}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
+
       {showBilanPrint && (
         <AbsencesPrintPreviewModal
           classe={selectedClasse}
@@ -684,7 +725,10 @@ function BilanBlock({
   label,
   rows,
   unitLabel,
+  type,
   onToggle,
+  onCorrect,
+  onDeleteRow,
   last,
   isEditable,
 }: {
@@ -693,10 +737,20 @@ function BilanBlock({
   label: string
   rows: BilanRow[]
   unitLabel: string
+  type: 'ABSENCE' | 'RETARD'
   onToggle: (row: BilanRow) => void
+  /** Ouvre la correction détaillée (modifier le type, la durée, le motif ou supprimer un événement). */
+  onCorrect: (row: BilanRow) => void
+  /** Supprime d'un coup tout ce qui est signalé pour cet élève sur ce créneau (signalement fait par erreur). */
+  onDeleteRow: (row: BilanRow) => Promise<void>
   last?: boolean
   isEditable: boolean
 }) {
+  // Un seul élève en attente de confirmation de suppression à la fois, par tableau.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const typeLabel = type === 'ABSENCE' ? "l'absence" : 'le retard'
+  const saisi = type === 'ABSENCE' ? 'saisie' : 'saisi'
   return (
     <div className={last ? '' : 'mb-4'}>
       <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
@@ -729,17 +783,69 @@ function BilanBlock({
                   </td>
                   <td className="px-3 py-2.5 text-slate-600">{row.motifs.join(', ') || <span className="italic text-slate-400">Non justifié</span>}</td>
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      title={row.justified ? 'Rendre injustifié' : 'Marquer comme justifié'}
-                      onClick={() => onToggle(row)}
-                      disabled={!isEditable}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-40 ${
-                        row.justified ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                      }`}
-                    >
-                      {row.justified ? <Check className="h-3.5 w-3.5" /> : <Undo2 className="h-3.5 w-3.5" />}
-                    </button>
+                    <div className="inline-flex items-center gap-1.5">
+                      {confirmDeleteId === row.studentId ? (
+                        <>
+                          <span className="text-[11px] font-medium text-rose-600">Supprimer {typeLabel} ?</span>
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={async () => {
+                              setDeleting(true)
+                              try {
+                                await onDeleteRow(row)
+                              } finally {
+                                setDeleting(false)
+                                setConfirmDeleteId(null)
+                              }
+                            }}
+                            className="rounded-lg bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                          >
+                            Confirmer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            title="Annuler"
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            title={row.justified ? 'Justifié — cliquer pour rendre injustifié' : 'Injustifié — cliquer pour marquer comme justifié'}
+                            onClick={() => onToggle(row)}
+                            disabled={!isEditable}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-40 ${
+                              row.justified ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={`Corriger (modifier ou retirer ${typeLabel} ${saisi} par erreur)`}
+                            onClick={() => onCorrect(row)}
+                            disabled={!isEditable}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={`Supprimer ${typeLabel} (${saisi} par erreur)`}
+                            onClick={() => setConfirmDeleteId(row.studentId)}
+                            disabled={!isEditable}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
