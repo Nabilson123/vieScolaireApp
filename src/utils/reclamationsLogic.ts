@@ -1,9 +1,6 @@
 import type { ReclamationRecord } from '../data/studentDetails'
 import { parseAnyDate } from './period'
-
-/** Délai de traitement d'une réclamation : « sous 72 heures », compté en jours pleins depuis la date
- * de réception (même règle que le rapport imprimé : hors délai au-delà de 3 jours). */
-export const RECLAMATION_DELAI_JOURS = 3
+import { RELANCE_FAMILLE_JOURS, delaiAccuseJours, delaiResolutionAutorise } from './reclamationsPolicy'
 
 const DAY_MS = 86400000
 
@@ -50,7 +47,7 @@ export function cleanReclamationText(raw: string | null | undefined): string {
   return s.trim()
 }
 
-type DatedRecord = Pick<ReclamationRecord, 'date' | 'statut'>
+type DatedRecord = Pick<ReclamationRecord, 'date' | 'statut' | 'type'> & { urgente?: boolean }
 
 /** Nombre de jours pleins écoulés depuis la date de réception (0 le jour même). */
 export function joursOuverts(date: string, now: Date = new Date()): number {
@@ -59,9 +56,42 @@ export function joursOuverts(date: string, now: Date = new Date()): number {
   return Math.max(0, Math.floor((now.getTime() - d.getTime()) / DAY_MS))
 }
 
-/** Une réclamation non résolue est hors délai au-delà de 3 jours pleins. */
+/** Une réclamation non résolue est hors délai au-delà du délai de résolution de son niveau (voir
+ * reclamationsPolicy.ts : 3 jours pleins pour une réclamation standard, 1 pour une urgente, 5 pour une
+ * administrative). */
 export function isHorsDelai(r: DatedRecord, now: Date = new Date()): boolean {
-  return r.statut !== 'Résolue' && joursOuverts(r.date, now) > RECLAMATION_DELAI_JOURS
+  return r.statut !== 'Résolue' && joursOuverts(r.date, now) > delaiResolutionAutorise(r)
+}
+
+/** Échéance proposée à la prise en charge : aujourd'hui + le délai de résolution de la réclamation. */
+export function echeanceParDefaut(r: Pick<ReclamationRecord, 'type'> & { urgente?: boolean }, now: Date = new Date()): string {
+  return addDaysISO(todayLocalISO(now), delaiResolutionAutorise(r))
+}
+
+type AccuseRecord = Pick<ReclamationRecord, 'date' | 'statut' | 'type' | 'accuseLe'> & { urgente?: boolean }
+
+/** L'accusé de réception n'a pas encore été envoyé à la famille (réclamation non résolue). */
+export function isAccuseAEnvoyer(r: Pick<ReclamationRecord, 'statut' | 'accuseLe'>): boolean {
+  return r.statut !== 'Résolue' && !r.accuseLe
+}
+
+/** … et le délai accordé pour l'accuser est dépassé. */
+export function isAccuseEnRetard(r: AccuseRecord, now: Date = new Date()): boolean {
+  return isAccuseAEnvoyer(r) && joursOuverts(r.date, now) > delaiAccuseJours(r)
+}
+
+/** Date (AAAA-MM-JJ) à laquelle relancer la famille après la résolution ; `null` si la résolution n'a pas
+ * de date (anciennes réclamations : on ne relance pas au hasard) ou si le suivi est déjà fait. */
+export function relanceDueLe(r: Pick<ReclamationRecord, 'statut' | 'resoluLe' | 'suiviFamille'>): string | null {
+  if (r.statut !== 'Résolue' || !r.resoluLe || r.suiviFamille) return null
+  const resolved = new Date(r.resoluLe)
+  if (Number.isNaN(resolved.getTime())) return null
+  return addDaysISO(todayLocalISO(resolved), RELANCE_FAMILLE_JOURS)
+}
+
+export function isRelanceDue(r: Pick<ReclamationRecord, 'statut' | 'resoluLe' | 'suiviFamille'>, now: Date = new Date()): boolean {
+  const due = relanceDueLe(r)
+  return due !== null && due <= todayLocalISO(now)
 }
 
 /** Durée réelle de traitement en jours pleins ; `null` quand la résolution n'a pas de date (anciennes

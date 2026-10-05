@@ -47,6 +47,10 @@ export type ReclamationAction =
   | 'responsable'
   | 'message_parent'
   | 'action_creee'
+  | 'accuse'
+  | 'note'
+  | 'suivi_famille'
+  | 'urgente'
 
 /** Une ligne de la frise chronologique d'une réclamation (qui a fait quoi, et quand). */
 export interface ReclamationEvent {
@@ -55,6 +59,23 @@ export interface ReclamationEvent {
   action: ReclamationAction
   detail?: string
   auteur: string
+}
+
+/** Note sur une réclamation : réservée à l'équipe, jamais transmise au parent ni imprimée. */
+export interface ReclamationNote {
+  at: string
+  auteur: string
+  type: 'interne' | 'enseignant'
+  texte: string
+  /** Pour `type: 'enseignant'` : l'enseignant dont c'est la version des faits. */
+  enseignant?: string
+}
+
+/** Suivi de la famille après la résolution : la solution a-t-elle convenu ? */
+export interface ReclamationSuiviFamille {
+  le: string
+  issue: 'satisfaite' | 'insatisfaite' | 'sans_reponse'
+  note?: string
 }
 
 export interface ReclamationRecord {
@@ -76,6 +97,12 @@ export interface ReclamationRecord {
   echeance?: string
   priseEnChargeLe?: string
   resoluLe?: string
+  /** Force le niveau « urgent » ; sinon il se déduit de la catégorie (voir reclamationsPolicy.ts). */
+  urgente?: boolean
+  /** Moment (ISO) où l'accusé de réception a été envoyé à la famille. */
+  accuseLe?: string
+  notes?: ReclamationNote[]
+  suiviFamille?: ReclamationSuiviFamille
   historique: ReclamationEvent[]
 }
 

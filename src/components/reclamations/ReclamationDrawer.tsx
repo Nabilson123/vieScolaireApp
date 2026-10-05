@@ -1,4 +1,4 @@
-import { X, CircleDot, CheckCircle2, RotateCcw, Pencil, UserCog, MessageCircle, ArrowRightCircle, Inbox } from 'lucide-react'
+import { X, CircleDot, CheckCircle2, RotateCcw, Pencil, UserCog, MessageCircle, ArrowRightCircle, Inbox, MailCheck, StickyNote, HeartHandshake, Siren } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReclamationAction, ReclamationRecord } from '../../data/studentDetails'
 import { cleanReclamationText, delaiResolutionJours, formatDateFR, isHorsDelai, joursOuverts } from '../../utils/reclamationsLogic'
@@ -12,6 +12,10 @@ const ACTION_META: Record<ReclamationAction, { label: string; icon: LucideIcon; 
   responsable: { label: 'Responsable / échéance', icon: UserCog, color: 'bg-sky-100 text-sky-600' },
   message_parent: { label: 'Message au parent', icon: MessageCircle, color: 'bg-emerald-100 text-emerald-600' },
   action_creee: { label: 'Action créée', icon: ArrowRightCircle, color: 'bg-violet-100 text-violet-600' },
+  accuse: { label: 'Accusé de réception', icon: MailCheck, color: 'bg-emerald-100 text-emerald-600' },
+  note: { label: 'Note', icon: StickyNote, color: 'bg-yellow-100 text-yellow-700' },
+  suivi_famille: { label: 'Suivi de la famille', icon: HeartHandshake, color: 'bg-pink-100 text-pink-600' },
+  urgente: { label: 'Urgence', icon: Siren, color: 'bg-rose-100 text-rose-600' },
 }
 
 function formatWhen(iso: string): string {

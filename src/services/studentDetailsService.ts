@@ -13,6 +13,8 @@ import {
   type ReclamationRecord,
   type ReclamationAction,
   type ReclamationEvent,
+  type ReclamationNote,
+  type ReclamationSuiviFamille,
   type StoredReclamationRecord,
   normalizeReclamations,
   newReclamationId,
@@ -23,7 +25,7 @@ import {
 } from '../data/studentDetails'
 import { logAudit } from './auditLogService'
 import { getCurrentActorName } from './permissions'
-import { RECLAMATION_DELAI_JOURS, addDaysISO, cleanReclamationText, todayLocalISO } from '../utils/reclamationsLogic'
+import { cleanReclamationText, echeanceParDefaut, todayLocalISO } from '../utils/reclamationsLogic'
 
 interface StudentExtraRow {
   student_id: string
@@ -151,38 +153,67 @@ function reclamationEvent(action: ReclamationAction, detail?: string): Reclamati
 
 export type ReclamationPatch = Partial<Omit<ReclamationRecord, 'id' | 'historique'>>
 
-/** Seul point de modification d'une réclamation existante : la retrouve **par son id** (et non par sa
- * position, qui se décale à chaque ajout/suppression), applique `patch`, ajoute l'événement à la frise
- * chronologique puis enregistre via `updateStudentReclamations` (audit déjà branché). Utilisé par la page
- * Réclamations, la fiche élève, la Réunion de suivi et l'Assistant IA. */
-export async function updateReclamation(
+type ReclamationEventInput = { action: ReclamationAction; detail?: string }
+
+/** Modifie plusieurs réclamations d'un même élève en **une seule écriture** : retrouvées par leur id (et non
+ * par leur position, qui se décale à chaque ajout/suppression), `patch` et `event` peuvent dépendre de
+ * chaque enregistrement. Chaque réclamation modifiée reçoit son événement dans la frise chronologique ;
+ * l'audit est déjà branché via `updateStudentReclamations`. */
+export async function updateReclamationsBatch(
   studentId: string,
-  id: string,
-  patch: ReclamationPatch,
-  event?: { action: ReclamationAction; detail?: string }
+  ids: string[],
+  patch: ReclamationPatch | ((r: ReclamationRecord) => ReclamationPatch),
+  event?: ReclamationEventInput | ((r: ReclamationRecord) => ReclamationEventInput)
 ): Promise<ReclamationRecord[]> {
   const current = getStudentExtraSnapshot(studentId).reclamations
-  if (!current.some((r) => r.id === id)) throw new Error('Réclamation introuvable (elle a peut-être été supprimée).')
-  const updated = current.map((r) =>
-    r.id !== id ? r : { ...r, ...patch, historique: event ? [...r.historique, reclamationEvent(event.action, event.detail)] : r.historique }
-  )
+  const wanted = new Set(ids)
+  if (!current.some((r) => wanted.has(r.id))) throw new Error('Réclamation introuvable (elle a peut-être été supprimée).')
+  const updated = current.map((r) => {
+    if (!wanted.has(r.id)) return r
+    const changes = typeof patch === 'function' ? patch(r) : patch
+    const ev = typeof event === 'function' ? event(r) : event
+    return { ...r, ...changes, historique: ev ? [...r.historique, reclamationEvent(ev.action, ev.detail)] : r.historique }
+  })
   await updateStudentReclamations(studentId, updated)
   return updated
 }
 
-/** « Prendre en charge » : le responsable est, par défaut, la personne connectée, et l'échéance est
- * fixée à 72 h (3 jours) — l'un et l'autre restent modifiables ensuite. */
+/** Seul point de modification d'UNE réclamation existante — utilisé par la page Réclamations, la fiche élève,
+ * la Réunion de suivi et l'Assistant IA. */
+export function updateReclamation(studentId: string, id: string, patch: ReclamationPatch, event?: ReclamationEventInput): Promise<ReclamationRecord[]> {
+  return updateReclamationsBatch(studentId, [id], patch, event)
+}
+
+function findReclamation(studentId: string, id: string): ReclamationRecord | undefined {
+  return getStudentExtraSnapshot(studentId).reclamations.find((r) => r.id === id)
+}
+
+/** « Prendre en charge » : le responsable est, par défaut, la personne connectée, et l'échéance est fixée au
+ * délai de résolution de la réclamation (3 jours pour une réclamation standard) — l'un et l'autre restent
+ * modifiables ensuite. */
 export function prendreEnChargeReclamation(studentId: string, id: string, options: { responsable?: string; echeance?: string } = {}) {
   const responsable = options.responsable ?? getCurrentActorName()
+  const record = findReclamation(studentId, id)
   return updateReclamation(
     studentId,
     id,
     {
       statut: 'En cours',
       responsable,
-      echeance: options.echeance ?? addDaysISO(todayLocalISO(), RECLAMATION_DELAI_JOURS),
+      echeance: options.echeance ?? (record ? echeanceParDefaut(record) : undefined),
       priseEnChargeLe: new Date().toISOString(),
     },
+    { action: 'prise_en_charge', detail: responsable ? `Responsable : ${responsable}` : undefined }
+  )
+}
+
+/** Prise en charge de plusieurs réclamations d'un même élève (traitement en lot). */
+export function prendreEnChargeBatch(studentId: string, ids: string[], responsable: string = getCurrentActorName()) {
+  const now = new Date().toISOString()
+  return updateReclamationsBatch(
+    studentId,
+    ids,
+    (r) => ({ statut: 'En cours', responsable, echeance: echeanceParDefaut(r), priseEnChargeLe: now }),
     { action: 'prise_en_charge', detail: responsable ? `Responsable : ${responsable}` : undefined }
   )
 }
@@ -191,18 +222,19 @@ export function resoudreReclamation(studentId: string, id: string, resolution: s
   return updateReclamation(
     studentId,
     id,
-    { statut: 'Résolue', resolution: resolution.trim(), resoluLe: new Date().toISOString() },
+    // Une nouvelle résolution relance le cycle : l'ancien suivi de la famille ne vaut plus.
+    { statut: 'Résolue', resolution: resolution.trim(), resoluLe: new Date().toISOString(), suiviFamille: undefined },
     { action: 'resolue', detail: resolution.trim() }
   )
 }
 
 /** Rouvre une réclamation résolue ; la solution précédente reste lisible dans la frise chronologique. */
 export function rouvrirReclamation(studentId: string, id: string) {
-  const previous = getStudentExtraSnapshot(studentId).reclamations.find((r) => r.id === id)?.resolution
+  const previous = findReclamation(studentId, id)?.resolution
   return updateReclamation(
     studentId,
     id,
-    { statut: 'En cours', resolution: '', resoluLe: undefined },
+    { statut: 'En cours', resolution: '', resoluLe: undefined, suiviFamille: undefined },
     { action: 'rouverte', detail: previous ? `Solution précédente : ${previous}` : undefined }
   )
 }
@@ -210,6 +242,62 @@ export function rouvrirReclamation(studentId: string, id: string) {
 export function assignerReclamation(studentId: string, id: string, responsable: string, echeance: string | undefined) {
   const detail = [responsable ? `Responsable : ${responsable}` : 'Sans responsable', echeance ? `échéance ${echeance}` : ''].filter(Boolean).join(' · ')
   return updateReclamation(studentId, id, { responsable: responsable || undefined, echeance: echeance || undefined }, { action: 'responsable', detail })
+}
+
+/** Assigne plusieurs réclamations d'un même élève ; sans échéance précisée, on garde la leur ou, à défaut, on
+ * propose celle de leur niveau. */
+export function assignerBatch(studentId: string, ids: string[], responsable: string, echeance?: string) {
+  const detail = [`Responsable : ${responsable}`, echeance ? `échéance ${echeance}` : ''].filter(Boolean).join(' · ')
+  return updateReclamationsBatch(
+    studentId,
+    ids,
+    (r) => ({ responsable, echeance: echeance ?? r.echeance ?? echeanceParDefaut(r) }),
+    { action: 'responsable', detail }
+  )
+}
+
+/** Accusé de réception envoyé à la famille (message copié ou ouvert dans WhatsApp, ou marquage manuel). */
+export function marquerAccuseEnvoye(studentId: string, id: string) {
+  return updateReclamation(studentId, id, { accuseLe: new Date().toISOString() }, { action: 'accuse', detail: 'Accusé de réception envoyé' })
+}
+
+/** Force (ou retire) le niveau « urgent » d'une réclamation, quelle que soit sa catégorie. */
+export function basculerUrgente(studentId: string, id: string) {
+  const next = !findReclamation(studentId, id)?.urgente
+  return updateReclamation(studentId, id, { urgente: next || undefined }, { action: 'urgente', detail: next ? 'Marquée urgente' : 'Urgence retirée' })
+}
+
+export function marquerUrgenteBatch(studentId: string, ids: string[]) {
+  return updateReclamationsBatch(studentId, ids, { urgente: true }, { action: 'urgente', detail: 'Marquée urgente' })
+}
+
+/** Note réservée à l'équipe (jamais transmise au parent ni imprimée) : note interne ou version de l'enseignant. */
+export function ajouterNote(studentId: string, id: string, note: { type: ReclamationNote['type']; texte: string; enseignant?: string }) {
+  const entry: ReclamationNote = {
+    at: new Date().toISOString(),
+    auteur: getCurrentActorName(),
+    type: note.type,
+    texte: note.texte.trim(),
+    ...(note.type === 'enseignant' && note.enseignant ? { enseignant: note.enseignant } : {}),
+  }
+  const existing = findReclamation(studentId, id)?.notes ?? []
+  return updateReclamation(studentId, id, { notes: [...existing, entry] }, { action: 'note', detail: entry.type === 'enseignant' && entry.enseignant ? `Avis de ${entry.enseignant}` : 'Note interne' })
+}
+
+/** Issue de la relance de la famille après la résolution. « Pas satisfaite » rouvre la réclamation (la solution
+ * précédente reste dans la frise). */
+export function enregistrerSuiviFamille(studentId: string, id: string, issue: ReclamationSuiviFamille['issue'], note?: string) {
+  const suiviFamille: ReclamationSuiviFamille = { le: new Date().toISOString(), issue, ...(note?.trim() ? { note: note.trim() } : {}) }
+  if (issue === 'insatisfaite') {
+    const previous = findReclamation(studentId, id)?.resolution
+    return updateReclamation(
+      studentId,
+      id,
+      { suiviFamille, statut: 'En cours', resolution: '', resoluLe: undefined },
+      { action: 'suivi_famille', detail: `Famille non satisfaite — réclamation rouverte${previous ? ` (solution précédente : ${previous})` : ''}` }
+    )
+  }
+  return updateReclamation(studentId, id, { suiviFamille }, { action: 'suivi_famille', detail: issue === 'satisfaite' ? 'Famille satisfaite' : 'Sans réponse de la famille' })
 }
 
 export async function supprimerReclamation(studentId: string, id: string): Promise<ReclamationRecord[]> {

@@ -3,10 +3,15 @@ import {
   addDaysISO,
   cleanReclamationText,
   delaiResolutionJours,
+  echeanceParDefaut,
   echeanceStatut,
   formatDateFR,
+  isAccuseAEnvoyer,
+  isAccuseEnRetard,
   isHorsDelai,
+  isRelanceDue,
   joursOuverts,
+  relanceDueLe,
   todayLocalISO,
 } from './reclamationsLogic'
 
@@ -66,11 +71,27 @@ describe('délais', () => {
     expect(joursOuverts('date illisible', now)).toBe(0)
   })
 
-  it('hors délai au-delà de 3 jours pleins, jamais pour une résolue', () => {
-    expect(isHorsDelai({ date: '2026-10-02', statut: 'En attente' }, now)).toBe(false)
-    expect(isHorsDelai({ date: '2026-10-01', statut: 'En attente' }, now)).toBe(true)
-    expect(isHorsDelai({ date: '2026-10-01', statut: 'En cours' }, now)).toBe(true)
-    expect(isHorsDelai({ date: '2026-09-01', statut: 'Résolue' }, now)).toBe(false)
+  it('hors délai au-delà du délai standard (3 jours pleins), jamais pour une résolue', () => {
+    expect(isHorsDelai({ date: '2026-10-02', statut: 'En attente', type: 'Notes' }, now)).toBe(false)
+    expect(isHorsDelai({ date: '2026-10-01', statut: 'En attente', type: 'Notes' }, now)).toBe(true)
+    expect(isHorsDelai({ date: '2026-10-01', statut: 'En cours', type: 'Notes' }, now)).toBe(true)
+    expect(isHorsDelai({ date: '2026-09-01', statut: 'Résolue', type: 'Notes' }, now)).toBe(false)
+  })
+
+  it('le délai dépend du niveau : 1 jour en urgent, 5 jours en administratif', () => {
+    // Reçue le 03/10 : 2 jours pleins.
+    expect(isHorsDelai({ date: '2026-10-03', statut: 'En attente', type: 'Notes' }, now)).toBe(false)
+    expect(isHorsDelai({ date: '2026-10-03', statut: 'En attente', type: 'Harcèlement / Intimidation' }, now)).toBe(true)
+    expect(isHorsDelai({ date: '2026-10-03', statut: 'En attente', type: 'Notes', urgente: true }, now)).toBe(true)
+    // Reçue le 30/09 : 5 jours pleins.
+    expect(isHorsDelai({ date: '2026-09-30', statut: 'En attente', type: 'Frais de scolarité / Facturation' }, now)).toBe(false)
+    expect(isHorsDelai({ date: '2026-09-29', statut: 'En attente', type: 'Frais de scolarité / Facturation' }, now)).toBe(true)
+  })
+
+  it("propose comme échéance aujourd'hui + le délai du niveau", () => {
+    expect(echeanceParDefaut({ type: 'Notes' }, now)).toBe('2026-10-08')
+    expect(echeanceParDefaut({ type: 'Sécurité' }, now)).toBe('2026-10-06')
+    expect(echeanceParDefaut({ type: 'Uniforme / Tenue vestimentaire' }, now)).toBe('2026-10-10')
   })
 
   it('durée de résolution : seulement avec une date de résolution', () => {
@@ -86,5 +107,46 @@ describe('délais', () => {
     expect(echeanceStatut({ statut: 'En cours', echeance: '2026-10-08' }, now)).toBe('ok')
     expect(echeanceStatut({ statut: 'Résolue', echeance: '2026-10-01' }, now)).toBeNull()
     expect(echeanceStatut({ statut: 'En cours' }, now)).toBeNull()
+  })
+})
+
+describe('accusé de réception', () => {
+  const now = new Date(2026, 9, 5, 10, 0)
+
+  it("à envoyer tant qu'aucun accusé n'est tracé, sauf si la réclamation est résolue", () => {
+    expect(isAccuseAEnvoyer({ statut: 'En attente' })).toBe(true)
+    expect(isAccuseAEnvoyer({ statut: 'En cours', accuseLe: '2026-10-04T10:00:00.000Z' })).toBe(false)
+    expect(isAccuseAEnvoyer({ statut: 'Résolue' })).toBe(false)
+  })
+
+  it('en retard au-delà du délai du niveau : le jour même en urgent, sous 1 jour sinon', () => {
+    const base = { statut: 'En attente' as const }
+    // Reçue aujourd'hui : jamais en retard ; reçue hier : en retard seulement en urgent.
+    expect(isAccuseEnRetard({ ...base, date: '2026-10-05', type: 'Sécurité' }, now)).toBe(false)
+    expect(isAccuseEnRetard({ ...base, date: '2026-10-04', type: 'Sécurité' }, now)).toBe(true)
+    expect(isAccuseEnRetard({ ...base, date: '2026-10-04', type: 'Notes' }, now)).toBe(false)
+    expect(isAccuseEnRetard({ ...base, date: '2026-10-03', type: 'Notes' }, now)).toBe(true)
+    expect(isAccuseEnRetard({ ...base, date: '2026-10-01', type: 'Notes', accuseLe: '2026-10-02T09:00:00.000Z' }, now)).toBe(false)
+  })
+})
+
+describe('relance de la famille', () => {
+  const resolved = { statut: 'Résolue' as const, resoluLe: new Date(2026, 9, 1, 15, 0).toISOString() }
+
+  it('prévue 5 jours après la résolution', () => {
+    expect(relanceDueLe(resolved)).toBe('2026-10-06')
+  })
+
+  it("n'est due qu'à partir de cette date", () => {
+    expect(isRelanceDue(resolved, new Date(2026, 9, 5, 9, 0))).toBe(false)
+    expect(isRelanceDue(resolved, new Date(2026, 9, 6, 9, 0))).toBe(true)
+    expect(isRelanceDue(resolved, new Date(2026, 9, 12, 9, 0))).toBe(true)
+  })
+
+  it('jamais pour une résolution sans date, un suivi déjà fait ou une réclamation ouverte', () => {
+    expect(relanceDueLe({ statut: 'Résolue' })).toBeNull()
+    expect(relanceDueLe({ ...resolved, suiviFamille: { le: '2026-10-06T10:00:00.000Z', issue: 'satisfaite' } })).toBeNull()
+    expect(relanceDueLe({ statut: 'En cours', resoluLe: resolved.resoluLe })).toBeNull()
+    expect(isRelanceDue({ statut: 'Résolue' }, new Date(2026, 11, 1))).toBe(false)
   })
 })

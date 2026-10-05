@@ -9,6 +9,7 @@ import EditReclamationModal from '../components/reclamations/EditReclamationModa
 import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../components/reclamations/ReclamationMessageModal'
 import type { ReclamationMessageKind } from '../utils/whatsapp'
 import { computeReclamationSignals, type ReclamationSignal } from '../utils/reclamationsAlerts'
+import { delaiResolutionAutorise } from '../utils/reclamationsPolicy'
 import ReclamationBridgeModal from '../components/reclamations/ReclamationBridgeModal'
 import ReclamationDrawer from '../components/reclamations/ReclamationDrawer'
 import ReclamationKanban from '../components/reclamations/ReclamationKanban'
@@ -24,7 +25,6 @@ import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
 import { useReclamationActions } from '../hooks/useReclamationActions'
 import {
-  RECLAMATION_DELAI_JOURS,
   cleanReclamationText,
   delaiResolutionJours,
   echeanceStatut,
@@ -162,9 +162,10 @@ export default function ReclamationsGlobal() {
   const tauxResolution = total > 0 ? Math.round((resolues / total) * 100) : 0
   // Durées réelles : seulement pour les réclamations résolues APRÈS l'enregistrement de la date de
   // résolution — les plus anciennes n'en ont pas, on ne devine pas.
-  const delais = kpiBase.map((r) => delaiResolutionJours(r)).filter((d): d is number => d !== null)
+  const delaisDates = kpiBase.map((r) => ({ jours: delaiResolutionJours(r), autorise: delaiResolutionAutorise(r) })).filter((d): d is { jours: number; autorise: number } => d.jours !== null)
+  const delais = delaisDates.map((d) => d.jours)
   const delaiMoyen = delais.length > 0 ? delais.reduce((s, d) => s + d, 0) / delais.length : null
-  const sousDelai = delais.length > 0 ? Math.round((delais.filter((d) => d <= RECLAMATION_DELAI_JOURS).length / delais.length) * 100) : null
+  const sousDelai = delais.length > 0 ? Math.round((delaisDates.filter((d) => d.jours <= d.autorise).length / delais.length) * 100) : null
 
   const openMessage = (item: FlatReclamation, record: ReclamationRecord, kind: ReclamationMessageKind, banner?: string) =>
     setMessageTarget({ reclamation: record, studentId: item.studentId, studentName: item.studentName, classe: item.classe, kind, banner })
@@ -332,7 +333,7 @@ export default function ReclamationsGlobal() {
           iconBg={horsDelai > 0 ? 'bg-rose-100' : 'bg-emerald-50'}
           iconColor={horsDelai > 0 ? 'text-rose-600' : 'text-emerald-500'}
           value={horsDelai}
-          label="Hors délai (> 72 h)"
+          label="Hors délai"
           valueClass={horsDelai > 0 ? 'text-rose-600' : undefined}
           active={quick === 'hors_delai'}
           onClick={() => setQuick('hors_delai')}
@@ -352,7 +353,7 @@ export default function ReclamationsGlobal() {
           iconBg="bg-sky-50"
           iconColor="text-sky-500"
           value={sousDelai === null ? '—' : `${sousDelai} %`}
-          label="Résolues sous 72 h"
+          label="Résolues dans le délai"
           sub={sousDelai === null ? 'dès les prochaines résolutions' : `sur ${delais.length} datée${delais.length > 1 ? 's' : ''}`}
         />
         <KpiCard

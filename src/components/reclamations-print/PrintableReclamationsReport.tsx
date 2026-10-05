@@ -4,7 +4,8 @@ import { RECLAMATION_CATEGORIES, type ReclamationRecord } from '../../data/stude
 import { ROLE_LABELS } from '../../data/profiles'
 import { useCurrentProfile } from '../../services/permissions'
 import { useSchoolIdentity } from '../../services/schoolIdentityService'
-import { cleanReclamationText, delaiResolutionJours, isHorsDelai, joursOuverts, RECLAMATION_DELAI_JOURS } from '../../utils/reclamationsLogic'
+import { cleanReclamationText, delaiResolutionJours, isHorsDelai, joursOuverts } from '../../utils/reclamationsLogic'
+import { delaiResolutionAutorise } from '../../utils/reclamationsPolicy'
 
 export interface FlatReclamation extends ReclamationRecord {
   studentName: string
@@ -140,7 +141,7 @@ function FicheCard({ r }: { r: EnrichedReclamation }) {
       ? r.delaiResolution !== null
         ? `Résolue en ${jours(r.delaiResolution)}`
         : 'Résolue — durée de traitement non enregistrée'
-      : `Ouverte depuis ${jours(r.joursOuverts)}${r.horsDelai ? ' · au-delà du délai de 72 h' : ''}${r.responsable ? ` · Responsable : ${r.responsable}` : ''}`
+      : `Ouverte depuis ${jours(r.joursOuverts)}${r.horsDelai ? ' · au-delà du délai' : ''}${r.responsable ? ` · Responsable : ${r.responsable}` : ''}`
   const attrs: [string, string][] = [
     ['Catégorie', r.type],
     ['Objet', cleanReclamationText(r.objet)],
@@ -230,8 +231,9 @@ export default function PrintableReclamationsReport({ records }: PrintableReclam
   const count = (k: StatutKey) => enriched.filter((r) => r.statutKey === k).length
   const counts: Record<StatutKey, number> = { attente: count('attente'), cours: count('cours'), resolue: count('resolue') }
   const horsDelaiCount = enriched.filter((r) => r.horsDelai).length
-  // Seules les résolutions datées permettent de dire « sous 72 h » ; les plus anciennes ne sont pas comptées au hasard.
-  const traiteesSousDelai = enriched.filter((r) => r.delaiResolution !== null && r.delaiResolution <= RECLAMATION_DELAI_JOURS).length
+  // Seules les résolutions datées permettent de dire « dans le délai » (celui de leur niveau : 1, 3 ou 5 jours) ;
+  // les plus anciennes ne sont pas comptées au hasard.
+  const traiteesSousDelai = enriched.filter((r) => r.delaiResolution !== null && r.delaiResolution <= delaiResolutionAutorise(r)).length
   const ouvertesDansDelai = enriched.filter((r) => r.statutKey !== 'resolue' && !r.horsDelai).length
 
   const parCat = enriched.reduce<Record<string, number>>((acc, r) => {
@@ -250,9 +252,9 @@ export default function PrintableReclamationsReport({ records }: PrintableReclam
     }
   })
   const delais = [
-    { label: 'Traitées sous 72h', value: traiteesSousDelai, color: STATUT_STYLE.resolue.color },
+    { label: 'Traitées dans le délai', value: traiteesSousDelai, color: STATUT_STYLE.resolue.color },
     { label: 'Ouvertes dans les délais', value: ouvertesDansDelai, color: STATUT_STYLE.cours.color },
-    { label: 'Hors délai (>72h)', value: horsDelaiCount, color: 'oklch(0.55 0.19 25)' },
+    { label: 'Hors délai', value: horsDelaiCount, color: 'oklch(0.55 0.19 25)' },
   ]
 
   const blocks: PaginatedBlock[] =
@@ -323,7 +325,7 @@ export default function PrintableReclamationsReport({ records }: PrintableReclam
         <>
           <div className="flex items-end justify-between gap-5">
             <p className="max-w-[320px] text-[9px] leading-relaxed" style={{ color: 'oklch(0.6 0.01 260)' }}>
-              Document confidentiel — réservé à l'équipe de direction. Toute réclamation doit être traitée sous 72 heures et son
+              Document confidentiel — réservé à l'équipe de direction. Toute réclamation doit être traitée dans le délai de son niveau (72 heures en standard) et son
               suivi consigné dans l'application.
             </p>
             <div className="flex flex-col items-center gap-1 text-center">

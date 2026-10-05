@@ -8,7 +8,7 @@ import { useAddSuiviClasseAction } from '../../services/suiviClasseActionsServic
 import { useAddSuiviProf } from '../../services/suiviProfsService'
 import { useAddIncident } from '../../services/helpdeskService'
 import { getCurrentActorName } from '../../services/permissions'
-import { addDaysISO, cleanReclamationText, formatDateFR, RECLAMATION_DELAI_JOURS, todayLocalISO } from '../../utils/reclamationsLogic'
+import { cleanReclamationText, echeanceParDefaut, formatDateFR } from '../../utils/reclamationsLogic'
 import type { LogicalGroup } from '../../utils/suiviClasseGroups'
 import PlanifierRdvModal, { rdvFieldsFromPayload } from '../PlanifierRdvModal'
 import SuiviProfModal from '../SuiviProfModal'
@@ -113,7 +113,7 @@ function ActionClasseModal({
   const owners = Array.from(new Set([...group.teachers.map(teacherName), actor].filter(Boolean)))
   const [texte, setTexte] = useState(`Réclamation de ${studentName} (${classe}) — ${cleanReclamationText(reclamation.objet)}`)
   const [ownerName, setOwnerName] = useState(reclamation.responsable && owners.includes(reclamation.responsable) ? reclamation.responsable : actor || owners[0] || '')
-  const [echeance, setEcheance] = useState(reclamation.echeance ?? addDaysISO(todayLocalISO(), RECLAMATION_DELAI_JOURS))
+  const [echeance, setEcheance] = useState(reclamation.echeance ?? echeanceParDefaut(reclamation))
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async () => {
