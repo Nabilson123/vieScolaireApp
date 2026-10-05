@@ -4,9 +4,8 @@ import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
-import { getProfilesSnapshot } from '../services/profilesService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
-import { ROLE_LABELS } from '../data/profiles'
+import { buildStaffOptions } from '../utils/staffOptions'
 import type { RdvDemandeur, RdvDemandeurType, RendezVousRecord } from '../data/studentDetails'
 
 export interface PlanifierRdvPayload {
@@ -87,16 +86,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
   const parent1Nom = identity?.parent1Nom.trim() ?? ''
   const parent2Nom = identity?.parent2Nom.trim() ?? ''
 
-  // Comptes actifs de l'app (Direction, CPE, Surveillant, AED, Secrétariat…) ; l'animateur déjà
-  // enregistré reste proposé même si son compte a été désactivé depuis.
-  const animateurOptions = getProfilesSnapshot()
-    .filter((p) => p.actif)
-    .map((p) => {
-      const nom = p.nomComplet || p.email
-      return { value: nom, label: `${nom} — ${ROLE_LABELS[p.role] ?? p.role}` }
-    })
-    .sort((a, b) => a.label.localeCompare(b.label))
-  if (animateur && !animateurOptions.some((o) => o.value === animateur)) animateurOptions.push({ value: animateur, label: animateur })
+  const animateurOptions = buildStaffOptions(animateur)
 
   const nomsAffiches = Array.from(new Set([...staffNames, ...enseignants])).sort((a, b) => a.localeCompare(b))
   const nomsFiltres = nomsAffiches.filter((n) => n.toLowerCase().includes(filtreEnseignant.trim().toLowerCase()))

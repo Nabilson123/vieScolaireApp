@@ -209,3 +209,81 @@ export function buildTeacherScheduleMessage(teacherName: string, scheduleByDay: 
   lines.push('', 'Groupe Scolaire Mondrian')
   return lines.join('\n')
 }
+
+export type ReclamationMessageKind = 'accuse' | 'prise_en_charge' | 'resolution'
+
+export interface ReclamationWhatsAppInfo {
+  /** Nom du parent réclamant ; vide → « Bonjour, ». */
+  parentNom: string
+  studentName: string
+  classe: string
+  categorie: string
+  /** Objet (plusieurs objets : les joindre avant l'appel). */
+  objet: string
+  /** AAAA-MM-JJ de réception. */
+  date: string
+  responsable?: string
+  /** AAAA-MM-JJ : date à laquelle l'établissement s'engage à revenir vers la famille. */
+  echeance?: string
+  resolution?: string
+}
+
+/** Phrase d'action adaptée à la catégorie : dit à la famille ce que l'établissement fait réellement. */
+const ACTION_PAR_CATEGORIE: Record<string, string> = {
+  Notes: "Nous échangeons avec l'enseignant concerné.",
+  'Examens / Évaluations': "Nous échangeons avec l'enseignant concerné.",
+  'Pédagogie / Enseignement': "Nous échangeons avec l'enseignant concerné.",
+  'Absence / Assiduité': "Nous vérifions le dossier d'assiduité de votre enfant.",
+  Comportement: "Nous menons les vérifications nécessaires auprès de l'équipe éducative.",
+  'Harcèlement / Intimidation': "Nous menons les vérifications nécessaires auprès de l'équipe éducative, en toute confidentialité.",
+  Cantine: "Nous échangeons avec l'équipe de la cantine.",
+  Transport: 'Nous contactons le service de transport scolaire.',
+  'Infirmerie / Santé': "Nous échangeons avec l'infirmerie.",
+  Sécurité: 'Nous examinons la situation avec la Direction.',
+  'Frais de scolarité / Facturation': 'Nous consultons le service administratif et financier.',
+  'Inscription / Admission': 'Nous consultons le service administratif.',
+  'Hygiène / Locaux': "Nous transmettons la demande à l'équipe de maintenance.",
+}
+
+function dateCourte(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
+}
+
+function reclamationIntro(info: ReclamationWhatsAppInfo): string[] {
+  const hello = info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,'
+  return [hello, '']
+}
+
+const SIGNATURE = ['', 'Cordialement,', 'Direction de la Vie Scolaire — Groupe Scolaire Mondrian']
+
+/** Réponse à copier ou ouvrir dans WhatsApp quand une réclamation parent est reçue, prise en charge ou
+ * résolue (gras via *…*, sans emoji — même convention que `buildRdvMessage`). */
+export function buildReclamationMessage(kind: ReclamationMessageKind, info: ReclamationWhatsAppInfo): string {
+  const eleve = `${info.studentName}${info.classe ? ` (${info.classe})` : ''}`
+  const lines = reclamationIntro(info)
+  if (kind === 'accuse') {
+    lines.push(
+      `Nous avons bien reçu votre réclamation du ${dateCourte(info.date)} concernant ${eleve} : *${info.objet}*.`,
+      '',
+      "Elle a été transmise à la Direction de la Vie Scolaire et sera traitée sous 72 heures."
+    )
+  } else if (kind === 'prise_en_charge') {
+    lines.push(
+      `Votre réclamation du ${dateCourte(info.date)} concernant ${eleve} (*${info.objet}*) est prise en charge${info.responsable ? ` par ${info.responsable}` : ''}.`
+    )
+    const action = ACTION_PAR_CATEGORIE[info.categorie]
+    if (action) lines.push('', action)
+    if (info.echeance) lines.push('', `Nous reviendrons vers vous au plus tard le ${dateCourte(info.echeance)}.`)
+  } else {
+    lines.push(
+      `Suite à votre réclamation du ${dateCourte(info.date)} concernant ${eleve} (*${info.objet}*), voici la réponse de l'établissement :`,
+      '',
+      info.resolution?.trim() || '(réponse à compléter)',
+      '',
+      'Nous restons à votre disposition pour tout complément.'
+    )
+  }
+  lines.push(...SIGNATURE)
+  return lines.join('\n')
+}

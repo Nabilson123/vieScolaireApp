@@ -3,6 +3,8 @@ import { MessageSquareWarning, X } from 'lucide-react'
 import type { ReclamationRecord } from '../../data/studentDetails'
 import ReclamationCard from '../ReclamationCard'
 import EditReclamationModal from '../reclamations/EditReclamationModal'
+import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../reclamations/ReclamationMessageModal'
+import type { ReclamationMessageKind } from '../../utils/whatsapp'
 import { useIsViewedYearEditable } from '../../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../../services/permissions'
 import { useReclamationActions } from '../../hooks/useReclamationActions'
@@ -10,14 +12,16 @@ import { useReclamationActions } from '../../hooks/useReclamationActions'
 interface ReclamationsTabProps {
   studentId: string
   studentName: string
+  classe: string
   reclamations: ReclamationRecord[]
 }
 
-export default function ReclamationsTab({ studentId, studentName, reclamations }: ReclamationsTabProps) {
+export default function ReclamationsTab({ studentId, studentName, classe, reclamations }: ReclamationsTabProps) {
   const profile = useCurrentProfile()
   const isEditable = useIsViewedYearEditable() && getModuleAccess(profile, 'reclamations').canEdit
   const actions = useReclamationActions()
   const [editing, setEditing] = useState<ReclamationRecord | null>(null)
+  const [message, setMessage] = useState<{ reclamation: ReclamationRecord; kind: ReclamationMessageKind } | null>(null)
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -44,14 +48,34 @@ export default function ReclamationsTab({ studentId, studentName, reclamations }
               key={r.id}
               reclamation={r}
               isEditable={isEditable}
-              onTakeCharge={() => actions.prendreEnCharge(studentId, r.id)}
-              onResolve={(resolution) => actions.resoudre(studentId, r.id, resolution)}
+              onTakeCharge={async () => {
+                const updated = await actions.prendreEnCharge(studentId, r.id)
+                if (updated) setMessage({ reclamation: updated, kind: 'prise_en_charge' })
+              }}
+              onResolve={async (resolution) => {
+                const updated = await actions.resoudre(studentId, r.id, resolution)
+                if (updated) setMessage({ reclamation: updated, kind: 'resolution' })
+              }}
+              onMessage={() => setMessage({ reclamation: r, kind: messageKindForStatut(r.statut) })}
+              onAssign={(responsable, echeance) => actions.assigner(studentId, r.id, responsable, echeance || undefined)}
               onReopen={() => actions.rouvrir(studentId, r.id)}
               onEdit={() => setEditing(r)}
               onDelete={() => actions.supprimer(studentId, r.id)}
             />
           ))}
         </div>
+      )}
+
+      {message && (
+        <ReclamationMessageModal
+          reclamation={message.reclamation}
+          studentId={studentId}
+          studentName={studentName}
+          classe={classe}
+          kind={message.kind}
+          onShared={(kind) => actions.journaliserMessage(studentId, message.reclamation.id, MESSAGE_KIND_LABELS[kind])}
+          onClose={() => setMessage(null)}
+        />
       )}
 
       {editing && (

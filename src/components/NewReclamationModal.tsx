@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, MessageSquareWarning, Plus, Trash2 } from 'lucide-react'
+import { X, MessageSquareWarning, Plus, Trash2, ClipboardPaste } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { RECLAMATION_CATEGORIES } from '../data/studentDetails'
@@ -7,6 +7,7 @@ import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { todayLocalISO } from '../utils/reclamationsLogic'
+import { parseParentMessage, type IntakeContext, type IntakeResult, type IntakeStudent } from '../utils/reclamationsIntake'
 
 const AUTRE_SENTINEL = '__AUTRE__'
 
@@ -44,6 +45,84 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
   const [parentAutre, setParentAutre] = useState('')
   const [date, setDate] = useState(todayLocalISO())
   const [items, setItems] = useState<ReclamationItem[]>([makeEmptyItem()])
+
+  // --- Saisie par collage : le message du parent est analysé localement, puis chaque champ proposé reste
+  // modifiable ; ce qui est incertain est surligné en orange. ---
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [candidates, setCandidates] = useState<IntakeStudent[]>([])
+  const [pendingParent, setPendingParent] = useState('')
+  const [analysisNote, setAnalysisNote] = useState<string | null>(null)
+  const [lowFlags, setLowFlags] = useState<{ student: boolean; items: { category: boolean; concernant: boolean }[] }>({ student: false, items: [] })
+
+  const parentLabelsOf = (id: string) => {
+    const i = getStudentIdentitySnapshot(id)
+    return [`${i.parent1Prenom} ${i.parent1Nom}`.trim(), `${i.parent2Prenom} ${i.parent2Nom}`.trim()].filter(Boolean)
+  }
+
+  const applyStudent = (student: IntakeStudent, parentSuggestion: string) => {
+    setClasse(student.classe)
+    setStudentId(student.id)
+    setCandidates([])
+    const known = parentLabelsOf(student.id)
+    if (parentSuggestion && known.includes(parentSuggestion)) {
+      setParentSelect(parentSuggestion)
+      setParentAutre('')
+    } else if (parentSuggestion) {
+      setParentSelect(AUTRE_SENTINEL)
+      setParentAutre(parentSuggestion)
+    } else {
+      setParentSelect('')
+      setParentAutre('')
+    }
+    setLowFlags((prev) => ({ ...prev, student: false }))
+  }
+
+  const handleAnalyse = () => {
+    if (!pasteText.trim()) return
+    const ctx: IntakeContext = {
+      students: getStudentsSnapshot().map((st) => ({ id: st.id, name: st.name, classe: st.classe })),
+      teacherNames: staffNames,
+      parentNamesOf: parentLabelsOf,
+    }
+    const result: IntakeResult = parseParentMessage(pasteText, ctx)
+    setItems(
+      result.items.length > 0
+        ? result.items.map((it) => ({
+            category: it.category,
+            objet: it.objet,
+            description: it.description,
+            concernantSelect: !it.concernant ? '' : staffNames.includes(it.concernant) ? it.concernant : AUTRE_SENTINEL,
+            concernantAutre: it.concernant && !staffNames.includes(it.concernant) ? it.concernant : '',
+          }))
+        : [makeEmptyItem()]
+    )
+    if (result.date) setDate(result.date)
+    const selected = result.studentId ? result.studentCandidates.find((c) => c.id === result.studentId) : undefined
+    if (selected) {
+      applyStudent(selected, result.parentNom)
+      setPendingParent('')
+    } else {
+      setStudentId('')
+      setParentSelect('')
+      setParentAutre('')
+      setCandidates(result.studentCandidates)
+      setPendingParent(result.parentNom)
+    }
+    setLowFlags({
+      student: !selected,
+      items: result.items.map((it) => ({ category: it.categoryConfidence === 'low', concernant: it.concernantConfidence === 'low' })),
+    })
+    const n = result.items.length
+    const studentNote = selected
+      ? 'Élève reconnu.'
+      : result.studentCandidates.length > 0
+        ? 'Plusieurs élèves possibles : choisissez-en un.'
+        : 'Aucun élève reconnu : choisissez-le dans la liste.'
+    setAnalysisNote(`${n} réclamation${n > 1 ? 's' : ''} proposée${n > 1 ? 's' : ''}. ${studentNote} Vérifiez les champs avant d'enregistrer — ceux surlignés en orange sont incertains.`)
+  }
+
+  const flagClass = (flag?: boolean) => (flag ? ' border-amber-400 bg-amber-50/60 ring-1 ring-amber-300' : '')
 
   const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)
 
@@ -97,6 +176,52 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 p-3">
+            <button
+              type="button"
+              onClick={() => setPasteOpen((v) => !v)}
+              className="flex w-full items-center gap-2 text-left text-sm font-semibold text-indigo-700"
+            >
+              <ClipboardPaste className="h-4 w-4" />
+              Coller le message du parent
+              <span className="ml-auto text-xs font-normal text-indigo-400">{pasteOpen ? 'Masquer' : 'Remplir automatiquement'}</span>
+            </button>
+            {pasteOpen && (
+              <div className="mt-3 space-y-2">
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  rows={4}
+                  placeholder="Collez ici le message reçu (WhatsApp, e-mail...). L'analyse se fait sur cet appareil, rien n'est envoyé ailleurs."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleAnalyse}
+                  disabled={!pasteText.trim()}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Analyser le message
+                </button>
+              </div>
+            )}
+            {analysisNote && <p className="mt-2 text-xs text-slate-600">{analysisNote}</p>}
+            {candidates.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => applyStudent(c, pendingParent)}
+                    className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                  >
+                    {c.name} · {c.classe}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Classe</label>
@@ -123,8 +248,9 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
                   setStudentId(e.target.value)
                   setParentSelect('')
                   setParentAutre('')
+                  setLowFlags((prev) => ({ ...prev, student: false }))
                 }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none${flagClass(lowFlags.student)}`}
               >
                 <option value="">Sélectionner...</option>
                 {elevesDeLaClasse.map((s) => (
@@ -204,7 +330,7 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
                       <select
                         value={item.category}
                         onChange={(e) => updateItem(idx, { category: e.target.value })}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                        className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none${flagClass(lowFlags.items[idx]?.category)}`}
                       >
                         {RECLAMATION_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
@@ -243,7 +369,7 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
                         onChange={(e) => {
                           updateItem(idx, { concernantSelect: e.target.value, concernantAutre: e.target.value === AUTRE_SENTINEL ? item.concernantAutre : '' })
                         }}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                        className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none${flagClass(lowFlags.items[idx]?.concernant)}`}
                       >
                         <option value="">Sélectionner...</option>
                         {staffNames.map((name) => (

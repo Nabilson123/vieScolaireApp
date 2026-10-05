@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage } from './whatsapp'
+import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage } from './whatsapp'
 
 describe('toWhatsAppPhone', () => {
   it('converts a local Moroccan number (leading 0) to international format', () => {
@@ -106,5 +106,50 @@ describe('buildRdvMessage', () => {
     expect(message).toContain('*Élève :* A B\n')
     expect(message).toContain('*Demandé par :* Administration')
     expect(message).toContain('*Enseignant concerné :* aucun (rencontre avec l’administration)')
+  })
+})
+
+describe('buildReclamationMessage', () => {
+  const info = {
+    parentNom: 'Meryem EDDGHOUGHI',
+    studentName: 'Yazid BARGUIGA',
+    classe: 'CE4-B',
+    categorie: 'Comportement',
+    objet: 'Comportement de l’enseignante',
+    date: '2026-09-23',
+    responsable: 'Nabil Lahrache',
+    echeance: '2026-10-08',
+    resolution: 'Un entretien a eu lieu avec l’enseignante.',
+  }
+
+  it("accusé de réception : objet en gras et délai de 72 heures", () => {
+    const message = buildReclamationMessage('accuse', info)
+    expect(message.startsWith('Bonjour Meryem EDDGHOUGHI,\n')).toBe(true)
+    expect(message).toContain('réclamation du 23/09/2026 concernant Yazid BARGUIGA (CE4-B) : *Comportement de l’enseignante*')
+    expect(message).toContain('sous 72 heures')
+    expect(message.endsWith('Direction de la Vie Scolaire — Groupe Scolaire Mondrian')).toBe(true)
+  })
+
+  it('prise en charge : responsable, action selon la catégorie et échéance', () => {
+    const message = buildReclamationMessage('prise_en_charge', info)
+    expect(message).toContain('est prise en charge par Nabil Lahrache')
+    expect(message).toContain("vérifications nécessaires auprès de l'équipe éducative")
+    expect(message).toContain('au plus tard le 08/10/2026')
+  })
+
+  it("prise en charge : omet l'action (catégorie sans modèle) et l'échéance absente", () => {
+    const message = buildReclamationMessage('prise_en_charge', { ...info, categorie: 'Autre', echeance: undefined, responsable: undefined })
+    expect(message).toContain('est prise en charge.')
+    expect(message).not.toContain('au plus tard')
+    expect(message).not.toContain('vérifications')
+  })
+
+  it('résolution : reprend la solution saisie', () => {
+    const message = buildReclamationMessage('resolution', info)
+    expect(message).toContain("voici la réponse de l'établissement :\n\nUn entretien a eu lieu avec l’enseignante.")
+  })
+
+  it('salue sans nom quand le parent est inconnu', () => {
+    expect(buildReclamationMessage('accuse', { ...info, parentNom: '  ' }).startsWith('Bonjour,\n')).toBe(true)
   })
 })

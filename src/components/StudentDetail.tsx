@@ -294,7 +294,7 @@ export default function StudentDetail({ student, onBack, initialTab, onStudentUp
       {activeTab === 'projet' && <ProjetPersonnelTab student={student} projet={extra.projet} />}
       {activeTab === 'sante' && <SanteTab sante={extra.sante} />}
       {activeTab === 'reclamations' && (
-        <ReclamationsTab studentId={student.id} studentName={student.name} reclamations={reclamations} />
+        <ReclamationsTab studentId={student.id} studentName={student.name} classe={student.classe} reclamations={reclamations} />
       )}
       {activeTab === 'rendezvous' && (
         <RendezVousTab studentId={student.id} rendezVous={rendezVous} onChange={handleRendezVousChange} />

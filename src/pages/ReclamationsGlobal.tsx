@@ -6,6 +6,8 @@ import { useStudentExtras } from '../services/studentDetailsService'
 import NewReclamationModal from '../components/NewReclamationModal'
 import ReclamationCard from '../components/ReclamationCard'
 import EditReclamationModal from '../components/reclamations/EditReclamationModal'
+import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../components/reclamations/ReclamationMessageModal'
+import type { ReclamationMessageKind } from '../utils/whatsapp'
 import ReclamationsPrintPreviewModal from '../components/reclamations-print/ReclamationsPrintPreviewModal'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
@@ -24,6 +26,15 @@ interface FlatReclamation extends ReclamationRecord {
   studentId: string
   studentName: string
   classe: string
+}
+
+interface MessageTarget {
+  reclamation: ReclamationRecord
+  studentId: string
+  studentName: string
+  classe: string
+  kind: ReclamationMessageKind
+  banner?: string
 }
 
 type QuickFilter = 'toutes' | 'a_traiter' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
@@ -61,6 +72,7 @@ export default function ReclamationsGlobal() {
   const [showPrint, setShowPrint] = useState(false)
   const [resolvedOpen, setResolvedOpen] = useState(false)
   const [editing, setEditing] = useState<FlatReclamation | null>(null)
+  const [messageTarget, setMessageTarget] = useState<MessageTarget | null>(null)
 
   const flat: FlatReclamation[] = useMemo(() => {
     const list: FlatReclamation[] = []
@@ -129,8 +141,25 @@ export default function ReclamationsGlobal() {
   const delaiMoyen = delais.length > 0 ? delais.reduce((s, d) => s + d, 0) / delais.length : null
   const sousDelai = delais.length > 0 ? Math.round((delais.filter((d) => d <= RECLAMATION_DELAI_JOURS).length / delais.length) * 100) : null
 
+  const openMessage = (item: FlatReclamation, record: ReclamationRecord, kind: ReclamationMessageKind, banner?: string) =>
+    setMessageTarget({ reclamation: record, studentId: item.studentId, studentName: item.studentName, classe: item.classe, kind, banner })
+
   const handleCreate = async (payload: Parameters<typeof actions.creer>[0]) => {
-    if (await actions.creer(payload)) setShowNewModal(false)
+    const list = await actions.creer(payload)
+    if (!list) return
+    setShowNewModal(false)
+    const student = (students ?? getStudentsSnapshot()).find((s) => s.id === payload.studentId)
+    const first = list[0]
+    if (first && student) {
+      setMessageTarget({
+        reclamation: { ...first, objet: payload.items.map((i) => cleanReclamationText(i.objet)).join(' ; ') },
+        studentId: student.id,
+        studentName: student.name,
+        classe: student.classe,
+        kind: 'accuse',
+        banner: `${payload.items.length > 1 ? 'Réclamations enregistrées' : 'Réclamation enregistrée'}. Vous pouvez envoyer un accusé de réception au parent.`,
+      })
+    }
   }
 
   const renderCard = (item: FlatReclamation) => (
@@ -140,8 +169,16 @@ export default function ReclamationsGlobal() {
       studentName={item.studentName}
       classe={item.classe}
       isEditable={isEditable}
-      onTakeCharge={() => actions.prendreEnCharge(item.studentId, item.id)}
-      onResolve={(resolution) => actions.resoudre(item.studentId, item.id, resolution)}
+      onTakeCharge={async () => {
+        const updated = await actions.prendreEnCharge(item.studentId, item.id)
+        if (updated) openMessage(item, updated, 'prise_en_charge')
+      }}
+      onResolve={async (resolution) => {
+        const updated = await actions.resoudre(item.studentId, item.id, resolution)
+        if (updated) openMessage(item, updated, 'resolution')
+      }}
+      onMessage={() => openMessage(item, item, messageKindForStatut(item.statut))}
+      onAssign={(responsable, echeance) => actions.assigner(item.studentId, item.id, responsable, echeance || undefined)}
       onReopen={() => actions.rouvrir(item.studentId, item.id)}
       onEdit={() => setEditing(item)}
       onDelete={() => actions.supprimer(item.studentId, item.id)}
@@ -352,6 +389,19 @@ export default function ReclamationsGlobal() {
             setEditing(null)
             await actions.modifier(target.studentId, target.id, patch, detail)
           }}
+        />
+      )}
+
+      {messageTarget && (
+        <ReclamationMessageModal
+          reclamation={messageTarget.reclamation}
+          studentId={messageTarget.studentId}
+          studentName={messageTarget.studentName}
+          classe={messageTarget.classe}
+          kind={messageTarget.kind}
+          banner={messageTarget.banner}
+          onShared={(kind) => actions.journaliserMessage(messageTarget.studentId, messageTarget.reclamation.id, MESSAGE_KIND_LABELS[kind])}
+          onClose={() => setMessageTarget(null)}
         />
       )}
 
