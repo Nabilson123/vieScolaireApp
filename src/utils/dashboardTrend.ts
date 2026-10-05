@@ -9,6 +9,8 @@ const TEACHER_BASELINE_HOURS_PER_WEEK = 40
 export interface WeeklyTrendPoint {
   week: string
   label: string
+  /** Lundi de la semaine (date locale AAAA-MM-JJ) — pour rattacher la semaine à une période. */
+  mondayISO: string
   eleves: number
   enseignants: number
   heuresManqueesEleves: number
@@ -86,6 +88,7 @@ export function computeEcoleWeeklyTrend(
     points.push({
       week: weekTick(weekStart),
       label: `${weekLabel(weekStart)} au ${weekLabel(weekEnd)}`,
+      mondayISO: `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`,
       eleves: Math.round(elevesTaux * 10) / 10,
       enseignants: Math.round(enseignantsTaux * 10) / 10,
       heuresManqueesEleves: Math.round((studentMinutesMissed / 60) * 10) / 10,

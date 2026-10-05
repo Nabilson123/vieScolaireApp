@@ -16,6 +16,9 @@ interface PaginatedPrintDocumentProps {
   pageStyle: CSSProperties
   paddingXPx: number
   paddingYPx: number
+  /** Marges haute/basse distinctes (ex. maquette 9 mm / 7 mm) ; `paddingYPx` par défaut. */
+  paddingTopPx?: number
+  paddingBottomPx?: number
   gapPx: number
 }
 
@@ -56,6 +59,8 @@ export default function PaginatedPrintDocument({
   pageStyle,
   paddingXPx,
   paddingYPx,
+  paddingTopPx = paddingYPx,
+  paddingBottomPx = paddingYPx,
   gapPx,
 }: PaginatedPrintDocumentProps) {
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -70,7 +75,7 @@ export default function PaginatedPrintDocument({
       // Trois espaces à réserver, pas deux : en-tête → premier bloc, dernier bloc → ressort (flex-1),
       // ressort → pied de page. Le ressort garde ses deux espaces même quand il mesure 0 px ; avec
       // seulement deux espaces réservés, une page remplie à fond débordait de `gapPx` sous le A4.
-      const available = (headerH: number, footerH: number) => PAGE_HEIGHT_PX - paddingYPx * 2 - headerH - footerH - gapPx * 3
+      const available = (headerH: number, footerH: number) => PAGE_HEIGHT_PX - paddingTopPx - paddingBottomPx - headerH - footerH - gapPx * 3
       const measured = blocks.map((b) => ({ key: b.key, height: blockRefs.current[b.key]?.getBoundingClientRect().height ?? 0, breakBefore: b.breakBefore }))
 
       // Document d'une seule page : header/footer rendus avec pageCount = 1.
@@ -171,7 +176,7 @@ export default function PaginatedPrintDocument({
         <div
           key={pageIndex}
           className="print-page flex flex-col"
-          style={{ ...pageStyle, padding: `${paddingYPx}px ${paddingXPx}px`, gap: gapPx }}
+          style={{ ...pageStyle, padding: `${paddingTopPx}px ${paddingXPx}px ${paddingBottomPx}px`, gap: gapPx }}
         >
           {renderHeader(pageIndex, groups.length)}
           {group.map((key) => (

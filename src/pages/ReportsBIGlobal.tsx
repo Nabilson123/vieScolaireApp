@@ -371,9 +371,6 @@ export default function ReportsBIGlobal({ onNavigateToClasse }: ReportsBIGlobalP
             reclamationsParMois={reclamationsParMois}
             reclamationsParType={reclamationsParTypePeriode}
             absencesProfsParMois={absencesProfsParMois}
-            absencesElevesParMois={absencesElevesParMois}
-            retardsElevesParMois={retardsElevesParMois}
-            disciplineElevesParMois={disciplineElevesParMois}
             cycleTiles={cycleTiles}
             absencesParMoisEtCycle={absencesParMoisEtCycle}
             retardsParMoisEtCycle={retardsParMoisEtCycle}

@@ -1,18 +1,19 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, type CSSProperties, type ReactNode } from 'react'
 import SchoolLogo from '../print/SchoolLogo'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import { formatPeriodLabel } from '../../utils/period'
 import type { WeeklyTrendPoint } from '../../utils/dashboardTrend'
 import type { ClasseStatsRow } from '../../utils/reportsBIAggregation'
-import { occupancyLevel, occupancyPct } from '../../utils/reportsBIAggregation'
 import type { ClasseBreakdownRow } from '../../utils/replacementAggregation'
 import type { AnneeEffectifPoint } from '../../utils/multiYearAggregation'
 import type { ServicesGlobalCounts, ServiceNiveauPoint } from '../../utils/servicesNiveauAggregation'
 import { computeCantineCountsByRefectoire, computeCantinePrescolaireSousSol } from '../../utils/servicesNiveauAggregation'
 import type { ServicesCapacite } from '../../services/servicesCapaciteService'
+import { useSchoolIdentity } from '../../services/schoolIdentityService'
 import type { CycleSnapshotTiles, MonthCycleStack } from '../../utils/activiteMensuelleAggregation'
-import { cycleOfClasse } from '../../utils/alertEngine'
-import type { InfirmerieBilan, RdvBilan, CountRow } from '../../utils/infirmerieRdvBilan'
+import { cycleOfClasse, niveauFromClasse } from '../../utils/alertEngine'
+import { NIVEAUX } from '../../data/referentiel'
+import type { InfirmerieBilan, RdvBilan } from '../../utils/infirmerieRdvBilan'
 
 export interface PrintableReportsBIProps {
   periodStart: string
@@ -37,9 +38,6 @@ export interface PrintableReportsBIProps {
   reclamationsParMois: { label: string; value: number }[]
   reclamationsParType: { label: string; value: number }[]
   absencesProfsParMois: { label: string; value: number }[]
-  absencesElevesParMois: { label: string; value: number }[]
-  retardsElevesParMois: { label: string; value: number }[]
-  disciplineElevesParMois: { label: string; value: number }[]
   cycleTiles: CycleSnapshotTiles
   absencesParMoisEtCycle: MonthCycleStack[]
   retardsParMoisEtCycle: MonthCycleStack[]
@@ -48,51 +46,54 @@ export interface PrintableReportsBIProps {
   rdvBilan: RdvBilan
 }
 
-// Palette partagée avec le Cockpit Opérationnel (Phase 25) — mêmes tokens oklch, IBM Plex Sans/Mono
-// déjà chargées dans index.html — plus quelques tokens propres à ce document (band/flagRow...).
+// Maquette « Rapport BI — Indicateurs clés (A4, 4 pages) » : tokens, tailles et marges repris tels quels
+// (hex, px pour le texte, mm pour les espacements). IBM Plex Sans/Mono sont chargées dans index.html.
 const SANS = "'IBM Plex Sans', sans-serif"
 const MONO = "'IBM Plex Mono', monospace"
 
-const C = {
-  ink: 'oklch(0.25 0.02 255)',
-  inkSoft: 'oklch(0.3 0.02 255)',
-  inkMuted: 'oklch(0.45 0.015 255)',
-  muted: 'oklch(0.58 0.015 255)',
-  ruleStrong: 'oklch(0.82 0.01 255)',
-  rule: 'oklch(0.88 0.008 255)',
-  ruleSoft: 'oklch(0.92 0.006 255)',
-  dashGrey: 'oklch(0.65 0.01 255)',
-  panel: 'oklch(0.975 0.006 255)',
-  paperTint: 'oklch(0.99 0.004 255)',
-  accentBlue: 'oklch(0.52 0.13 255)',
-  accentBlueDark: 'oklch(0.42 0.1 255)',
-  red: 'oklch(0.55 0.17 25)',
-  redDark: 'oklch(0.55 0.16 25)',
-  amber: 'oklch(0.58 0.14 70)',
-  amberDark: 'oklch(0.5 0.13 70)',
-  green: 'oklch(0.52 0.13 155)',
-  greenText: 'oklch(0.42 0.11 155)',
-  band: 'oklch(0.93 0.008 255)',
-  bandSoft: 'oklch(0.965 0.006 255)',
-  flagRow: 'oklch(0.96 0.025 25)',
-  flagBorder: 'oklch(0.78 0.1 25)',
+const T = {
+  ink: '#1d232b',
+  muted: '#6b7280',
+  nul: '#9aa1ab',
+  border: '#d5d9df',
+  sep: '#e3e6ea',
+  track: '#e6e8ec',
+  blue: '#2b62b0',
+  blueLight: '#8fb4e8',
+  green: '#0d7a45',
+  red: '#c8373e',
+  amber: '#b06d00',
+  purple: '#6d4bb0',
+  purpleLight: '#9b85d1',
+  rose: '#d65b66',
+  alertBg: '#fdecec',
+  alertBorder: '#f0b9bc',
+  callout: '#f3f6fa',
+  groupBg: '#eef1f5',
+  subBg: '#f4f6f9',
+  totalBg: '#e3e8ef',
+  subline: '#c3cad3',
+  zeroDot: '#c4c9d0',
 } as const
 
-const OCCUPANCY_COLORS = { ok: C.green, warn: C.amber, over: C.red }
-
-const RECLAMATION_COLORS: Record<string, string> = {
-  Notes: C.accentBlue,
-  'Absence / Assiduité': C.amber,
-  Comportement: C.red,
-  Cantine: C.green,
-  Transport: 'oklch(0.55 0.12 300)',
-}
+/** Type de base de la maquette (10 px, interligne normal) — appliqué à chaque bloc paginé pour que la
+ * mesure hors écran et le rendu final partent du même texte, quel que soit le CSS global de l'app. */
+const BASE: CSSProperties = { fontFamily: SANS, color: T.ink, fontSize: '10px', lineHeight: 'normal' }
 
 const CYCLE_DEFS: { key: 'maternelle' | 'primaire' | 'college'; name: string }[] = [
   { key: 'maternelle', name: 'Maternelle' },
   { key: 'primaire', name: 'Primaire' },
   { key: 'college', name: 'Collège' },
 ]
+
+const RECLAMATION_COLORS: Record<string, string> = {
+  Comportement: T.red,
+  Cantine: T.green,
+  Transport: T.purple,
+  'Absence / Assiduité': T.amber,
+}
+
+const MM_TO_PX = 96 / 25.4
 
 function todayFR(): string {
   return new Date().toLocaleDateString('fr-FR')
@@ -103,20 +104,25 @@ function fr1(n: number): string {
   return n.toFixed(1).replace('.', ',')
 }
 
-/** Format court "X h MM" — copie exacte de PrintableCockpitReport.tsx (Phase 25), distincte de
- * formatHeures() ("1h 10min") utilisé ailleurs dans l'app. */
+/** Pourcentage « 97,9 % » avec espace insécable avant le signe. */
+function frPct(n: number): string {
+  return `${fr1(n)} %`
+}
+
+/** Format court « X h MM » ; zéro affiché « 0 h » (valeurs nulles toujours visibles). */
 function formatDureeCourte(hours: number): string {
   const totalMin = Math.round(hours * 60)
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
+  if (totalMin === 0) return '0 h'
   if (h === 0) return `${m} min`
   if (m === 0) return `${h} h`
   return `${h} h ${String(m).padStart(2, '0')}`
 }
 
-/** Heures décimales agrégées (colonne "Heures manq.", tuiles KPI) — espace insécable avant l'unité. */
+/** Heures décimales agrégées (colonne « H. manq. ») — « 120,6 h ». */
 function heuresDecimalFR(hours: number): string {
-  return `${fr1(hours)} h`
+  return `${fr1(hours)} h`
 }
 
 function periodeJours(start: string, end: string): number {
@@ -125,87 +131,134 @@ function periodeJours(start: string, end: string): number {
   return Math.max(1, Math.round((e - s) / 86400000) + 1)
 }
 
-/** Établit un flow-root autour de chaque bloc paginé : sans ça, la marge basse propre à chaque
- * section (margin-bottom) est exclue de la mesure hors-écran de PaginatedPrintDocument (même
- * pattern que PrintableNoteService.tsx). */
-function flowRoot(node: ReactNode) {
-  return <div style={{ display: 'flow-root' }}>{node}</div>
+function formatDateCourte(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
 }
 
-const emptyPanel = {
-  margin: '4px 0 0',
-  padding: '9px 12px',
-  background: C.panel,
-  fontFamily: SANS,
-  fontSize: '9pt',
-  lineHeight: 1.5,
-  color: C.inkMuted,
-} as const
+/** « 21 sept. 2026 au 27 sept. 2026 » → « 21 au 27 sept. 2026 » (même mois), « 28 sept. au 4 oct. 2026 » (même année). */
+function compactWeekLabel(label: string): string {
+  const [from, to] = label.split(' au ')
+  if (!from || !to) return label
+  const f = from.trim().split(/\s+/)
+  const t = to.trim().split(/\s+/)
+  if (f.length === 3 && t.length === 3 && f[2] === t[2]) {
+    return f[1] === t[1] ? `${f[0]} au ${to.trim()}` : `${f[0]} ${f[1]} au ${to.trim()}`
+  }
+  return label
+}
 
-/** Bandeau d'ouverture d'une des grandes parties du rapport. */
-function PartTitle({ num, title, subtitle }: { num: number; title: string; subtitle: string }) {
+/** Valeur nulle toujours affichée, en gris ; sinon la couleur demandée. */
+function nulOr(value: number, color: string): string {
+  return value === 0 ? T.nul : color
+}
+
+/** Wrapper de bloc paginé : flow-root pour que la marge propre au bloc soit comptée dans sa hauteur. */
+function flowRoot(node: ReactNode) {
+  return <div style={{ display: 'flow-root', ...BASE }}>{node}</div>
+}
+
+/** Même découpage que la maquette pour les longues listes, mais un reliquat de moins de 3 lignes est
+ * rattaché au paquet précédent (jamais une ou deux lignes seules sous un en-tête répété). */
+function chunk<T2>(arr: T2[], size: number): T2[][] {
+  const out: T2[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  if (out.length > 1 && out[out.length - 1].length < 3) {
+    const reliquat = out.pop() as T2[]
+    out[out.length - 1] = [...out[out.length - 1], ...reliquat]
+  }
+  return out
+}
+
+const emptyNote: CSSProperties = { margin: '2mm 0 0', padding: '2mm 3mm', background: T.callout, fontSize: '10px', color: T.muted }
+
+/** Bandeau de domaine « 01 … 07 ». */
+function PartTitle({ num, title, subtitle, marginTop }: { num: number; title: string; subtitle: string; marginTop: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.ink, color: '#fff', padding: '9px 14px', marginBottom: 2 }}>
-      <span style={{ fontFamily: MONO, fontSize: '18pt', fontWeight: 700, lineHeight: 1, color: 'oklch(0.8 0.08 255)' }}>{String(num).padStart(2, '0')}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <h2 style={{ margin: 0, fontFamily: SANS, fontSize: '13.5pt', fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.15 }}>{title}</h2>
-        <span style={{ fontFamily: MONO, fontSize: '7.5pt', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'oklch(0.82 0.02 255)' }}>{subtitle}</span>
+    <div style={{ background: T.ink, color: '#fff', display: 'flex', alignItems: 'center', gap: '3.5mm', padding: '2mm 4mm', marginTop }}>
+      <span style={{ fontFamily: MONO, fontSize: '20px', color: T.blueLight }}>{String(num).padStart(2, '0')}</span>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: '14px', lineHeight: 1.2 }}>{title}</div>
+        <div style={{ fontFamily: MONO, fontSize: '8px', letterSpacing: '.1em', color: T.subline, textTransform: 'uppercase' }}>{subtitle}</div>
       </div>
     </div>
   )
 }
 
-/** Sous-partie numérotée (ex. « 2.1 Évolution des absences ») à l'intérieur d'une grande partie. */
-function Section({
-  num,
-  title,
-  annotation,
-  annotationColor,
-  children,
+/** Titre de sous-section « 2.1 Évolution des absences … note ». */
+function SectionHead({ num, title, note, margin }: { num?: string; title: string; note?: string; margin: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '2mm', borderBottom: `1px solid ${T.ink}`, paddingBottom: '1mm', margin }}>
+      {num ? <span style={{ fontFamily: MONO, color: T.blue }}>{num}</span> : null}
+      <b style={{ fontSize: '12px' }}>{title}</b>
+      <span style={{ flex: 1 }} />
+      {note ? <span style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted }}>{note}</span> : null}
+    </div>
+  )
+}
+
+const monoLabel: CSSProperties = { fontFamily: MONO, fontSize: '8.5px', letterSpacing: '.1em', color: T.muted }
+
+/** Barre horizontale : [libellé fixe] [piste 1fr] [valeur], remplissage = valeur / max de la série. */
+function BarLine({
+  label,
+  value,
+  max,
+  color,
+  labelWidth,
+  valueWidth,
+  trackHeight,
+  valueColor = T.ink,
 }: {
-  num: string
-  title: string
-  annotation: string
-  annotationColor?: string
-  children: ReactNode
+  label: string
+  value: number
+  max: number
+  color: string
+  labelWidth: string
+  valueWidth: string
+  trackHeight: string
+  valueColor?: string
+}) {
+  const w = max > 0 ? (value / max) * 100 : 0
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `${labelWidth} minmax(0,1fr) ${valueWidth}`, alignItems: 'center', gap: '2mm', fontFamily: MONO, fontSize: '9px' }}>
+      <span>{label}</span>
+      <span style={{ height: trackHeight, background: T.track, display: 'flex' }}>
+        <span style={{ background: color, width: `${w}%` }} />
+      </span>
+      <b style={{ textAlign: 'right', color: nulOr(value, valueColor) }}>{value}</b>
+    </div>
+  )
+}
+
+/** Tableau à en-tête sombre (grille CSS) — enseignants absents, remplaçants, rendez-vous. */
+function DataGrid({
+  columns,
+  headers,
+  headSize = '8.5px',
+  headerStyle,
+  rows,
+  colStyle,
+  fontSize = '10px',
+}: {
+  columns: string
+  headers: string[]
+  headSize?: string
+  headerStyle: (col: number) => CSSProperties
+  rows: ReactNode[][]
+  colStyle: (col: number) => CSSProperties
+  fontSize?: string
 }) {
   return (
-    <div style={{ marginBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: `1.5px solid ${C.ink}`, paddingBottom: 5, marginBottom: 3 }}>
-        <span style={{ fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600, color: C.accentBlue }}>{num}</span>
-        <h3 style={{ margin: 0, fontFamily: SANS, fontSize: '11pt', fontWeight: 700, letterSpacing: '-0.01em', color: C.ink }}>{title}</h3>
-        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: '8.5pt', color: annotationColor ?? C.muted }}>{annotation}</span>
-      </div>
-      <div style={{ marginTop: 8 }}>{children}</div>
-    </div>
-  )
-}
-
-/** Tableau simple à en-tête sombre (listes profs absents / remplaçants). */
-function SimpleTable({ columns, headers, rows }: { columns: string; headers: string[]; rows: ReactNode[][] }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: columns, gap: 1, background: C.rule, border: `1px solid ${C.rule}`, fontSize: '8.5pt' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: columns, fontSize }}>
       {headers.map((h, i) => (
-        <div
-          key={h}
-          style={{
-            padding: '5px 6px',
-            textAlign: i === 0 ? 'left' : 'center',
-            fontFamily: MONO,
-            fontWeight: 600,
-            fontSize: '7.5pt',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color: '#fff',
-            background: C.ink,
-          }}
-        >
+        <div key={`${h}-${i}`} style={{ background: T.ink, color: '#fff', fontFamily: MONO, fontSize: headSize, ...headerStyle(i) }}>
           {h}
         </div>
       ))}
       {rows.map((cells, r) =>
-        cells.map((cell, i) => (
-          <div key={`${r}-${i}`} style={{ padding: '4px 6px', background: C.paperTint, textAlign: i === 0 ? 'left' : 'center', fontWeight: i === 0 ? 600 : 400 }}>
+        cells.map((cell, c) => (
+          <div key={`${r}-${c}`} style={{ borderBottom: `1px solid ${T.sep}`, ...colStyle(c) }}>
             {cell}
           </div>
         ))
@@ -214,186 +267,11 @@ function SimpleTable({ columns, headers, rows }: { columns: string; headers: str
   )
 }
 
-function KpiTile({ value, color, label, sub }: { value: string; color: string; label: string; sub: string }) {
-  return (
-    <div style={{ background: C.paperTint, padding: '8px 10px 9px', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', textAlign: 'center' }}>
-      <div style={{ fontFamily: SANS, fontSize: '17pt', fontWeight: 700, lineHeight: 1, letterSpacing: '-0.03em', color }}>{value}</div>
-      <div style={{ fontFamily: SANS, fontSize: '8.5pt', lineHeight: 1.3, fontWeight: 600, color: C.inkSoft }}>{label}</div>
-      <div style={{ fontFamily: MONO, fontSize: '7.5pt', color: C.muted }}>{sub}</div>
-    </div>
-  )
-}
-
-interface BarRow {
-  label: string
-  value: number
-}
-
-function LabeledBars({ rows, color, emptyText, labelWidth = 40 }: { rows: BarRow[]; color: string; emptyText: string; labelWidth?: number }) {
-  const hasData = rows.some((r) => r.value > 0)
-  if (!hasData) {
-    return (
-      <p style={{ fontSize: '8.5pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>{emptyText}</p>
-    )
-  }
-  const max = Math.max(1, ...rows.map((r) => r.value))
-  return (
-    <div>
-      {rows.map((r) => (
-        <div key={r.label} style={{ display: 'grid', gridTemplateColumns: `${labelWidth}px minmax(0,1fr) 24px`, alignItems: 'center', gap: 6, padding: '2px 0' }}>
-          <span style={{ fontFamily: MONO, fontSize: '7.5pt' }}>{r.label}</span>
-          <div style={{ height: 7, background: C.ruleSoft }}>
-            <div style={{ height: '100%', width: `${Math.round((r.value / max) * 100)}%`, background: color }} />
-          </div>
-          <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600 }}>{r.value}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** Barres horizontales à libellé libre (motifs saisis à la main) : libellé tronqué à gauche, valeur à droite. */
-function CountBars({ rows, color, emptyText, labelWidth = 150 }: { rows: CountRow[]; color: string; emptyText: string; labelWidth?: number }) {
-  if (rows.length === 0) {
-    return <p style={{ fontSize: '8.5pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>{emptyText}</p>
-  }
-  const max = Math.max(1, ...rows.map((r) => r.value))
-  return (
-    <div>
-      {rows.map((r) => (
-        <div key={r.label} style={{ display: 'grid', gridTemplateColumns: `${labelWidth}px minmax(0,1fr) 24px`, alignItems: 'center', gap: 6, padding: '2px 0' }}>
-          <span title={r.label} style={{ fontSize: '8.5pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {r.label}
-          </span>
-          <div style={{ height: 7, background: C.ruleSoft }}>
-            <div style={{ height: '100%', width: `${Math.round((r.value / max) * 100)}%`, background: color }} />
-          </div>
-          <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600 }}>{r.value}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function formatDateCourte(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
-}
-
-function TitledBars({ title, color, rows, emptyText, labelWidth }: { title: string; color: string; rows: BarRow[]; emptyText: string; labelWidth?: number }) {
-  return (
-    <div>
-      <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color, marginBottom: 4 }}>{title}</p>
-      <LabeledBars rows={rows} color={color} emptyText={emptyText} labelWidth={labelWidth} />
-    </div>
-  )
-}
-
-interface GroupedColumnPoint {
-  label: string
-  a: number
-  b: number
-}
-
-/** Diagramme en bâtons groupés (une paire de colonnes par catégorie) — même patron visuel que la
- * section 01 "Tendance d'assiduité" (barres verticales, étiquette de valeur au-dessus, légende
- * couleur en dessous), réutilisé ici pour comparer deux séries (ex. Garde Matin vs Soir) niveau par
- * niveau plutôt que semaine par semaine. */
-function GroupedColumnsChart({
-  title,
-  points,
-  colorA,
-  colorB,
-  labelA,
-  labelB,
-  emptyText,
-}: {
-  title: string
-  points: GroupedColumnPoint[]
-  colorA: string
-  colorB: string
-  labelA: string
-  labelB: string
-  emptyText: string
-}) {
-  const hasData = points.some((p) => p.a > 0 || p.b > 0)
-  return (
-    <div>
-      <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.inkSoft, marginBottom: 4 }}>{title}</p>
-      {!hasData ? (
-        <p style={{ fontSize: '8.5pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>{emptyText}</p>
-      ) : (
-        <>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 90, paddingTop: 10 }}>
-            {(() => {
-              const max = Math.max(1, ...points.flatMap((p) => [p.a, p.b]))
-              return points.map((p) => {
-                const hA = Math.max(2, Math.round((p.a / max) * 58))
-                const hB = Math.max(2, Math.round((p.b / max) * 58))
-                return (
-                  <div key={p.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 72 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-                        <span style={{ fontFamily: MONO, fontSize: '6pt', color: colorA, minHeight: 7 }}>{p.a > 0 ? p.a : ''}</span>
-                        <div style={{ width: 9, height: hA, background: colorA }} />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
-                        <span style={{ fontFamily: MONO, fontSize: '6pt', color: colorB, minHeight: 7 }}>{p.b > 0 ? p.b : ''}</span>
-                        <div style={{ width: 9, height: hB, background: colorB }} />
-                      </div>
-                    </div>
-                    <span style={{ fontFamily: MONO, fontSize: '6.5pt', color: C.muted }}>{p.label}</span>
-                  </div>
-                )
-              })
-            })()}
-          </div>
-          <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: '8pt', color: C.muted }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, background: colorA, display: 'inline-block' }} /> {labelA}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, background: colorB, display: 'inline-block' }} /> {labelB}
-            </span>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-const CLASSE_TABLE_COLUMNS = '1fr 0.7fr 0.8fr 0.8fr 0.7fr 0.9fr 0.8fr 0.8fr'
-const CLASSE_TABLE_HEADERS = ['Classe', 'Effectif', 'Présence', 'Absences', 'Retards', 'Heures manq.', 'Sanctions', 'Conduite']
-
-function ClasseTableHeaderCells() {
-  return (
-    <>
-      {CLASSE_TABLE_HEADERS.map((h) => (
-        <div
-          key={h}
-          style={{
-            padding: '5px 6px',
-            textAlign: 'center',
-            fontFamily: MONO,
-            fontWeight: 600,
-            fontSize: '7.5pt',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color: '#fff',
-            background: C.ink,
-          }}
-        >
-          {h}
-        </div>
-      ))}
-    </>
-  )
-}
-
 interface ClasseGroup {
   name: string
-  rows: (ClasseStatsRow & { flagged: boolean })[]
+  rows: ClasseStatsRow[]
   effectif: number
+  presence: number | null
   absences: number
   retards: number
   heures: number
@@ -401,96 +279,73 @@ interface ClasseGroup {
   conduite: number | null
 }
 
-/** Une tranche (un cycle) du tableau « Assiduité par classe » — répète l'en-tête de colonnes pour
- * rester lisible si la tranche démarre une nouvelle page. Ce découpage par cycle (au lieu d'un seul
- * bloc de ~19 classes) donne au moteur de pagination la granularité nécessaire pour combler le reste
- * d'une page plutôt que de forcer systématiquement une page quasi vide dès que le tableau entier ne
- * tient pas — même raison que le découpage tête/queue de la section 02. */
-function ClasseGroupGrid({ group }: { group: ClasseGroup }) {
+const CLASSE_COLUMNS = 'minmax(0,2fr) repeat(7,minmax(0,1fr))'
+const CLASSE_HEADERS = ['CLASSE', 'EFFECTIF', 'PRÉSENCE', 'ABSENCES', 'RETARDS', 'H. MANQ.', 'SANCTIONS', 'CONDUITE']
+
+/** Tableau « Assiduité par classe » : groupes Maternelle / Primaire / Collège, sous-totaux, total. */
+function ClasseTable({ groups, total }: { groups: ClasseGroup[]; total: Omit<ClasseGroup, 'name' | 'rows'> }) {
+  const cell = (bg: string, extra: CSSProperties = {}): CSSProperties => ({ padding: '1mm', borderBottom: `1px solid ${T.sep}`, background: bg, ...extra })
+  const first = (bg: string, extra: CSSProperties = {}): CSSProperties => cell(bg, { padding: '1mm 2mm', textAlign: 'left', ...extra })
+  const conduite = (v: number | null) => (v === null ? '—' : `${fr1(v)}/20`)
+  const summaryRow = (key: string, label: string, g: Omit<ClasseGroup, 'name' | 'rows'>, bg: string) => {
+    const s: CSSProperties = { fontWeight: 700, fontSize: '9px' }
+    return (
+      <Fragment key={key}>
+        <div style={first(bg, s)}>{label}</div>
+        <div style={cell(bg, s)}>{g.effectif}</div>
+        <div style={cell(bg, s)}>{g.presence === null ? '' : frPct(g.presence)}</div>
+        <div style={cell(bg, s)}>{g.absences}</div>
+        <div style={cell(bg, s)}>{g.retards}</div>
+        <div style={cell(bg, s)}>{heuresDecimalFR(g.heures)}</div>
+        <div style={cell(bg, s)}>{g.sanctions}</div>
+        <div style={cell(bg, s)}>{conduite(g.conduite)}</div>
+      </Fragment>
+    )
+  }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: CLASSE_TABLE_COLUMNS, gap: 1, background: C.rule, border: `1px solid ${C.rule}`, fontSize: '8.5pt' }}>
-      <ClasseTableHeaderCells />
-      <div
-        style={{
-          gridColumn: '1 / -1',
-          padding: '4px 6px',
-          background: C.band,
-          fontFamily: MONO,
-          fontSize: '7.5pt',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-        }}
-      >
-        {group.name}
-      </div>
-      {group.rows.map((r) => {
-        const bg = r.flagged ? C.flagRow : C.paperTint
-        const retardFlag = r.retardsCount >= 10
-        return (
-          <Fragment key={r.classe}>
-            <div style={{ padding: '4px 6px', background: bg, fontWeight: 600 }}>{r.classe}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg }}>{r.effectif}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg }}>{fr1(r.tauxPresence)}%</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg, color: r.flagged ? C.redDark : undefined, fontWeight: r.flagged ? 700 : 400 }}>
-              {r.absencesCount}
-            </div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg, color: retardFlag ? C.amberDark : undefined, fontWeight: retardFlag ? 700 : 400 }}>
-              {r.retardsCount}
-            </div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg }}>{heuresDecimalFR(r.heuresManquees)}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg, color: r.flagged ? C.redDark : undefined, fontWeight: r.flagged ? 700 : 400 }}>
-              {r.incidents}
-            </div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: bg, fontWeight: 700 }}>{fr1(r.moyenneConduite)}/20</div>
-          </Fragment>
-        )
-      })}
-      <div style={{ padding: '3px 6px', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>Sous-total {group.name.toLowerCase()}</div>
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>{group.effectif}</div>
-      <div style={{ background: C.bandSoft }} />
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>{group.absences}</div>
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>{group.retards}</div>
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>{heuresDecimalFR(group.heures)}</div>
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>{group.sanctions}</div>
-      <div style={{ padding: '3px 6px', textAlign: 'center', background: C.bandSoft, fontSize: '7.5pt', fontWeight: 700 }}>
-        {group.conduite !== null ? `${fr1(group.conduite)}/20` : '—'}
-      </div>
+    <div style={{ display: 'grid', gridTemplateColumns: CLASSE_COLUMNS, fontSize: '9.5px', textAlign: 'center' }}>
+      {CLASSE_HEADERS.map((h) => (
+        <div key={h} style={{ background: T.ink, color: '#fff', fontFamily: MONO, fontSize: '8px', padding: '1.3mm 1mm' }}>
+          {h}
+        </div>
+      ))}
+      {groups.map((g) => (
+        <Fragment key={g.name}>
+          <div style={first(T.groupBg, { fontWeight: 600, fontSize: '8.5px', textTransform: 'uppercase' })}>{g.name}</div>
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} style={cell(T.groupBg)} />
+          ))}
+          {g.rows.map((r) => {
+            const flagged = r.absencesCount >= 10 || r.incidents >= 1
+            const bg = flagged ? T.alertBg : '#fff'
+            return (
+              <Fragment key={r.classe}>
+                <div style={first(bg, { fontWeight: 600 })}>{r.classe}</div>
+                <div style={cell(bg, { fontWeight: 600 })}>{r.effectif}</div>
+                <div style={cell(bg, { fontWeight: 600 })}>{frPct(r.tauxPresence)}</div>
+                <div style={cell(bg, r.absencesCount >= 10 ? { color: T.red, fontWeight: 700 } : {})}>{r.absencesCount}</div>
+                <div style={cell(bg, r.retardsCount >= 10 ? { color: T.amber, fontWeight: 700 } : {})}>{r.retardsCount}</div>
+                <div style={cell(bg, { fontWeight: 600 })}>{heuresDecimalFR(r.heuresManquees)}</div>
+                <div style={cell(bg, r.incidents >= 1 ? { color: T.red, fontWeight: 700 } : {})}>{r.incidents}</div>
+                <div style={cell(bg, { fontWeight: 700 })}>{fr1(r.moyenneConduite)}/20</div>
+              </Fragment>
+            )
+          })}
+          {summaryRow(`sub-${g.name}`, `Sous-total ${g.name.toLowerCase()}`, g, T.subBg)}
+        </Fragment>
+      ))}
+      {summaryRow('total', 'Total établissement', total, T.totalBg)}
     </div>
   )
 }
 
-function MonthCycleTable({ title, color, data }: { title: string; color: string; data: MonthCycleStack[] }) {
-  const hasData = data.some((d) => d.maternelle + d.primaire + d.college > 0)
-  return (
-    <div>
-      <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color, marginBottom: 4 }}>{title}</p>
-      {!hasData ? (
-        <p style={{ fontSize: '8.5pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>Aucune donnée sur l'année scolaire.</p>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8pt' }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '3px 4px', borderBottom: `1px solid ${C.ruleStrong}`, color: C.muted, fontWeight: 600 }}>Mois</th>
-              <th style={{ textAlign: 'center', padding: '3px 4px', borderBottom: `1px solid ${C.ruleStrong}`, color: C.muted, fontWeight: 600 }}>Mat.</th>
-              <th style={{ textAlign: 'center', padding: '3px 4px', borderBottom: `1px solid ${C.ruleStrong}`, color: C.muted, fontWeight: 600 }}>Pri.</th>
-              <th style={{ textAlign: 'center', padding: '3px 4px', borderBottom: `1px solid ${C.ruleStrong}`, color: C.muted, fontWeight: 600 }}>Col.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((row) => (
-              <tr key={row.label}>
-                <td style={{ padding: '2.5px 4px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.label}</td>
-                <td style={{ textAlign: 'center', padding: '2.5px 4px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.maternelle}</td>
-                <td style={{ textAlign: 'center', padding: '2.5px 4px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.primaire}</td>
-                <td style={{ textAlign: 'center', padding: '2.5px 4px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.college}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  )
+/** Couleur d'une jauge d'occupation : rouge au-delà de 100 %, ambre de 90 à 100 %, vert sinon. */
+function occupancyColor(value: number, capacity: number): string {
+  if (capacity <= 0) return T.green
+  const pct = (value / capacity) * 100
+  if (pct > 100) return T.red
+  if (pct >= 90) return T.amber
+  return T.green
 }
 
 export default function PrintableReportsBI({
@@ -500,7 +355,7 @@ export default function PrintableReportsBI({
   nbClasses,
   tauxPresence,
   anneeLibelle,
-  weeklyTrend,
+  weeklyTrend: allWeeklyTrend,
   remplacementsParClasse,
   profsAbsents,
   remplacants,
@@ -513,9 +368,6 @@ export default function PrintableReportsBI({
   reclamationsParMois,
   reclamationsParType,
   absencesProfsParMois,
-  absencesElevesParMois,
-  retardsElevesParMois,
-  disciplineElevesParMois,
   cycleTiles,
   absencesParMoisEtCycle,
   retardsParMoisEtCycle,
@@ -523,17 +375,74 @@ export default function PrintableReportsBI({
   infirmerieBilan,
   rdvBilan,
 }: PrintableReportsBIProps) {
+  const { data: schoolIdentity } = useSchoolIdentity()
+  const periodLabel = formatPeriodLabel(periodStart, periodEnd)
+  // Semaines de la période : celles dont le lundi tombe dans la période (la maquette n'affiche pas les
+  // semaines antérieures au début de la période, vides ou non). Repli : la dernière semaine connue.
+  const weeklyTrend = (() => {
+    const inPeriod = allWeeklyTrend.filter((w) => w.mondayISO >= periodStart && w.mondayISO <= periodEnd)
+    return inPeriod.length > 0 ? inPeriod : allWeeklyTrend.slice(-1)
+  })()
   const totalHeuresManquees = rows.reduce((s, r) => s + r.heuresManquees, 0)
   const totalPointsSanction = rows.reduce((s, r) => s + r.pointsSanction, 0)
   const totalIncidents = rows.reduce((s, r) => s + r.incidents, 0)
 
-  // --- Section 03 : tableau groupé par cycle, sous-totaux, total établissement -----------------
-  const classGroups = CYCLE_DEFS.map((def) => {
-    const groupRows = rows.filter((r) => cycleOfClasse(r.classe) === def.key)
+  // --- 01 Effectifs & démographie ---------------------------------------------------------------
+  const previousAnnee = anneeData.length >= 2 ? anneeData[anneeData.length - 2] : null
+  const currentAnnee = anneeData.length >= 1 ? anneeData[anneeData.length - 1] : null
+  const effectifDeltaPct =
+    previousAnnee && currentAnnee && previousAnnee.effectif > 0 ? ((currentAnnee.effectif - previousAnnee.effectif) / previousAnnee.effectif) * 100 : null
+  const maxEffectifAnnee = Math.max(1, ...anneeData.map((a) => a.effectif))
+
+  // --- 02 Absences des enseignants & remplacements ----------------------------------------------
+  const totalSeancesProfs = profsAbsents.reduce((s, p) => s + p.seances, 0)
+  const totalCouvertes = profsAbsents.reduce((s, p) => s + p.couvertes, 0)
+  const totalHeuresProfs = profsAbsents.reduce((s, p) => s + p.heures, 0)
+  const totalHeuresRemplacees = remplacants.reduce((s, r) => s + r.heures, 0)
+  const maxWeekProfs = Math.max(...weeklyTrend.map((w) => w.profsAbsentsCount), 0)
+  const maxMonthProfs = Math.max(...absencesProfsParMois.map((m) => m.value), 0)
+  const profsAbsentsChunks = chunk(profsAbsents, 12)
+  const remplacantsChunks = chunk(remplacants, 16)
+
+  // Impact par classe : lecture en 2 colonnes (première moitié à gauche, seconde à droite), les
+  // lignes sont entrelacées pour que la grille les remplisse dans cet ordre.
+  const maxHeuresRemp = Math.max(...remplacementsParClasse.map((r) => r.heures), 0)
+  const impactHalf = Math.ceil(remplacementsParClasse.length / 2)
+  const impactOrder: ClasseBreakdownRow[] = []
+  for (let i = 0; i < impactHalf; i++) {
+    impactOrder.push(remplacementsParClasse[i])
+    if (i + impactHalf < remplacementsParClasse.length) impactOrder.push(remplacementsParClasse[i + impactHalf])
+  }
+  const heuresMaternelle = remplacementsParClasse.filter((r) => cycleOfClasse(r.classe) === 'maternelle').reduce((s, r) => s + r.heures, 0)
+  const hasMaternelle = remplacementsParClasse.some((r) => cycleOfClasse(r.classe) === 'maternelle')
+
+  // --- 03 Assiduité & discipline ----------------------------------------------------------------
+  const maxWeekEleves = Math.max(...weeklyTrend.map((w) => w.elevesAbsentsCount), 0)
+  const monthGroups = [absencesParMoisEtCycle, retardsParMoisEtCycle, disciplineParMoisEtCycle]
+  const monthRows = absencesParMoisEtCycle.map((m, i) => ({
+    label: m.label,
+    values: monthGroups.flatMap((g) => {
+      const x = g[i] ?? { maternelle: 0, primaire: 0, college: 0 }
+      return [x.maternelle, x.primaire, x.college, x.maternelle + x.primaire + x.college]
+    }),
+  }))
+  const monthTotals = Array.from({ length: 12 }, (_, c) => monthRows.reduce((s, r) => s + r.values[c], 0))
+  const GROUP_COLORS = [T.red, T.amber, T.purple]
+
+  // Classes dans l'ordre pédagogique (PS-A → 3APIC-A), pas dans l'ordre de tri de l'écran.
+  const niveauRank = (classe: string) => {
+    const idx = NIVEAUX.indexOf(niveauFromClasse(classe))
+    return idx === -1 ? NIVEAUX.length : idx
+  }
+  const orderedRows = [...rows].sort((a, b) => niveauRank(a.classe) - niveauRank(b.classe) || a.classe.localeCompare(b.classe))
+  const classGroups: ClasseGroup[] = CYCLE_DEFS.map((def) => {
+    const groupRows = orderedRows.filter((r) => cycleOfClasse(r.classe) === def.key)
+    const eff = groupRows.reduce((s, r) => s + r.effectif, 0)
     return {
       name: def.name,
-      rows: groupRows.map((r) => ({ ...r, flagged: r.incidents > 0 || r.absencesCount >= 10 })),
-      effectif: groupRows.reduce((s, r) => s + r.effectif, 0),
+      rows: groupRows,
+      effectif: eff,
+      presence: eff > 0 ? groupRows.reduce((s, r) => s + r.tauxPresence * r.effectif, 0) / eff : null,
       absences: groupRows.reduce((s, r) => s + r.absencesCount, 0),
       retards: groupRows.reduce((s, r) => s + r.retardsCount, 0),
       heures: groupRows.reduce((s, r) => s + r.heuresManquees, 0),
@@ -541,96 +450,88 @@ export default function PrintableReportsBI({
       conduite: groupRows.length > 0 ? groupRows.reduce((s, r) => s + r.moyenneConduite, 0) / groupRows.length : null,
     }
   }).filter((g) => g.rows.length > 0)
-
-  const grandTotal = {
+  const classTotal = {
     effectif,
     presence: tauxPresence,
     absences: rows.reduce((s, r) => s + r.absencesCount, 0),
     retards: rows.reduce((s, r) => s + r.retardsCount, 0),
     heures: totalHeuresManquees,
     sanctions: totalIncidents,
-    conduite: rows.length > 0 ? rows.reduce((s, r) => s + r.moyenneConduite, 0) / rows.length : 0,
+    conduite: rows.length > 0 ? rows.reduce((s, r) => s + r.moyenneConduite, 0) / rows.length : null,
   }
 
-
-  // --- Section 04 : effectifs/démographie -------------------------------------------------------
-  const previousAnnee = anneeData.length >= 2 ? anneeData[anneeData.length - 2] : null
-  const currentAnnee = anneeData.length >= 1 ? anneeData[anneeData.length - 1] : null
-  const effectifDeltaPct = previousAnnee && currentAnnee && previousAnnee.effectif > 0
-    ? ((currentAnnee.effectif - previousAnnee.effectif) / previousAnnee.effectif) * 100
-    : null
-
-  // --- Section 05 : services périscolaires -------------------------------------------------------
+  // --- 04 Services périscolaires ----------------------------------------------------------------
   const cantineCountsByRefectoire = computeCantineCountsByRefectoire(servicesParNiveau)
   const cantinePrescolaireSousSol = computeCantinePrescolaireSousSol(servicesParNiveau)
-  const servicesRows = [
+  const services = [
     { name: 'Transport', value: servicesGlobalCounts.transport, capacity: transportCapaciteTotal },
-    { name: 'Cantine — sous-sol', value: cantineCountsByRefectoire.sousSol, capacity: capacite.cantineCapaciteSousSol },
-    { name: 'Cantine — terrasse', value: cantineCountsByRefectoire.terrasse, capacity: capacite.cantineCapaciteTerrasse },
-    { name: 'Cantine préscolaire — sous-sol', value: cantinePrescolaireSousSol, capacity: capacite.cantineCapacitePrescolaire },
-    { name: 'Garde Matin', value: servicesGlobalCounts.gardeMatin, capacity: capacite.gardeCapacite },
-    { name: 'Garde Soir', value: servicesGlobalCounts.gardeApresMidi, capacity: capacite.gardeCapacite },
+    { name: 'Cantine préscolaire', value: cantinePrescolaireSousSol, capacity: capacite.cantineCapacitePrescolaire },
+    { name: 'Cantine sous-sol', value: cantineCountsByRefectoire.sousSol, capacity: capacite.cantineCapaciteSousSol },
+    { name: 'Garde matin', value: servicesGlobalCounts.gardeMatin, capacity: capacite.gardeCapacite },
+    { name: 'Cantine terrasse', value: cantineCountsByRefectoire.terrasse, capacity: capacite.cantineCapaciteTerrasse },
+    { name: 'Garde soir', value: servicesGlobalCounts.gardeApresMidi, capacity: capacite.gardeCapacite },
+  ]
+  const servicesOver = services.filter((s) => s.capacity > 0 && s.value > s.capacity).map((s) => s.name)
+  // « Transport et cantine sous-sol au-delà de leur capacité. » — premier nom en capitale, les autres en minuscules.
+  const overNames = servicesOver.map((n, i) => (i === 0 ? n : n.toLowerCase()))
+  const servicesOverText =
+    overNames.length === 0
+      ? null
+      : `${overNames.length === 1 ? overNames[0] : `${overNames.slice(0, -1).join(', ')} et ${overNames[overNames.length - 1]}`} ${overNames.length > 1 ? 'au-delà de leur capacité' : 'au-delà de sa capacité'}.`
+
+  const byNiveau = new Map(servicesParNiveau.map((p) => [p.niveau, p]))
+  const niveauRows = [
+    { label: 'Transport', swatch: T.blue, tint: T.blue, values: NIVEAUX.map((n) => byNiveau.get(n)?.transport ?? 0) },
+    { label: 'Cantine', swatch: T.green, tint: T.green, values: NIVEAUX.map((n) => byNiveau.get(n)?.cantine ?? 0) },
+    { label: 'Garde matin', swatch: T.purpleLight, tint: T.purple, values: NIVEAUX.map((n) => byNiveau.get(n)?.gardeMatin ?? 0) },
+    { label: 'Garde soir', swatch: T.purple, tint: T.purple, values: NIVEAUX.map((n) => byNiveau.get(n)?.gardeApresMidi ?? 0) },
   ]
 
-  // --- Section 08 : réclamations ------------------------------------------------------------------
+  // --- 05 Réclamations ---------------------------------------------------------------------------
   const reclTotal = reclamationsParType.reduce((s, r) => s + r.value, 0)
   const activeMotifs = reclamationsParType.filter((r) => r.value > 0).sort((a, b) => b.value - a.value)
   const zeroMotifs = reclamationsParType.filter((r) => r.value === 0)
-  // Les 19 types du référentiel (actifs d'abord, triés par nombre décroissant, puis les types sans
-  // réclamation grisés) plutôt que de ne lister que les actifs et de reléguer les autres à une
-  // simple phrase — l'utilisateur veut voir tous les types, comme la section 03 liste toutes les
-  // classes y compris à 0.
   const allMotifs = [...activeMotifs, ...zeroMotifs]
-  const allMotifsHalf = Math.ceil(allMotifs.length / 2)
-  const allMotifsCols = [allMotifs.slice(0, allMotifsHalf), allMotifs.slice(allMotifsHalf)]
+  const maxMotif = Math.max(...allMotifs.map((m) => m.value), 0)
+  const maxReclMois = Math.max(...reclamationsParMois.map((m) => m.value), 0)
 
-  // --- "À retenir" : puces générées à partir des agrégats déjà réels, jamais de texte figé -------
-  // Les chiffres clés de chaque phrase sont mis en avant via <strong> (pas de texte entier en gras).
-  // Ordre des puces = ordre des 5 parties du rapport.
+  // --- « À retenir » : phrases générées depuis les agrégats réels, chiffres clés en gras ----------
   const bullets: ReactNode[] = []
-  // Partie 1 — effectifs
-  if (previousAnnee && currentAnnee) {
-    const delta = previousAnnee.effectif > 0 ? ((currentAnnee.effectif - previousAnnee.effectif) / previousAnnee.effectif) * 100 : 0
-    const direction = delta > 0.05 ? 'hausse' : delta < -0.05 ? 'baisse' : 'stable'
+  if (previousAnnee && currentAnnee && effectifDeltaPct !== null) {
+    const direction = effectifDeltaPct > 0.05 ? 'hausse' : effectifDeltaPct < -0.05 ? 'baisse' : 'stable'
     bullets.push(
-      <>
-        Effectif en{' '}
-        <strong>
-          {direction}
-          {direction !== 'stable' ? ` de ${fr1(Math.abs(delta))} %` : ''}
-        </strong>{' '}
-        par rapport à {previousAnnee.label}.
-      </>
+      direction === 'stable' ? (
+        <>
+          Effectif <b>stable</b> par rapport à {previousAnnee.label}.
+        </>
+      ) : (
+        <>
+          Effectif en{' '}
+          <b>
+            {direction} de {fr1(Math.abs(effectifDeltaPct))} %
+          </b>{' '}
+          par rapport à {previousAnnee.label}.
+        </>
+      )
     )
   }
-  // Partie 2 — absences des enseignants
-  const totalSeancesProfs = profsAbsents.reduce((s, p) => s + p.seances, 0)
-  const totalCouvertes = profsAbsents.reduce((s, p) => s + p.couvertes, 0)
-  const totalHeuresProfs = profsAbsents.reduce((s, p) => s + p.heures, 0)
-  const totalHeuresRemplacees = remplacants.reduce((s, r) => s + r.heures, 0)
   if (profsAbsents.length > 0) {
     bullets.push(
       <>
-        <strong>
+        <b>
           {profsAbsents.length} enseignant{profsAbsents.length > 1 ? 's' : ''} absent{profsAbsents.length > 1 ? 's' : ''}
-        </strong>{' '}
+        </b>{' '}
         ({totalSeancesProfs} séance{totalSeancesProfs > 1 ? 's' : ''}, {formatDureeCourte(totalHeuresProfs)}), dont{' '}
-        <strong>{totalSeancesProfs > 0 ? Math.round((totalCouvertes / totalSeancesProfs) * 100) : 0} % remplacées</strong> par {remplacants.length} remplaçant
+        <b>{totalSeancesProfs > 0 ? Math.round((totalCouvertes / totalSeancesProfs) * 100) : 0} % remplacées</b> par {remplacants.length} remplaçant
         {remplacants.length > 1 ? 's' : ''}.
       </>
     )
   }
-  // Partie 3 — assiduité élèves
   const peakWeek = weeklyTrend.reduce<WeeklyTrendPoint | null>((best, w) => (!best || w.elevesAbsentsCount > best.elevesAbsentsCount ? w : best), null)
   if (peakWeek && peakWeek.elevesAbsentsCount > 0) {
-    const autresVides = weeklyTrend.filter((w) => w.week !== peakWeek.week).every((w) => w.elevesAbsentsCount === 0 && w.profsAbsentsCount === 0)
     bullets.push(
       <>
-        L'essentiel de l'absentéisme de la période se concentre sur la semaine du <strong>{peakWeek.label}</strong> :{' '}
-        <strong>
-          {peakWeek.elevesAbsentsCount} élève(s) et {peakWeek.profsAbsentsCount} enseignant(s)
-        </strong>{' '}
-        absent(s){autresVides ? ', aucune absence les autres semaines' : ''}.
+        Pic d'absentéisme la semaine du <b>{compactWeekLabel(peakWeek.label)}</b> : {peakWeek.elevesAbsentsCount} élève(s) et {peakWeek.profsAbsentsCount} enseignant(s) absent(s).
       </>
     )
   }
@@ -644,61 +545,58 @@ export default function PrintableReportsBI({
       if (cum / totalHeuresManquees >= 0.4) break
     }
     const pct = Math.round((cum / totalHeuresManquees) * 100)
-    const listeStr = top.map((r) => `${r.classe} (${heuresDecimalFR(r.heuresManquees)})`).join(', ')
     bullets.push(
       <>
-        {top.length} classe{top.length > 1 ? 's' : ''} concentre{top.length > 1 ? 'nt' : ''} <strong>{pct} %</strong> des heures manquées : <strong>{listeStr}</strong>.
+        {top.length} classe{top.length > 1 ? 's' : ''} concentre{top.length > 1 ? 'nt' : ''} <b>{pct} %</b> des heures manquées :{' '}
+        <b>{top.map((r) => `${r.classe} (${heuresDecimalFR(r.heuresManquees)})`).join(', ')}</b>.
       </>
     )
   }
-  // Partie 5 — réclamations
-  {
-    const neutral = reclTotal === 0 && totalIncidents === 0
-    if (bullets.length > 0 || !neutral) {
-      const motifsPart = activeMotifs.length > 0 ? `, dont ${activeMotifs.slice(0, 2).map((m) => m.label).join(' et ')} en tête` : ''
-      const sanctionPart = totalIncidents === 0 ? 'aucune sanction disciplinaire' : `${totalIncidents} sanction${totalIncidents > 1 ? 's' : ''} disciplinaire${totalIncidents > 1 ? 's' : ''}`
-      bullets.push(
-        <>
-          <strong>
-            {reclTotal} réclamation{reclTotal > 1 ? 's' : ''}
-          </strong>{' '}
-          enregistrée{reclTotal > 1 ? 's' : ''} sur la période{motifsPart}, pour <strong>{sanctionPart}</strong>.
-        </>
-      )
-    }
-  }
-  // Partie 6 — infirmerie
-  if (infirmerieBilan.passages > 0) {
-    const topMotif = infirmerieBilan.parMotif.find((m) => m.label !== 'Autres motifs')
+  if (bullets.length > 0 || reclTotal > 0 || totalIncidents > 0) {
+    const motifsPart = activeMotifs.length > 0 ? ` (${activeMotifs.slice(0, 2).map((m) => m.label.split(' / ')[0]).join(' et ')} en tête)` : ''
     bullets.push(
       <>
-        <strong>
-          {infirmerieBilan.passages} passage{infirmerieBilan.passages > 1 ? 's' : ''} à l'infirmerie
-        </strong>{' '}
-        ({infirmerieBilan.eleves} élève{infirmerieBilan.eleves > 1 ? 's' : ''})
-        {topMotif ? (
+        {reclTotal > 0 ? (
           <>
-            , motif le plus fréquent : <strong>{topMotif.label}</strong>
+            <b>
+              {reclTotal} réclamation{reclTotal > 1 ? 's' : ''}
+            </b>{' '}
+            sur la période{motifsPart}
           </>
-        ) : null}
+        ) : (
+          <>Aucune réclamation sur la période</>
+        )}{' '}
+        ·{' '}
+        {totalIncidents > 0 ? (
+          <b>
+            {totalIncidents} sanction{totalIncidents > 1 ? 's' : ''} disciplinaire{totalIncidents > 1 ? 's' : ''}
+          </b>
+        ) : (
+          <>aucune sanction disciplinaire</>
+        )}
         .
       </>
     )
   }
-  // Partie 7 — rendez-vous avec les parents
-  if (rdvBilan.total > 0) {
+  if (infirmerieBilan.passages > 0 || rdvBilan.total > 0) {
+    const topMotif = infirmerieBilan.parMotif.find((m) => m.label !== 'Autres motifs')
     bullets.push(
       <>
-        <strong>
-          {rdvBilan.total} rendez-vous avec les parents
-        </strong>{' '}
-        ({rdvBilan.realises} réalisé{rdvBilan.realises > 1 ? 's' : ''}, {rdvBilan.planifies} planifié{rdvBilan.planifies > 1 ? 's' : ''}, {rdvBilan.annules} annulé{rdvBilan.annules > 1 ? 's' : ''})
-        {rdvBilan.enAttenteSignature > 0 ? (
+        {infirmerieBilan.passages > 0 ? (
           <>
-            , dont{' '}
-            <strong>
-              {rdvBilan.enAttenteSignature} compte{rdvBilan.enAttenteSignature > 1 ? 's' : ''}-rendu{rdvBilan.enAttenteSignature > 1 ? 's' : ''} en attente de signature
-            </strong>
+            <b>
+              {infirmerieBilan.passages} passage{infirmerieBilan.passages > 1 ? 's' : ''} à l'infirmerie
+            </b>
+            {topMotif ? ` (${topMotif.label.toLowerCase()})` : ''}
+          </>
+        ) : null}
+        {infirmerieBilan.passages > 0 && rdvBilan.total > 0 ? ' · ' : null}
+        {rdvBilan.total > 0 ? (
+          <>
+            <b>{rdvBilan.total} rendez-vous parents</b>
+            {rdvBilan.enAttenteSignature > 0
+              ? ` dont ${rdvBilan.enAttenteSignature} compte${rdvBilan.enAttenteSignature > 1 ? 's' : ''}-rendu${rdvBilan.enAttenteSignature > 1 ? 's' : ''} en attente de signature`
+              : ''}
           </>
         ) : null}
         .
@@ -707,110 +605,19 @@ export default function PrintableReportsBI({
   }
   const aRetenirBullets: ReactNode[] = bullets.length > 0 ? bullets : ['Aucun signal particulier à relever sur la période.']
 
-  // --- Blocs paginés : 7 grandes parties, chacune ouverte par un bandeau PartTitle -----------------
-  // Les parties s'enchaînent sans saut de page forcé : un saut avant chaque partie laissait des pages
-  // à moitié vides (parties courtes comme Infirmerie ou Rendez-vous). Le bandeau d'une partie est dans
-  // le même bloc que sa première section, donc jamais isolé en bas de page. Les longues listes restent
-  // découpées en plusieurs blocs pour que la pagination remplisse les pages.
-  const maxHeuresRemp = Math.max(1, ...remplacementsParClasse.map((r) => r.heures))
-  // Paquets de lignes assez fins pour que la pagination comble le bas de chaque page. Un reliquat de
-  // moins de 3 lignes est rattaché au paquet précédent : sinon une ou deux lignes se retrouvent seules
-  // dans un second tableau, sous un en-tête répété (ex. le 9e enseignant absent sur 9).
-  const chunk = <T,>(arr: T[], size: number): T[][] => {
-    const out: T[][] = []
-    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-    if (out.length > 1 && out[out.length - 1].length < 3) {
-      const reliquat = out.pop() as T[]
-      out[out.length - 1] = [...out[out.length - 1], ...reliquat]
-    }
-    return out
-  }
-  // Impact par classe : les classes sont déjà dans l'ordre PS-A → 3APIC ; on coupe par cycle
-  // (Maternelle / Primaire / Collège) plutôt que toutes les 5 lignes, pour que les séparations
-  // tombent entre les cycles et jamais au milieu d'un niveau (entre CE3-A et CE3-B par exemple).
-  const impactChunks = [
-    ...CYCLE_DEFS.map((def) => remplacementsParClasse.filter((r) => cycleOfClasse(r.classe) === def.key)),
-    remplacementsParClasse.filter((r) => !CYCLE_DEFS.some((def) => def.key === cycleOfClasse(r.classe))),
-  ].filter((g) => g.length > 0)
-  const remplacantsChunks = chunk(remplacants, 8)
-
-  const impactRow = (r: ClasseBreakdownRow) => (
-    <div key={r.classe} style={{ display: 'grid', gridTemplateColumns: '56px minmax(0,1fr) 60px', alignItems: 'center', gap: 8, padding: '3px 0' }}>
-      <span style={{ fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600 }}>{r.classe}</span>
-      <div style={{ height: 8, background: C.ruleSoft }}>
-        <div style={{ height: '100%', width: `${Math.round((r.heures / maxHeuresRemp) * 100)}%`, background: C.green }} />
-      </div>
-      <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600, color: r.heures > 0 ? C.greenText : C.dashGrey }}>
-        {formatDureeCourte(r.heures)}
-      </span>
-    </div>
-  )
-
-  const profsAbsentsChunks = chunk(profsAbsents, 8)
-  const remplacantsTable = (rows: typeof remplacants) => (
-    <SimpleTable columns="2fr 1fr 1fr" headers={['Remplaçant', 'Remplacements', 'Heures']} rows={rows.map((r) => [r.name, r.count, formatDureeCourte(r.heures)])} />
-  )
-  const profsAbsentsTable = (chunk: typeof profsAbsents) => (
-    <SimpleTable
-      columns="2fr 0.8fr 0.9fr 1fr"
-      headers={['Enseignant', 'Séances', 'Heures', 'Remplacées']}
-      rows={chunk.map((p) => [
-        p.name,
-        p.seances,
-        formatDureeCourte(p.heures),
-        <span key="c" style={{ fontWeight: 700, color: p.couvertes === p.seances ? C.greenText : p.couvertes === 0 ? C.redDark : C.amberDark }}>
-          {p.couvertes}/{p.seances}
-        </span>,
-      ])}
-    />
-  )
-
-  const serviceRow = (s: (typeof servicesRows)[number]) => {
-    const pct = occupancyPct(s.value, s.capacity)
-    const color = OCCUPANCY_COLORS[occupancyLevel(s.value, s.capacity)]
-    return (
-      <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '150px minmax(0,1fr) 134px', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-        <span style={{ fontSize: '9.5pt', fontWeight: 600 }}>{s.name}</span>
-        <div style={{ height: 9, background: C.ruleSoft }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: color }} />
-        </div>
-        <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '8.5pt', fontWeight: 600 }}>
-          {s.value} / {s.capacity} · {pct}%
-        </span>
-      </div>
-    )
-  }
-  const servicesChunks = chunk(servicesRows, 3)
-
-  // Motifs de réclamation : les deux colonnes sont découpées par tranches de lignes (même indice dans
-  // les deux colonnes) pour que la pagination puisse remplir le bas d'une page ; un reliquat de moins
-  // de 3 lignes est rattaché à la tranche précédente.
-  const motifRow = (r: (typeof allMotifs)[number]) => (
-    <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', opacity: r.value > 0 ? 1 : 0.5 }}>
-      <span style={{ width: 9, height: 9, borderRadius: '50%', background: r.value > 0 ? (RECLAMATION_COLORS[r.label] ?? C.accentBlue) : C.dashGrey, flexShrink: 0 }} />
-      <span style={{ flex: 1, fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.inkMuted }}>{r.label}</span>
-      <strong style={{ fontSize: '9.5pt', color: r.value > 0 ? C.ink : C.dashGrey }}>{r.value}</strong>
-    </div>
-  )
-  const maxMotifRows = Math.max(0, ...allMotifsCols.map((c) => c.length))
-  const motifBounds: number[] = []
-  for (let i = 0; i < maxMotifRows; i += 5) motifBounds.push(i)
-  if (motifBounds.length > 1 && maxMotifRows - motifBounds[motifBounds.length - 1] < 3) motifBounds.pop()
-  const motifGrids = motifBounds.map((from, i) => (
-    <div key={from} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', columnGap: 20 }}>
-      {allMotifsCols.map((col, colIdx) => (
-        <div key={colIdx}>{col.slice(from, motifBounds[i + 1]).map(motifRow)}</div>
-      ))}
-    </div>
-  ))
-  const rdvChunks = chunk(rdvBilan.rows, 10)
-  const rdvStatutColor = { Réalisé: C.greenText, Planifié: C.accentBlue, Annulé: C.redDark } as const
-  const rdvTable = (rows: typeof rdvBilan.rows) => (
-    <SimpleTable
-      columns="0.95fr 1.7fr 1.5fr 1.6fr 0.9fr"
-      headers={['Date', 'Élève', 'Enseignants', 'Motif', 'Statut']}
-      rows={rows.map((r) => [
-        `${formatDateCourte(r.date)} ${r.heure}`,
+  // --- 06 / 07 -----------------------------------------------------------------------------------
+  const rdvStatutColor = { Réalisé: T.green, Planifié: T.blue, Annulé: T.red } as const
+  const rdvChunks = chunk(rdvBilan.rows, 4)
+  const rdvTable = (list: typeof rdvBilan.rows) => (
+    <DataGrid
+      columns="24mm minmax(0,1.3fr) minmax(0,1fr) minmax(0,2.2fr) 20mm"
+      headers={['DATE', 'ÉLÈVE', 'ENSEIGNANT', 'MOTIF', 'STATUT']}
+      headSize="8px"
+      headerStyle={() => ({ padding: '1.3mm 2mm' })}
+      fontSize="9.5px"
+      colStyle={(c) => ({ padding: '1.5mm 2mm', ...(c === 0 ? { fontWeight: 700 } : {}), ...(c === 3 ? { lineHeight: 1.35 } : {}) })}
+      rows={list.map((r) => [
+        `${formatDateCourte(r.date)} · ${r.heure}`,
         `${r.studentName} (${r.classe})`,
         r.enseignants.length > 0 ? r.enseignants.join(', ') : 'Administration',
         r.motif,
@@ -820,87 +627,94 @@ export default function PrintableReportsBI({
       ])}
     />
   )
+  const topInfirmerieClasses = infirmerieBilan.parClasse.slice(0, 3)
+  const topInfirmerieMotifs = infirmerieBilan.parMotif.slice(0, 3)
+  const infirmerieDetailLine = (kind: string, showKind: boolean, label: string, value: number) => (
+    <div key={`${kind}-${label}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '3mm' }}>
+      <span>
+        <span style={{ ...monoLabel, letterSpacing: 0, display: 'inline-block', width: '13mm' }}>{showKind ? kind : ''}</span>
+        <b>{label}</b>
+      </span>
+      <b>{value}</b>
+    </div>
+  )
 
-  const maxTrendEleves = Math.max(1, ...weeklyTrend.map((w) => w.elevesAbsentsCount))
+  const rdvKpis = [
+    { v: rdvBilan.total, l: 'Rendez-vous', s: 'tous statuts', c: T.ink },
+    { v: rdvBilan.realises, l: 'Réalisés', s: 'entretien tenu', c: T.green },
+    { v: rdvBilan.planifies, l: 'Planifiés', s: 'à venir / clôturer', c: T.blue },
+    { v: rdvBilan.annules, l: 'Annulés', s: "n'ont pas eu lieu", c: rdvBilan.annules === 0 ? T.green : T.amber },
+    { v: rdvBilan.comptesRendus, l: 'Comptes-rendus', s: `sur ${rdvBilan.realises} réalisé${rdvBilan.realises > 1 ? 's' : ''}`, c: T.ink },
+    { v: rdvBilan.enAttenteSignature, l: 'À signer', s: 'signature parent', c: rdvBilan.enAttenteSignature === 0 ? T.green : T.amber },
+  ]
+
+  const plural = (n: number, one: string, many: string) => (n > 1 ? many : one)
 
   const blocks: PaginatedBlock[] = [
-    // ============================ PARTIE 1 — EFFECTIFS & DÉMOGRAPHIE ============================
+    // ================================ 01 EFFECTIFS & DÉMOGRAPHIE ================================
     {
       key: 'p1-effectifs',
       node: flowRoot(
         <div>
-          <PartTitle num={1} title="Effectifs & démographie" subtitle={`${effectif} élèves · ${nbClasses} classes · ${anneeData.length} année(s) comparée(s)`} />
-          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-            <div style={{ background: C.paperTint, padding: '10px 12px' }}>
-              <p style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
-                Élèves par année
-              </p>
+          <PartTitle
+            num={1}
+            title="Effectifs & démographie"
+            subtitle={`${effectif} élèves · ${nbClasses} classes · ${anneeData.length} ${plural(anneeData.length, 'année comparée', 'années comparées')}`}
+            marginTop="4mm"
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', border: `1px solid ${T.border}`, borderTop: 'none' }}>
+            <div style={{ padding: '2.5mm 3mm', display: 'flex', flexDirection: 'column', gap: '1.5mm' }}>
+              <div style={monoLabel}>ÉLÈVES PAR ANNÉE</div>
               {anneeData.map((a) => {
-                const maxEff = Math.max(1, ...anneeData.map((x) => x.effectif))
+                const w = (a.effectif / maxEffectifAnnee) * 100
                 return (
-                  <div key={a.anneeId} style={{ display: 'grid', gridTemplateColumns: '46px minmax(0,1fr) 30px', alignItems: 'center', gap: 6, padding: '2px 0' }}>
-                    <span style={{ fontFamily: MONO, fontSize: '8pt' }}>{a.label}</span>
-                    <div style={{ height: 8, background: C.ruleSoft }}>
-                      <div style={{ height: '100%', width: `${Math.round((a.effectif / maxEff) * 100)}%`, background: C.accentBlue }} />
-                    </div>
-                    <span style={{ textAlign: 'right', fontFamily: MONO, fontSize: '8pt', fontWeight: 600 }}>{a.effectif}</span>
+                  <div key={a.anneeId} style={{ display: 'grid', gridTemplateColumns: '10mm minmax(0,1fr) 8mm', alignItems: 'center', gap: '2mm' }}>
+                    <span style={{ fontFamily: MONO }}>{a.label}</span>
+                    <span style={{ height: '2.2mm', background: `linear-gradient(90deg,${T.blue} ${w}%,${T.track} ${w}%)` }} />
+                    <b style={{ textAlign: 'right' }}>{a.effectif}</b>
                   </div>
                 )
               })}
-              {effectifDeltaPct !== null && previousAnnee && (
-                <p style={{ marginTop: 6, fontFamily: MONO, fontSize: '7.5pt', color: effectifDeltaPct < 0 ? C.red : C.green }}>
-                  {effectifDeltaPct >= 0 ? '+' : ''}
-                  {fr1(effectifDeltaPct)}
-                  {' % par rapport à '}
-                  {previousAnnee.label}
-                </p>
-              )}
-            </div>
-            <div style={{ background: C.paperTint, padding: '10px 12px' }}>
-              <p style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
-                Capacité
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '3px 0' }}>
-                <span>Classes ouvertes</span>
-                <strong>{nbClasses}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '3px 0' }}>
-                <span>Ratio élèves/classe</span>
-                <strong>{nbClasses > 0 ? fr1(effectif / nbClasses) : '—'}</strong>
-              </div>
-            </div>
-            <div style={{ background: C.paperTint, padding: '10px 12px' }}>
-              <p style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted, marginBottom: 6 }}>
-                Genre par année
-              </p>
-              {anneeData.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {anneeData.map((a) => (
-                    <div key={a.anneeId}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontFamily: MONO, fontSize: '8pt', fontWeight: 600, width: 34, flexShrink: 0 }}>{a.label}</span>
-                        <div style={{ display: 'flex', flex: 1, height: 12, overflow: 'hidden' }}>
-                          <div style={{ background: C.accentBlue, width: `${a.pctGarcons}%` }} />
-                          <div style={{ background: 'oklch(0.62 0.15 15)', width: `${a.pctFilles}%` }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt', color: C.muted, marginTop: 2, paddingLeft: 42 }}>
-                        <span>Garçons {fr1(a.pctGarcons)} %</span>
-                        <span>Filles {fr1(a.pctFilles)} %</span>
-                      </div>
-                    </div>
-                  ))}
+              {effectifDeltaPct !== null && previousAnnee ? (
+                <div style={{ fontFamily: MONO, fontSize: '8.5px', color: effectifDeltaPct < 0 ? T.red : T.green }}>
+                  {effectifDeltaPct < 0 ? '−' : '+'}
+                  {fr1(Math.abs(effectifDeltaPct))} % par rapport à {previousAnnee.label}
                 </div>
-              ) : (
-                <p style={{ fontSize: '9pt', fontStyle: 'italic', color: C.muted, margin: 0 }}>Aucune donnée.</p>
-              )}
+              ) : null}
+            </div>
+            <div style={{ padding: '2.5mm 3mm', borderLeft: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', gap: '1.3mm' }}>
+              <div style={monoLabel}>CAPACITÉ</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Classes ouvertes</span>
+                <b>{nbClasses}</b>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Ratio élèves/classe</span>
+                <b>{nbClasses > 0 ? fr1(effectif / nbClasses) : '—'}</b>
+              </div>
+            </div>
+            <div style={{ padding: '2.5mm 3mm', borderLeft: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', gap: '1.2mm' }}>
+              <div style={monoLabel}>GENRE PAR ANNÉE</div>
+              {anneeData.length === 0 ? <span style={{ color: T.muted }}>Aucune donnée.</span> : null}
+              {anneeData.map((a) => (
+                <Fragment key={a.anneeId}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '9mm minmax(0,1fr)', alignItems: 'center', gap: '2mm' }}>
+                    <b>{a.label}</b>
+                    <span style={{ height: '2.6mm', background: `linear-gradient(90deg,${T.blue} ${a.pctGarcons}%,${T.rose} ${a.pctGarcons}%)` }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5px', color: T.muted, paddingLeft: '11mm' }}>
+                    <span>Garçons {fr1(a.pctGarcons)} %</span>
+                    <span>Filles {fr1(a.pctFilles)} %</span>
+                  </div>
+                </Fragment>
+              ))}
             </div>
           </div>
         </div>
       ),
     },
 
-    // ===================== PARTIE 2 — ABSENCES DES ENSEIGNANTS & REMPLACEMENTS =====================
+    // ========================= 02 ABSENCES DES ENSEIGNANTS & REMPLACEMENTS =========================
     {
       key: 'p2-titre-evolution',
       node: flowRoot(
@@ -908,21 +722,23 @@ export default function PrintableReportsBI({
           <PartTitle
             num={2}
             title="Absences des enseignants & remplacements"
-            subtitle={`${profsAbsents.length} enseignant(s) absent(s) · ${totalSeancesProfs} séance(s) · ${formatDureeCourte(totalHeuresRemplacees)} remplacées`}
+            subtitle={`${profsAbsents.length} ${plural(profsAbsents.length, 'enseignant absent', 'enseignants absents')} · ${totalSeancesProfs} ${plural(totalSeancesProfs, 'séance', 'séances')} · ${formatDureeCourte(totalHeuresRemplacees)} remplacées`}
+            marginTop="4mm"
           />
-          <div style={{ marginTop: 10 }}>
-            <Section num="2.1" title="Évolution des absences" annotation="enseignants">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 20 }}>
-                <TitledBars
-                  title={`Par semaine — ${weeklyTrend.length} dernières`}
-                  color={C.green}
-                  rows={weeklyTrend.map((w) => ({ label: w.week, value: w.profsAbsentsCount }))}
-                  emptyText="Aucune absence."
-                  labelWidth={48}
-                />
-                <TitledBars title="Par mois — année scolaire" color={C.green} rows={absencesProfsParMois} emptyText="Aucune absence." labelWidth={26} />
-              </div>
-            </Section>
+          <SectionHead num="2.1" title="Évolution des absences" note="enseignants absents" margin="3mm 0 1.8mm" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: '8mm' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1mm' }}>
+              <div style={{ ...monoLabel, color: T.green, fontWeight: 600 }}>PAR SEMAINE</div>
+              {weeklyTrend.map((w) => (
+                <BarLine key={w.week} label={w.week} value={w.profsAbsentsCount} max={maxWeekProfs} color={T.green} labelWidth="15mm" valueWidth="6mm" trackHeight="2.2mm" />
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1mm' }}>
+              <div style={{ ...monoLabel, color: T.green, fontWeight: 600 }}>PAR MOIS</div>
+              {absencesProfsParMois.map((m) => (
+                <BarLine key={m.label} label={m.label} value={m.value} max={maxMonthProfs} color={T.green} labelWidth="9mm" valueWidth="6mm" trackHeight="2.2mm" />
+              ))}
+            </div>
           </div>
         </div>
       ),
@@ -932,296 +748,380 @@ export default function PrintableReportsBI({
           {
             key: 'p2-profs-absents-0',
             node: flowRoot(
-              <Section num="2.2" title="Enseignants absents" annotation="période sélectionnée">
-                <p style={emptyPanel}>Aucune absence d'enseignant sur la période.</p>
-              </Section>
+              <div>
+                <SectionHead num="2.2" title="Enseignants absents" note="période sélectionnée" margin="3.5mm 0 0" />
+                <p style={emptyNote}>Aucune absence d'enseignant sur la période.</p>
+              </div>
             ),
           },
         ]
-      : profsAbsentsChunks.map((chunk, i) => ({
+      : profsAbsentsChunks.map((list, i) => ({
           key: `p2-profs-absents-${i}`,
           node: flowRoot(
-            i === 0 ? (
-              <Section num="2.2" title="Enseignants absents" annotation={`${profsAbsents.length} enseignant(s) · ${totalCouvertes}/${totalSeancesProfs} séances remplacées`}>
-                {profsAbsentsTable(chunk)}
-              </Section>
-            ) : (
-              profsAbsentsTable(chunk)
-            )
+            <div>
+              {i === 0 ? (
+                <SectionHead
+                  num="2.2"
+                  title="Enseignants absents"
+                  note={`${profsAbsents.length} enseignant(s) · ${totalCouvertes}/${totalSeancesProfs} séances remplacées`}
+                  margin="3.5mm 0 0"
+                />
+              ) : (
+                <div style={{ height: '1.5mm' }} />
+              )}
+              <DataGrid
+                columns="minmax(0,2.4fr) repeat(3,minmax(0,1fr))"
+                headers={['ENSEIGNANT', 'SÉANCES', 'HEURES', 'REMPLACÉES']}
+                headerStyle={(c) => ({ padding: '1.3mm 2mm', textAlign: c === 0 ? 'left' : 'center' })}
+                colStyle={(c) => ({ padding: '1.1mm 2mm', textAlign: c === 0 ? 'left' : 'center', ...(c === 0 ? { fontWeight: 600 } : {}) })}
+                rows={list.map((p) => [
+                  p.name,
+                  p.seances,
+                  formatDureeCourte(p.heures),
+                  <span key="c" style={{ fontWeight: 700, color: p.couvertes === p.seances ? T.green : p.couvertes === 0 ? T.red : T.amber }}>
+                    {p.couvertes}/{p.seances}
+                  </span>,
+                ])}
+              />
+            </div>
           ),
         }))),
-    {
-      key: 'p2-remplacants-0',
-      node: flowRoot(
-        <Section num="2.3" title="Enseignants remplaçants" annotation={`${remplacants.length} remplaçant(s) · ${formatDureeCourte(totalHeuresRemplacees)}`}>
-          {remplacants.length === 0 ? <p style={emptyPanel}>Aucun remplacement enregistré sur la période.</p> : remplacantsTable(remplacantsChunks[0])}
-        </Section>
-      ),
-    },
-    ...remplacantsChunks.slice(1).map((c, i) => ({ key: `p2-remplacants-${i + 1}`, node: flowRoot(remplacantsTable(c)) })),
-    {
-      key: 'p2-impact-0',
-      node: flowRoot(
-        <Section
-          num="2.4"
-          title="Impact par classe"
-          annotation={
-            remplacementsParClasse.length === 0
-              ? 'Aucune classe'
-              : `${remplacementsParClasse.filter((r) => r.heures > 0).length} classe(s) concernée(s) sur ${remplacementsParClasse.length} · heures remplacées`
-          }
-        >
-          {impactChunks.length === 0 ? <p style={emptyPanel}>Aucune classe active sur cette période.</p> : impactChunks[0].map(impactRow)}
-        </Section>
-      ),
-    },
-    ...impactChunks.slice(1).map((c, i) => ({ key: `p2-impact-${i + 1}`, node: flowRoot(<div>{c.map(impactRow)}</div>) })),
 
-    // ============================= PARTIE 3 — ASSIDUITÉ & DISCIPLINE =============================
+    // 2.3 ouvre la page 2 de la maquette.
+    ...(remplacantsChunks.length === 0
+      ? [
+          {
+            key: 'p2-remplacants-0',
+            breakBefore: true,
+            node: flowRoot(
+              <div>
+                <SectionHead num="2.3" title="Enseignants remplaçants" note="période sélectionnée" margin="3mm 0 0" />
+                <p style={emptyNote}>Aucun remplacement enregistré sur la période.</p>
+              </div>
+            ),
+          },
+        ]
+      : remplacantsChunks.map((list, i) => {
+          const half = Math.ceil(list.length / 2)
+          return {
+            key: `p2-remplacants-${i}`,
+            breakBefore: i === 0,
+            node: flowRoot(
+              <div>
+                {i === 0 ? (
+                  <SectionHead num="2.3" title="Enseignants remplaçants" note={`${remplacants.length} remplaçant(s) · ${formatDureeCourte(totalHeuresRemplacees)}`} margin="3mm 0 0" />
+                ) : (
+                  <div style={{ height: '1.5mm' }} />
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '5mm' }}>
+                  {[list.slice(0, half), list.slice(half)].map((col, k) => (
+                    <DataGrid
+                      key={k}
+                      columns="minmax(0,2.6fr) minmax(0,1fr) minmax(0,1fr)"
+                      headers={['REMPLAÇANT', 'NB', 'HEURES']}
+                      headerStyle={(c) => ({ padding: c === 0 ? '1.3mm 2mm' : '1.3mm 1mm', textAlign: c === 0 ? 'left' : 'center' })}
+                      colStyle={(c) =>
+                        c === 0
+                          ? { padding: '1.1mm 2mm', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                          : { padding: '1.1mm 1mm', textAlign: 'center' }
+                      }
+                      rows={col.map((r) => [r.name, r.count, formatDureeCourte(r.heures)])}
+                    />
+                  ))}
+                </div>
+              </div>
+            ),
+          }
+        })),
     {
-      key: 'p3-titre-tendance',
+      key: 'p2-impact',
+      node: flowRoot(
+        <div>
+          <SectionHead
+            num="2.4"
+            title="Impact par classe"
+            note={
+              remplacementsParClasse.length === 0
+                ? 'aucune classe'
+                : `heures remplacées · ${remplacementsParClasse.filter((r) => r.heures > 0).length} classes concernées sur ${remplacementsParClasse.length}${hasMaternelle ? ` (maternelle : ${formatDureeCourte(heuresMaternelle)})` : ''}`
+            }
+            margin="3.5mm 0 1.8mm"
+          />
+          {remplacementsParClasse.length === 0 ? (
+            <p style={emptyNote}>Aucune classe active sur cette période.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', columnGap: '8mm', rowGap: '1.2mm' }}>
+              {impactOrder.map((r) => {
+                const col = r.heures > 0 ? T.green : T.nul
+                const w = maxHeuresRemp > 0 ? (r.heures / maxHeuresRemp) * 100 : 0
+                return (
+                  <div key={r.classe} style={{ display: 'grid', gridTemplateColumns: '17mm minmax(0,1fr) 11mm', alignItems: 'center', gap: '2mm', fontFamily: MONO, fontSize: '9px' }}>
+                    <b style={{ color: col }}>{r.classe}</b>
+                    <span style={{ height: '2.2mm', background: T.track, display: 'flex' }}>
+                      <span style={{ background: T.green, width: `${w}%` }} />
+                    </span>
+                    <b style={{ textAlign: 'right', color: col }}>{formatDureeCourte(r.heures)}</b>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ),
+    },
+
+    // ================================ 03 ASSIDUITÉ & DISCIPLINE DES ÉLÈVES ================================
+    {
+      key: 'p3-assiduite',
       node: flowRoot(
         <div>
           <PartTitle
             num={3}
             title="Assiduité & discipline des élèves"
-            subtitle={`Présence ${fr1(tauxPresence)} % · ${cycleTiles.absencesSeances.total} séances manquées · ${cycleTiles.retardsSeances.total} retards · ${totalIncidents} sanction(s)`}
+            subtitle={`Présence ${fr1(tauxPresence)} % · ${cycleTiles.absencesSeances.total} séances manquées · ${cycleTiles.retardsSeances.total} retards · ${totalIncidents} ${plural(totalIncidents, 'sanction', 'sanctions')}`}
+            marginTop="4.5mm"
           />
-          <div style={{ marginTop: 10 }}>
-            <Section num="3.1" title="Tendance d'assiduité" annotation={`élèves absents · ${weeklyTrend.length} dernières semaines`}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 92, paddingTop: 12 }}>
-                {weeklyTrend.map((w) => {
-                  const h = Math.max(2, Math.round((w.elevesAbsentsCount / maxTrendEleves) * 62))
-                  return (
-                    <div key={w.week} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: 78 }}>
-                        <span style={{ fontFamily: MONO, fontSize: '6.5pt', color: C.red, minHeight: 8 }}>{w.elevesAbsentsCount > 0 ? w.elevesAbsentsCount : ''}</span>
-                        <div style={{ width: 16, height: h, background: C.red }} />
-                      </div>
-                      <span style={{ fontFamily: MONO, fontSize: '7pt', color: C.muted }}>{w.week}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </Section>
-          </div>
-        </div>
-      ),
-    },
-    ...(classGroups.length > 0
-      ? [
-          {
-            key: 'p3-table-header',
-            node: flowRoot(
-              <Section num="3.2" title="Assiduité par classe" annotation={`${nbClasses} classes · ${effectif} élèves comptabilisés`}>
-                <ClasseGroupGrid group={classGroups[0]} />
-              </Section>
-            ),
-          },
-          ...classGroups.slice(1).map((g) => ({
-            key: `p3-table-${g.name}`,
-            node: flowRoot(<ClasseGroupGrid group={g} />),
-          })),
-        ]
-      : [
-          {
-            key: 'p3-table-header',
-            node: flowRoot(
-              <Section num="3.2" title="Assiduité par classe" annotation={`${nbClasses} classes · ${effectif} élèves comptabilisés`}>
-                <p style={emptyPanel}>Aucune classe active sur la période sélectionnée.</p>
-              </Section>
-            ),
-          },
-        ]),
-    {
-      key: 'p3-table-total',
-      node: flowRoot(
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: CLASSE_TABLE_COLUMNS, gap: 1, background: C.rule, border: `1px solid ${C.rule}`, fontSize: '8.5pt' }}>
-            <div style={{ padding: '4px 6px', background: C.band, fontWeight: 700 }}>Total établissement</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{grandTotal.effectif}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{fr1(grandTotal.presence)}%</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{grandTotal.absences}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{grandTotal.retards}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{heuresDecimalFR(grandTotal.heures)}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{grandTotal.sanctions}</div>
-            <div style={{ padding: '4px 6px', textAlign: 'center', background: C.band, fontWeight: 700 }}>{fr1(grandTotal.conduite)}/20</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '8pt', color: C.muted, marginTop: 6 }}>
-            <span style={{ display: 'inline-block', width: 9, height: 9, background: C.flagRow, border: `1px solid ${C.flagBorder}` }} />
-            Classe à signaler (≥ 1 sanction ou ≥ 10 absences) sur la période sélectionnée
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'p3-cycle',
-      node: flowRoot(
-        <Section num="3.3" title="Vue par cycle" annotation="période sélectionnée">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9pt' }}>
-            <thead>
-              <tr>
-                {['Indicateur', 'Maternelle', 'Primaire', 'Collège', 'Total'].map((h, i) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: i === 0 ? 'left' : 'center',
-                      padding: '4px 8px',
-                      borderBottom: `1.5px solid ${C.ink}`,
-                      fontFamily: MONO,
-                      fontSize: '7.5pt',
-                      fontWeight: 600,
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      color: C.muted,
-                    }}
-                  >
-                    {h}
-                  </th>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.35fr)', gap: '7mm' }}>
+            <div>
+              <SectionHead num="3.1" title="Tendance d'assiduité" margin="3mm 0 1.8mm" />
+              <div style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted, marginBottom: '1.5mm' }}>Élèves absents par semaine</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.4mm' }}>
+                {weeklyTrend.map((w) => (
+                  <BarLine key={w.week} label={w.week} value={w.elevesAbsentsCount} max={maxWeekEleves} color={T.red} labelWidth="15mm" valueWidth="7mm" trackHeight="3mm" valueColor={T.red} />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { label: 'Élèves absents', counts: cycleTiles.absencesEleves },
-                { label: 'Séances manquées', counts: cycleTiles.absencesSeances },
-                { label: 'Élèves en retard', counts: cycleTiles.retardsEleves },
-                { label: 'Séances en retard', counts: cycleTiles.retardsSeances },
-                { label: 'Problèmes disciplinaires', counts: cycleTiles.disciplineEleves },
-              ].map((row) => (
-                <tr key={row.label}>
-                  <td style={{ padding: '4px 8px', borderBottom: `1px solid ${C.ruleSoft}`, fontWeight: 600 }}>{row.label}</td>
-                  <td style={{ textAlign: 'center', padding: '4px 8px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.counts.maternelle}</td>
-                  <td style={{ textAlign: 'center', padding: '4px 8px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.counts.primaire}</td>
-                  <td style={{ textAlign: 'center', padding: '4px 8px', borderBottom: `1px solid ${C.ruleSoft}` }}>{row.counts.college}</td>
-                  <td style={{ textAlign: 'center', padding: '4px 8px', borderBottom: `1px solid ${C.ruleSoft}`, fontWeight: 700 }}>{row.counts.total}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
+              </div>
+            </div>
+            <div>
+              <SectionHead num="3.2" title="Vue par cycle" margin="3mm 0 0" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2.2fr) repeat(4,minmax(0,1fr))', fontSize: '9.5px' }}>
+                {['INDICATEUR', 'MAT.', 'PRI.', 'COL.', 'TOTAL'].map((h, i) => (
+                  <div key={h} style={{ fontFamily: MONO, fontSize: '8px', color: T.muted, padding: i === 0 ? '1.2mm 1.5mm' : '1.2mm 1mm', borderBottom: `1px solid ${T.ink}`, textAlign: i === 0 ? 'left' : 'center' }}>
+                    {h}
+                  </div>
+                ))}
+                {[
+                  { label: 'Élèves absents', counts: cycleTiles.absencesEleves },
+                  { label: 'Séances manquées', counts: cycleTiles.absencesSeances },
+                  { label: 'Élèves en retard', counts: cycleTiles.retardsEleves },
+                  { label: 'Séances en retard', counts: cycleTiles.retardsSeances },
+                  { label: 'Problèmes disciplinaires', counts: cycleTiles.disciplineEleves },
+                ].map((r) => (
+                  <Fragment key={r.label}>
+                    <div style={{ padding: '1.1mm 1.5mm', borderBottom: `1px solid ${T.sep}`, fontWeight: 600 }}>{r.label}</div>
+                    {[r.counts.maternelle, r.counts.primaire, r.counts.college].map((v, i) => (
+                      <div key={i} style={{ padding: '1.1mm 1mm', borderBottom: `1px solid ${T.sep}`, textAlign: 'center', color: nulOr(v, T.ink) }}>
+                        {v}
+                      </div>
+                    ))}
+                    <div style={{ padding: '1.1mm 1mm', borderBottom: `1px solid ${T.sep}`, textAlign: 'center', fontWeight: 700, color: nulOr(r.counts.total, T.ink) }}>{r.counts.total}</div>
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       ),
     },
     {
       key: 'p3-activite',
       node: flowRoot(
-        <Section num="3.4" title="Activité mensuelle" annotation={formatPeriodLabel(periodStart, periodEnd)}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-            <KpiTile
-              value={String(cycleTiles.absencesSeances.total)}
-              color={cycleTiles.absencesSeances.total === 0 ? C.green : C.red}
-              label="Séances manquées — élèves"
-              sub={formatPeriodLabel(periodStart, periodEnd)}
-            />
-            <KpiTile
-              value={String(cycleTiles.retardsSeances.total)}
-              color={cycleTiles.retardsSeances.total === 0 ? C.green : C.amber}
-              label="Séances en retard — élèves"
-              sub={formatPeriodLabel(periodStart, periodEnd)}
-            />
-            <KpiTile
-              value={String(totalIncidents)}
-              color={totalIncidents === 0 ? C.green : C.red}
-              label="Incidents disciplinaires"
-              sub={formatPeriodLabel(periodStart, periodEnd)}
-            />
+        <div>
+          <SectionHead num="3.3" title="Activité mensuelle par cycle" note={`année scolaire ${anneeLibelle}`} margin="4mm 0 0" />
+          <div style={{ display: 'grid', gridTemplateColumns: '14mm repeat(12,minmax(0,1fr))', fontSize: '9.5px', textAlign: 'center' }}>
+            <div style={{ padding: '1.2mm 0', borderBottom: `1px solid ${T.sep}` }} />
+            {[
+              { l: 'ABSENCES', c: T.red, ml: 0 },
+              { l: 'RETARDS', c: T.amber, ml: 2 },
+              { l: 'DISCIPLINE', c: T.purple, ml: 2 },
+            ].map((g) => (
+              <div
+                key={g.l}
+                style={{ gridColumn: 'span 4', fontFamily: MONO, fontSize: '8.5px', fontWeight: 600, color: g.c, padding: '1.2mm 0', borderBottom: `2px solid ${g.c}`, marginLeft: g.ml ? `${g.ml}mm` : undefined }}
+              >
+                {g.l}
+              </div>
+            ))}
+            <div style={{ fontFamily: MONO, fontSize: '8px', color: T.muted, padding: '1mm 0', textAlign: 'left' }}>Mois</div>
+            {['Mat', 'Pri', 'Col', 'Tot', 'Mat', 'Pri', 'Col', 'Tot', 'Mat', 'Pri', 'Col', 'Tot'].map((h, i) => (
+              <div key={i} style={{ fontFamily: MONO, fontSize: '8px', color: T.muted, padding: '1mm 0' }}>
+                {h}
+              </div>
+            ))}
+            {[...monthRows, { label: 'Total', values: monthTotals, bold: true }].map((r) => (
+              <Fragment key={r.label}>
+                <div style={{ padding: '1.1mm 0', borderTop: `1px solid ${T.sep}`, textAlign: 'left', fontWeight: 600 }}>{r.label}</div>
+                {r.values.map((v, i) => {
+                  const isTot = i % 4 === 3
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        padding: '1.1mm 0',
+                        borderTop: `1px solid ${T.sep}`,
+                        fontWeight: isTot || ('bold' in r && r.bold) ? 700 : 400,
+                        color: v === 0 ? T.nul : isTot ? GROUP_COLORS[Math.floor(i / 4)] : T.ink,
+                      }}
+                    >
+                      {v}
+                    </div>
+                  )
+                })}
+              </Fragment>
+            ))}
           </div>
-        </Section>
-      ),
-    },
-    {
-      key: 'p3-activite-bars',
-      node: flowRoot(
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 16 }}>
-          <TitledBars title="Absences — par mois" color={C.red} rows={absencesElevesParMois} emptyText="Aucune absence." labelWidth={26} />
-          <TitledBars title="Retards — par mois" color={C.amber} rows={retardsElevesParMois} emptyText="Aucun retard." labelWidth={26} />
-          <TitledBars title="Discipline — par mois" color={C.red} rows={disciplineElevesParMois} emptyText="Aucun incident." labelWidth={26} />
-        </div>
-      ),
-    },
-    {
-      key: 'p3-activite-tables',
-      node: flowRoot(
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 16 }}>
-          <MonthCycleTable title="Absences par mois et cycle" color={C.accentBlue} data={absencesParMoisEtCycle} />
-          <MonthCycleTable title="Retards par mois et cycle" color={C.amber} data={retardsParMoisEtCycle} />
-          <MonthCycleTable title="Discipline par mois et cycle" color={C.red} data={disciplineParMoisEtCycle} />
         </div>
       ),
     },
 
-    // ================================ PARTIE 4 — SERVICES PÉRISCOLAIRES ================================
+    // 3.4 ouvre la page 3 de la maquette.
+    {
+      key: 'p3-classes',
+      breakBefore: true,
+      node: flowRoot(
+        <div>
+          <SectionHead num="3.4" title="Assiduité par classe" note={`${nbClasses} classes · ${effectif} élèves comptabilisés`} margin="3mm 0 0" />
+          {classGroups.length === 0 ? <p style={emptyNote}>Aucune classe active sur la période sélectionnée.</p> : <ClasseTable groups={classGroups} total={classTotal} />}
+          <div style={{ display: 'flex', gap: '2mm', alignItems: 'center', fontSize: '8.5px', color: T.muted, marginTop: '1.5mm' }}>
+            <span style={{ width: '3mm', height: '3mm', background: T.alertBg, border: `1px solid ${T.alertBorder}`, display: 'inline-block' }} />
+            <span>
+              Classe à signaler (≥ 1 sanction ou ≥ 10 absences) · <b style={{ color: T.red }}>rouge</b> : absences ≥ 10 / sanction · <b style={{ color: T.amber }}>ambre</b> : retards ≥ 10
+            </span>
+          </div>
+        </div>
+      ),
+    },
+
+    // ================================ 04 SERVICES PÉRISCOLAIRES ================================
     {
       key: 'p4-services',
       node: flowRoot(
         <div>
-          <PartTitle num={4} title="Services périscolaires" subtitle="Transport · cantine · garde — inscrits / capacité" />
-          <div style={{ marginTop: 10 }}>
-            <Section num="4.1" title="Occupation des services" annotation={`${servicesRows.length} services`}>
-              <div>{(servicesChunks[0] ?? []).map(serviceRow)}</div>
-            </Section>
+          <PartTitle num={4} title="Services périscolaires" subtitle="Transport · cantine · garde — inscrits / capacité" marginTop="4.5mm" />
+          <SectionHead num="4.1" title="Occupation des services" note={`${services.length} services`} margin="3mm 0 2mm" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', columnGap: '8mm', rowGap: '2mm' }}>
+            {services.map((s) => {
+              const color = occupancyColor(s.value, s.capacity)
+              const pct = s.capacity > 0 ? Math.round((s.value / s.capacity) * 100) : 0
+              return (
+                <div key={s.name} style={{ display: 'grid', gridTemplateColumns: '30mm minmax(0,1fr) 25mm', alignItems: 'center', gap: '2mm' }}>
+                  <b style={{ fontSize: '9.5px' }}>{s.name}</b>
+                  <span style={{ height: '2.6mm', background: T.track, display: 'flex' }}>
+                    <span style={{ background: color, width: `${Math.min(100, pct)}%` }} />
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: '9px', textAlign: 'right' }}>
+                    <b>
+                      {s.value} / {s.capacity}
+                    </b>{' '}
+                    · <b style={{ color }}>{pct} %</b>
+                  </span>
+                </div>
+              )
+            })}
           </div>
+          {servicesOverText ? <div style={{ fontSize: '8.5px', color: T.red, marginTop: '1.5mm' }}>{servicesOverText}</div> : null}
         </div>
       ),
     },
-    // Suite de la liste des services : un bloc séparé pour que la pagination puisse remplir le bas
-    // d'une page au lieu de reporter tout le bloc quand il manque quelques pixels.
-    ...servicesChunks.slice(1).map((c, i) => ({ key: `p4-services-${i + 1}`, node: flowRoot(<div>{c.map(serviceRow)}</div>) })),
     {
-      key: 'p4-services-niveau',
-      node: flowRoot(
-        <Section num="4.2" title="Répartition par niveau" annotation="élèves inscrits">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 20 }}>
-            <TitledBars title="Transport par niveau" color={C.accentBlue} rows={servicesParNiveau.map((p) => ({ label: p.niveau, value: p.transport }))} emptyText="Aucune donnée." labelWidth={34} />
-            <TitledBars title="Cantine par niveau" color={C.green} rows={servicesParNiveau.map((p) => ({ label: p.niveau, value: p.cantine }))} emptyText="Aucune donnée." labelWidth={34} />
-          </div>
-        </Section>
-      ),
-    },
-    {
-      key: 'p4-services-niveau-garde',
-      node: flowRoot(
-        <GroupedColumnsChart
-          title="Garde par niveau (matin / soir)"
-          points={servicesParNiveau.map((p) => ({ label: p.niveau, a: p.gardeMatin, b: p.gardeApresMidi }))}
-          colorA="oklch(0.6 0.11 300)"
-          colorB="oklch(0.46 0.14 300)"
-          labelA="Garde Matin"
-          labelB="Garde Soir"
-          emptyText="Aucun élève inscrit en garde sur les niveaux actifs."
-        />
-      ),
-    },
-
-    // ==================================== PARTIE 5 — RÉCLAMATIONS ====================================
-    {
-      key: 'p5-reclamations',
+      key: 'p4-niveau',
       node: flowRoot(
         <div>
-          <PartTitle num={5} title="Réclamations des parents" subtitle={`${reclTotal} réclamation(s) sur la période · ${activeMotifs.length} motif(s) actif(s) sur ${allMotifs.length}`} />
-          <div style={{ marginTop: 10 }}>
-            <Section num="5.1" title="Réclamations par motif" annotation="période sélectionnée">
-              {reclTotal === 0 ? (
-                <p style={emptyPanel}>Aucune réclamation enregistrée sur la période.</p>
-              ) : (
-                motifGrids[0] ?? null
-              )}
-            </Section>
+          <SectionHead num="4.2" title="Répartition par niveau" note="élèves inscrits" margin="3.5mm 0 0" />
+          <div style={{ display: 'grid', gridTemplateColumns: `22mm repeat(${NIVEAUX.length},minmax(0,1fr)) 12mm`, fontSize: '9.5px', textAlign: 'center' }}>
+            {['SERVICE', ...NIVEAUX, 'TOTAL'].map((h) => (
+              <div key={h} style={{ fontFamily: MONO, fontSize: '8px', color: T.muted, padding: '1.2mm 0', borderBottom: `1px solid ${T.ink}` }}>
+                {h}
+              </div>
+            ))}
+            {niveauRows.map((r) => {
+              const max = Math.max(...r.values, 0)
+              return (
+                <Fragment key={r.label}>
+                  <div style={{ padding: '1.2mm 0', borderBottom: `1px solid ${T.sep}`, textAlign: 'left', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '1.5mm' }}>
+                    <span style={{ width: '2.2mm', height: '2.2mm', background: r.swatch, display: 'inline-block', flexShrink: 0 }} />
+                    {r.label}
+                  </div>
+                  {r.values.map((v, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: '1.2mm 0',
+                        borderBottom: `1px solid ${T.sep}`,
+                        color: v === 0 ? T.nul : T.ink,
+                        background: v === 0 || max === 0 ? 'transparent' : `color-mix(in oklab, ${r.tint} ${Math.round((v / max) * 32)}%, white)`,
+                      }}
+                    >
+                      {v}
+                    </div>
+                  ))}
+                  <div style={{ padding: '1.2mm 0', borderBottom: `1px solid ${T.sep}`, fontWeight: 700 }}>{r.values.reduce((s, v) => s + v, 0)}</div>
+                </Fragment>
+              )
+            })}
           </div>
         </div>
       ),
     },
-    ...(reclTotal === 0 ? [] : motifGrids.slice(1).map((g, i) => ({ key: `p5-reclamations-${i + 1}`, node: flowRoot(g) }))),
+
+    // ================================ 05 RÉCLAMATIONS (ouvre la page 4) ================================
     {
-      key: 'p5-reclamations-mois',
+      key: 'p5-reclamations',
+      breakBefore: true,
       node: flowRoot(
-        <Section num="5.2" title="Évolution mensuelle" annotation="année scolaire">
-          <LabeledBars rows={reclamationsParMois} color={C.accentBlue} emptyText="Aucune réclamation sur l'année scolaire." labelWidth={26} />
-        </Section>
+        <div>
+          <PartTitle
+            num={5}
+            title="Réclamations des parents"
+            subtitle={`${reclTotal} ${plural(reclTotal, 'réclamation', 'réclamations')} sur la période · ${activeMotifs.length} ${plural(activeMotifs.length, 'motif actif', 'motifs actifs')} sur ${allMotifs.length}`}
+            marginTop="3mm"
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.7fr) minmax(0,1fr)', gap: '8mm' }}>
+            <div>
+              <SectionHead num="5.1" title="Réclamations par motif" margin="3mm 0 1.8mm" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '.7mm' }}>
+                {allMotifs.map((m) => {
+                  const color = m.value > 0 ? (RECLAMATION_COLORS[m.label] ?? T.blue) : T.zeroDot
+                  const w = maxMotif > 0 ? (m.value / maxMotif) * 100 : 0
+                  return (
+                    <div key={m.label} style={{ display: 'grid', gridTemplateColumns: '46mm minmax(0,1fr) 6mm', alignItems: 'center', gap: '2mm', color: m.value > 0 ? T.ink : T.nul }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '1.5mm' }}>
+                        <span style={{ width: '2.2mm', height: '2.2mm', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                        {m.label}
+                      </span>
+                      <span style={{ height: '2.2mm', background: T.track, display: 'flex' }}>
+                        <span style={{ background: color, width: `${w}%` }} />
+                      </span>
+                      <b style={{ textAlign: 'right' }}>{m.value}</b>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <div>
+              <SectionHead num="5.2" title="Évolution mensuelle" margin="3mm 0 1.8mm" />
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, reclamationsParMois.length)},minmax(0,1fr))`, columnGap: '1.2mm', alignItems: 'end', height: '48mm', borderBottom: `1px solid ${T.ink}` }}>
+                {reclamationsParMois.map((m) => (
+                  <div key={m.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: '.8mm' }}>
+                    <b style={{ fontFamily: MONO, fontSize: '9px', color: m.value > 0 ? T.blue : T.nul }}>{m.value}</b>
+                    <span style={{ width: '100%', height: `${maxReclMois > 0 ? (m.value / maxReclMois) * 85 : 0}%`, background: T.blue, minHeight: '.5mm', opacity: m.value > 0 ? 1 : 0.25 }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, reclamationsParMois.length)},minmax(0,1fr))`, columnGap: '1.2mm', marginTop: '1mm' }}>
+                {reclamationsParMois.map((m) => (
+                  <span key={m.label} style={{ fontFamily: MONO, fontSize: '7.5px', color: T.muted, textAlign: 'center' }}>
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+              <div style={{ fontSize: '8.5px', color: T.muted, marginTop: '1.5mm' }}>Nombre de réclamations par mois · année {anneeLibelle}.</div>
+            </div>
+          </div>
+        </div>
       ),
     },
 
-    // ==================================== PARTIE 6 — INFIRMERIE ====================================
+    // ================================ 06 INFIRMERIE ================================
     {
       key: 'p6-infirmerie',
       node: flowRoot(
@@ -1229,48 +1129,49 @@ export default function PrintableReportsBI({
           <PartTitle
             num={6}
             title="Infirmerie"
-            subtitle={`${infirmerieBilan.passages} passage(s) · ${infirmerieBilan.eleves} élève(s) concerné(s)`}
+            subtitle={`${infirmerieBilan.passages} ${plural(infirmerieBilan.passages, 'passage', 'passages')} · ${infirmerieBilan.eleves} ${plural(infirmerieBilan.eleves, 'élève concerné', 'élèves concernés')}`}
+            marginTop="4.5mm"
           />
-          <div style={{ marginTop: 10 }}>
-            <Section num="6.1" title="Vue d'ensemble" annotation="période sélectionnée">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-                <KpiTile
-                  value={String(infirmerieBilan.passages)}
-                  color={infirmerieBilan.passages === 0 ? C.green : C.accentBlue}
-                  label="Passages à l'infirmerie"
-                  sub={`sur ${periodeJours(periodStart, periodEnd)} jour(s)`}
-                />
-                <KpiTile value={String(infirmerieBilan.eleves)} color={C.ink} label="Élèves concernés" sub={`sur ${effectif} inscrits`} />
-                <KpiTile
-                  value={infirmerieBilan.eleves > 0 ? fr1(infirmerieBilan.passages / infirmerieBilan.eleves) : '—'}
-                  color={C.ink}
-                  label="Passages par élève"
-                  sub="moyenne sur la période"
-                />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr)) minmax(0,2.2fr)', border: `1px solid ${T.border}`, borderTop: 'none' }}>
+            {[
+              { v: String(infirmerieBilan.passages), n: infirmerieBilan.passages, c: T.blue, l: plural(infirmerieBilan.passages, 'Passage', 'Passages'), s: `sur ${periodeJours(periodStart, periodEnd)} jours` },
+              { v: String(infirmerieBilan.eleves), n: infirmerieBilan.eleves, c: T.ink, l: plural(infirmerieBilan.eleves, 'Élève concerné', 'Élèves concernés'), s: `sur ${effectif} inscrits` },
+              {
+                v: infirmerieBilan.eleves > 0 ? fr1(infirmerieBilan.passages / infirmerieBilan.eleves) : '—',
+                n: infirmerieBilan.eleves,
+                c: T.ink,
+                l: 'Passage / élève',
+                s: 'moyenne',
+              },
+            ].map((k, i) => (
+              <div key={k.l} style={{ padding: '2.5mm 2mm', textAlign: 'center', borderLeft: i === 0 ? undefined : `1px solid ${T.sep}` }}>
+                <div style={{ fontSize: '20px', fontWeight: 700, lineHeight: 1.1, color: nulOr(k.n, k.c) }}>{k.v}</div>
+                <div style={{ fontWeight: 600 }}>{k.l}</div>
+                <div style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted }}>{k.s}</div>
               </div>
-            </Section>
+            ))}
+            <div style={{ padding: '2.5mm 4mm', borderLeft: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2mm' }}>
+              {infirmerieBilan.passages === 0 ? (
+                <span style={{ color: T.muted }}>Aucun passage enregistré sur la période.</span>
+              ) : (
+                <>
+                  {topInfirmerieClasses.map((c, i) => infirmerieDetailLine('CLASSE', i === 0, c.label, c.value))}
+                  {infirmerieBilan.parClasse.length > topInfirmerieClasses.length ? (
+                    <span style={{ ...monoLabel, letterSpacing: 0 }}>+ {infirmerieBilan.parClasse.length - topInfirmerieClasses.length} autre(s) classe(s)</span>
+                  ) : null}
+                  {topInfirmerieMotifs.map((m, i) => infirmerieDetailLine('MOTIF', i === 0, m.label, m.value))}
+                  {infirmerieBilan.parMotif.length > topInfirmerieMotifs.length ? (
+                    <span style={{ ...monoLabel, letterSpacing: 0 }}>+ {infirmerieBilan.parMotif.length - topInfirmerieMotifs.length} autre(s) motif(s)</span>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
         </div>
       ),
     },
-    {
-      key: 'p6-infirmerie-classes',
-      node: flowRoot(
-        <Section num="6.2" title="Passages par classe" annotation={`${infirmerieBilan.parClasse.length} classe(s) concernée(s)`}>
-          <CountBars rows={infirmerieBilan.parClasse} color={C.accentBlue} emptyText="Aucun passage à l'infirmerie enregistré sur la période." labelWidth={56} />
-        </Section>
-      ),
-    },
-    {
-      key: 'p6-infirmerie-motifs',
-      node: flowRoot(
-        <Section num="6.3" title="Motifs les plus fréquents" annotation="motifs saisis à l'infirmerie">
-          <CountBars rows={infirmerieBilan.parMotif} color={C.green} emptyText="Aucun passage à l'infirmerie enregistré sur la période." labelWidth={300} />
-        </Section>
-      ),
-    },
 
-    // ============================ PARTIE 7 — RENDEZ-VOUS AVEC LES PARENTS ============================
+    // ================================ 07 RENDEZ-VOUS AVEC LES PARENTS ================================
     {
       key: 'p7-rdv',
       node: flowRoot(
@@ -1278,145 +1179,176 @@ export default function PrintableReportsBI({
           <PartTitle
             num={7}
             title="Rendez-vous avec les parents"
-            subtitle={`${rdvBilan.total} rendez-vous · ${rdvBilan.realises} réalisé(s) · ${rdvBilan.planifies} planifié(s) · ${rdvBilan.annules} annulé(s)`}
+            subtitle={`${rdvBilan.total} ${plural(rdvBilan.total, 'rendez-vous', 'rendez-vous')} · ${rdvBilan.realises} ${plural(rdvBilan.realises, 'réalisé', 'réalisés')} · ${rdvBilan.planifies} ${plural(rdvBilan.planifies, 'planifié', 'planifiés')} · ${rdvBilan.annules} ${plural(rdvBilan.annules, 'annulé', 'annulés')}`}
+            marginTop="4.5mm"
           />
-          <div style={{ marginTop: 10 }}>
-            <Section num="7.1" title="Vue d'ensemble" annotation="période sélectionnée">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-                <KpiTile value={String(rdvBilan.total)} color={C.ink} label="Rendez-vous" sub="tous statuts confondus" />
-                <KpiTile value={String(rdvBilan.realises)} color={C.green} label="Réalisés" sub="entretien tenu" />
-                <KpiTile value={String(rdvBilan.planifies)} color={C.accentBlue} label="Planifiés" sub="à venir ou à clôturer" />
-                <KpiTile value={String(rdvBilan.annules)} color={rdvBilan.annules === 0 ? C.green : C.amber} label="Annulés" sub="n'ont pas eu lieu" />
-                <KpiTile value={String(rdvBilan.comptesRendus)} color={C.ink} label="Comptes-rendus rédigés" sub={`sur ${rdvBilan.realises} réalisé(s)`} />
-                <KpiTile
-                  value={String(rdvBilan.enAttenteSignature)}
-                  color={rdvBilan.enAttenteSignature === 0 ? C.green : C.amber}
-                  label="En attente de signature"
-                  sub="signature du parent"
-                />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', border: `1px solid ${T.border}`, borderTop: 'none' }}>
+            {rdvKpis.map((k, i) => (
+              <div key={k.l} style={{ padding: '2.2mm 1.5mm', textAlign: 'center', borderLeft: i === 0 ? undefined : `1px solid ${T.sep}` }}>
+                <div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.1, color: k.c }}>{k.v}</div>
+                <div style={{ fontWeight: 600, fontSize: '9.5px' }}>{k.l}</div>
+                <div style={{ fontFamily: MONO, fontSize: '8px', color: T.muted }}>{k.s}</div>
               </div>
-            </Section>
+            ))}
           </div>
         </div>
       ),
     },
+    // La liste est coupée en paquets : si elle dépasse la page 4, la suite passe sur une page de
+    // continuation (en-tête compact) au lieu de laisser un grand vide en bas de la page 4.
     {
-      key: 'p7-rdv-repartition',
+      key: 'p7-rdv-liste-0',
       node: flowRoot(
-        <Section num="7.2" title="Répartition" annotation="hors rendez-vous annulés">
-          <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 20 }}>
-            <div>
-              <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.accentBlue, marginBottom: 4 }}>Par motif</p>
-              <CountBars rows={rdvBilan.parMotif} color={C.accentBlue} emptyText="Aucun rendez-vous sur la période." labelWidth={210} />
-            </div>
-            <div>
-              <p style={{ fontFamily: MONO, fontSize: '7.5pt', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.green, marginBottom: 4 }}>Par classe</p>
-              <CountBars rows={rdvBilan.parClasse} color={C.green} emptyText="Aucun rendez-vous sur la période." labelWidth={56} />
-            </div>
+        <div>
+          <SectionHead num="7.1" title="Liste des rendez-vous" note="du plus récent au plus ancien" margin="3.5mm 0 0" />
+          {rdvChunks.length === 0 ? <p style={emptyNote}>Aucun rendez-vous avec les parents sur la période.</p> : rdvTable(rdvChunks[0])}
+        </div>
+      ),
+    },
+    ...rdvChunks.slice(1).map((list, i) => ({ key: `p7-rdv-liste-${i + 1}`, node: flowRoot(<div style={{ marginTop: '1.5mm' }}>{rdvTable(list)}</div>) })),
+    {
+      key: 'p7-visa',
+      node: flowRoot(
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '2mm', borderBottom: `1px solid ${T.ink}`, paddingBottom: '1mm', margin: '5mm 0 2mm' }}>
+            <b style={{ fontSize: '12px' }}>Observations de la direction</b>
           </div>
-        </Section>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {[0, 1, 2].map((i) => (
+              <span key={i} style={{ borderBottom: `1px dotted ${T.nul}`, height: '7mm' }} />
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8mm', marginTop: '4mm' }}>
+            {[
+              { label: 'DIRECTION DE LA VIE SCOLAIRE — VISA', withCachet: true },
+              { label: 'DIRECTION — VISA & CACHET', withCachet: false },
+            ].map((box) => (
+              <div
+                key={box.label}
+                style={{
+                  border: `1px solid ${T.border}`,
+                  height: '20mm',
+                  padding: '2mm 3mm',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '1mm',
+                  fontFamily: MONO,
+                  fontSize: '8.5px',
+                  color: T.muted,
+                  textAlign: 'center',
+                }}
+              >
+                <span>{box.label}</span>
+                {box.withCachet && schoolIdentity?.cachet ? (
+                  <img src={schoolIdentity.cachet} alt="Cachet" style={{ maxHeight: '12.5mm', maxWidth: '100%', minHeight: 0, objectFit: 'contain' }} />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
       ),
     },
-    {
-      key: 'p7-rdv-liste',
-      node: flowRoot(
-        <Section num="7.3" title="Liste des rendez-vous" annotation={`${rdvBilan.rows.length} rendez-vous · du plus récent au plus ancien`}>
-          {rdvChunks.length === 0 ? <p style={emptyPanel}>Aucun rendez-vous avec les parents sur la période.</p> : rdvTable(rdvChunks[0])}
-        </Section>
-      ),
-    },
-    ...rdvChunks.slice(1).map((c, i) => ({ key: `p7-rdv-liste-${i + 1}`, node: flowRoot(rdvTable(c)) })),
   ]
 
   return (
     <PaginatedPrintDocument
       blocks={blocks}
-      paddingXPx={48}
-      paddingYPx={48}
-      gapPx={10}
-      pageStyle={{ background: '#fff', color: C.ink, fontFamily: SANS }}
-      renderHeader={(pageIndex) => (
-        <div style={{ display: 'flow-root' }}>
-          <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, paddingBottom: 7, borderBottom: `2.5px solid ${C.ink}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <SchoolLogo size={40} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontSize: '12pt', fontWeight: 700, letterSpacing: '-0.01em', color: C.ink }}>Groupe Scolaire Mondrian</div>
-                <div style={{ fontFamily: MONO, fontSize: '7.5pt', letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted }}>École de la bienveillance</div>
+      paddingXPx={12 * MM_TO_PX}
+      paddingYPx={9 * MM_TO_PX}
+      paddingTopPx={9 * MM_TO_PX}
+      paddingBottomPx={7 * MM_TO_PX}
+      gapPx={0}
+      pageStyle={{ background: '#fff', ...BASE }}
+      renderHeader={(pageIndex) =>
+        pageIndex === 0 ? (
+          <div style={{ display: 'flow-root', ...BASE }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6mm', paddingBottom: '2.5mm', borderBottom: `1.5px solid ${T.ink}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3mm' }}>
+                <SchoolLogo size={Math.round(11 * MM_TO_PX)} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '14px' }}>Groupe Scolaire Mondrian</div>
+                  <div style={{ fontFamily: MONO, fontSize: '8.5px', letterSpacing: '.12em', color: T.muted, textTransform: 'uppercase' }}>École de la bienveillance</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: MONO, fontSize: '8.5px', letterSpacing: '.12em', color: T.blue, textTransform: 'uppercase' }}>Rapports BI — Indicateurs clés</div>
+                <div style={{ fontWeight: 700, fontSize: '12.5px' }}>Période du {periodLabel}</div>
+                <div style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted }}>
+                  Édité le {todayFR()} · {periodeJours(periodStart, periodEnd)} jour(s)
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, textAlign: 'right', paddingTop: 2 }}>
-              <div style={{ fontFamily: MONO, fontSize: '7.5pt', letterSpacing: '0.14em', textTransform: 'uppercase', color: C.accentBlue }}>Rapports BI — Indicateurs clés</div>
-              <div style={{ fontSize: '10.5pt', fontWeight: 600, color: C.ink }}>Période du {formatPeriodLabel(periodStart, periodEnd)}</div>
-              <div style={{ fontFamily: MONO, fontSize: '8.5pt', color: C.muted }}>
-                Édité le {todayFR()} · {periodeJours(periodStart, periodEnd)} jour(s)
-              </div>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, textAlign: 'center', margin: '3mm 0 2.5mm' }}>Pilotage de l'établissement — rentrée {anneeLibelle}</h1>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', border: `1px solid ${T.border}` }}>
+              {[
+                { v: String(effectif), n: effectif, c: T.ink, l: 'Élèves inscrits', s: `${nbClasses} classes · ${nbClasses > 0 ? fr1(effectif / nbClasses) : '—'} él./classe` },
+                { v: frPct(tauxPresence), n: 1, c: T.blue, l: 'Taux de présence', s: 'moyenne établissement' },
+                {
+                  v: String(cycleTiles.absencesSeances.total),
+                  n: cycleTiles.absencesSeances.total,
+                  c: T.red,
+                  l: 'Séances manquées',
+                  s: `${cycleTiles.absencesEleves.total} élèves · ${heuresDecimalFR(totalHeuresManquees)}`,
+                },
+                { v: String(cycleTiles.retardsSeances.total), n: cycleTiles.retardsSeances.total, c: T.amber, l: 'Séances en retard', s: `${cycleTiles.retardsEleves.total} élèves concernés` },
+                {
+                  v: String(Math.abs(totalPointsSanction)),
+                  n: Math.abs(totalPointsSanction),
+                  c: T.red,
+                  l: 'Sanctions',
+                  s: `${Math.abs(totalPointsSanction)} pt sur ${nbClasses} classes`,
+                },
+              ].map((k, i) => (
+                <div key={k.l} style={{ padding: '2.2mm 2mm', textAlign: 'center', borderLeft: i === 0 ? undefined : `1px solid ${T.sep}` }}>
+                  <div style={{ fontSize: '20px', fontWeight: 700, lineHeight: 1.1, color: nulOr(k.n, k.c) }}>{k.v}</div>
+                  <div style={{ fontWeight: 600, fontSize: '10px', marginTop: '.6mm' }}>{k.l}</div>
+                  <div style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted }}>{k.s}</div>
+                </div>
+              ))}
             </div>
-          </header>
-
-          {pageIndex === 0 && (
-            <>
-              <h1 style={{ margin: '10px 0 10px', fontSize: '16pt', lineHeight: 1.15, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center' }}>
-                Pilotage de l'établissement — rentrée {anneeLibelle}
-              </h1>
-              <section style={{ margin: '0 0 10px' }}>
-                <div style={{ fontFamily: MONO, fontSize: '8pt', letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, paddingBottom: 7 }}>
-                  Synthèse de la période
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 1, background: C.rule, border: `1px solid ${C.rule}` }}>
-                  <KpiTile
-                    value={String(effectif)}
-                    color={C.ink}
-                    label="Élèves inscrits"
-                    sub={`${nbClasses} classes · ${nbClasses > 0 ? fr1(effectif / nbClasses) : '—'} él./classe`}
-                  />
-                  <KpiTile value={`${fr1(tauxPresence)} %`} color={C.accentBlue} label="Taux de présence" sub="moyenne établissement" />
-                  <KpiTile
-                    value={String(cycleTiles.absencesSeances.total)}
-                    color={C.red}
-                    label="Séances manquées"
-                    sub={`${cycleTiles.absencesEleves.total} élèves · ${heuresDecimalFR(totalHeuresManquees)}`}
-                  />
-                  <KpiTile
-                    value={String(cycleTiles.retardsSeances.total)}
-                    color={C.amber}
-                    label="Séances en retard"
-                    sub={`${cycleTiles.retardsEleves.total} élèves concernés`}
-                  />
-                  <KpiTile
-                    value={String(Math.abs(totalPointsSanction))}
-                    color={totalPointsSanction === 0 ? C.green : C.red}
-                    label="Sanction disciplinaire"
-                    sub={`${Math.abs(totalPointsSanction)} pt sur ${nbClasses} classes`}
-                  />
-                </div>
-              </section>
-              <section style={{ margin: '0 0 10px', background: C.panel, borderLeft: `3px solid ${C.accentBlue}`, padding: '10px 14px 11px' }}>
-                <div style={{ fontFamily: MONO, fontSize: '8pt', letterSpacing: '0.14em', textTransform: 'uppercase', color: C.accentBlueDark, paddingBottom: 6 }}>
-                  À retenir
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {aRetenirBullets.map((b, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
-                      <span style={{ width: 3, minHeight: 12, background: C.accentBlue, borderRadius: 2, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontFamily: SANS, fontSize: '8.5pt', lineHeight: 1.4, color: C.inkSoft }}>{b}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-      )}
+            <div style={{ background: T.callout, borderLeft: `3px solid ${T.blue}`, padding: '2.5mm 4mm', marginTop: '3mm', display: 'flex', flexDirection: 'column', gap: '1.2mm', fontSize: '10px', lineHeight: 1.4 }}>
+              <div style={{ fontFamily: MONO, fontSize: '8.5px', letterSpacing: '.12em', color: T.blue }}>À RETENIR</div>
+              {aRetenirBullets.map((b, idx) => (
+                <div key={idx}>{b}</div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flow-root', ...BASE }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6mm', paddingBottom: '2mm', borderBottom: `1.5px solid ${T.ink}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3mm' }}>
+                <SchoolLogo size={Math.round(8 * MM_TO_PX)} />
+                <div style={{ fontWeight: 700, fontSize: '12px' }}>Groupe Scolaire Mondrian</div>
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: '8.5px', color: T.muted }}>Rapports BI · {periodLabel}</div>
+            </div>
+          </div>
+        )
+      }
       renderFooter={(pageIndex, pageCount) => (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingTop: 8, borderTop: `1px solid ${C.rule}` }}>
-          <span style={{ fontFamily: MONO, fontSize: '8.5pt', letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted }}>Direction de la vie scolaire</span>
-          <span style={{ fontFamily: MONO, fontSize: '8.5pt', letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted }}>
-            Rapports BI · {formatPeriodLabel(periodStart, periodEnd)}
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: '8.5pt', letterSpacing: '0.08em', textTransform: 'uppercase', color: C.muted }}>
-            Page {pageIndex + 1}/{pageCount}
-          </span>
+        <div style={{ display: 'flow-root', ...BASE }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              borderTop: `1px solid ${T.border}`,
+              paddingTop: '2mm',
+              marginTop: '2mm',
+              fontFamily: MONO,
+              fontSize: '8px',
+              letterSpacing: '.08em',
+              color: T.muted,
+              textTransform: 'uppercase',
+            }}
+          >
+            <span>Direction de la vie scolaire</span>
+            <span>Rapports BI · {periodLabel}</span>
+            <span>
+              Page {pageIndex + 1}/{pageCount}
+            </span>
+          </div>
         </div>
       )}
     />
