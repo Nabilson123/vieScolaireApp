@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import { ArrowRightCircle, CheckCircle2, History, MessageCircle, Pencil, RotateCcw, Trash2, UserCog, X } from 'lucide-react'
+import { ArrowRightCircle, CheckCircle2, Flame, History, MailCheck, MessageCircle, Pencil, RotateCcw, Trash2, UserCog, X } from 'lucide-react'
 import type { ReclamationRecord } from '../data/studentDetails'
 import {
   cleanReclamationText,
   delaiResolutionJours,
   echeanceStatut,
   formatDateFR,
+  isAccuseAEnvoyer,
+  isAccuseEnRetard,
   isHorsDelai,
   joursOuverts,
+  todayLocalISO,
   type EcheanceStatut,
 } from '../utils/reclamationsLogic'
+import { NIVEAU_PAR_CATEGORIE, niveauOf } from '../utils/reclamationsPolicy'
 import { buildStaffOptions } from '../utils/staffOptions'
 import { BRIDGE_LABELS, type BridgeKind } from './reclamations/bridges'
 
@@ -49,7 +53,7 @@ const ECHEANCE_COLORS: Record<EcheanceStatut, string> = {
 }
 
 /** Depuis combien de temps la réclamation attend — ou en combien de temps elle a été résolue. */
-function DelaiBadge({ reclamation }: { reclamation: ReclamationRecord }) {
+export function DelaiBadge({ reclamation }: { reclamation: ReclamationRecord }) {
   if (reclamation.statut === 'Résolue') {
     const jours = delaiResolutionJours(reclamation)
     if (jours === null) return null
@@ -71,6 +75,22 @@ function DelaiBadge({ reclamation }: { reclamation: ReclamationRecord }) {
   )
 }
 
+/** Où en est l'accusé de réception envoyé à la famille : à envoyer (ambre), en retard (rouge) ou envoyé (vert). */
+export function AccuseBadge({ reclamation }: { reclamation: ReclamationRecord }) {
+  if (reclamation.accuseLe) {
+    return (
+      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+        Accusé envoyé le {formatDateFR(todayLocalISO(new Date(reclamation.accuseLe)))}
+      </span>
+    )
+  }
+  if (!isAccuseAEnvoyer(reclamation)) return null
+  if (isAccuseEnRetard(reclamation)) {
+    return <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">Accusé en retard</span>
+  }
+  return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Accusé à envoyer</span>
+}
+
 interface ReclamationCardProps {
   reclamation: ReclamationRecord
   studentName?: string
@@ -90,6 +110,10 @@ interface ReclamationCardProps {
   onBridge?: (kind: BridgeKind) => void
   /** Ouvre le tiroir de détail avec l'historique. */
   onHistory?: () => void
+  /** Marque l'accusé de réception comme envoyé (sans passer par le message WhatsApp). */
+  onMarkAccuse?: () => void
+  /** Marque ou retire l'urgence. */
+  onToggleUrgent?: () => void
 }
 
 export default function ReclamationCard({
@@ -107,6 +131,8 @@ export default function ReclamationCard({
   bridges = [],
   onBridge,
   onHistory,
+  onMarkAccuse,
+  onToggleUrgent,
 }: ReclamationCardProps) {
   const [showBridges, setShowBridges] = useState(false)
   const [showResolveForm, setShowResolveForm] = useState(false)
@@ -120,6 +146,10 @@ export default function ReclamationCard({
   const statutClass = STATUT_COLORS[reclamation.statut]
   const horsDelai = isHorsDelai(reclamation)
   const echeance = echeanceStatut(reclamation)
+  const ouverte = reclamation.statut !== 'Résolue'
+  const urgent = ouverte && niveauOf(reclamation) === 'urgent'
+  // Urgente d'office : la catégorie l'impose, il n'y a rien à marquer.
+  const urgentParCategorie = NIVEAU_PAR_CATEGORIE[reclamation.type] === 'urgent'
 
   const openAssign = () => {
     setDraftResponsable(reclamation.responsable ?? '')
@@ -135,7 +165,7 @@ export default function ReclamationCard({
   }
 
   return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${horsDelai ? 'border-rose-200' : 'border-slate-100'}`}>
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${horsDelai ? 'border-rose-200' : urgent ? 'border-orange-200' : 'border-slate-100'}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
         <div>
           <span className={`mb-1.5 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${categoryClass}`}>
@@ -145,7 +175,14 @@ export default function ReclamationCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statutClass}`}>{reclamation.statut}</span>
+          {urgent && (
+            <span className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">
+              <Flame className="h-3 w-3" />
+              Urgent
+            </span>
+          )}
           <DelaiBadge reclamation={reclamation} />
+          <AccuseBadge reclamation={reclamation} />
         </div>
       </div>
 
@@ -293,7 +330,7 @@ export default function ReclamationCard({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {confirmingDelete ? (
             <>
               <span className="text-[11px] font-medium text-rose-600">Supprimer ?</span>
@@ -318,6 +355,18 @@ export default function ReclamationCard({
             </>
           ) : (
             <>
+              {onMarkAccuse && isAccuseAEnvoyer(reclamation) && !showResolveForm && (
+                <button
+                  type="button"
+                  onClick={onMarkAccuse}
+                  disabled={!isEditable}
+                  title="L'accusé de réception a été envoyé à la famille"
+                  className="flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <MailCheck className="h-3.5 w-3.5" />
+                  Accusé envoyé
+                </button>
+              )}
               {reclamation.statut === 'En attente' && !showResolveForm && (
                 <button
                   type="button"
@@ -378,6 +427,19 @@ export default function ReclamationCard({
                   className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
                 >
                   <MessageCircle className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onToggleUrgent && ouverte && (
+                <button
+                  type="button"
+                  onClick={onToggleUrgent}
+                  disabled={!isEditable || (urgentParCategorie && !reclamation.urgente)}
+                  title={urgentParCategorie && !reclamation.urgente ? "Urgente d'office : sa catégorie l'impose" : reclamation.urgente ? "Retirer l'urgence" : 'Marquer urgente'}
+                  className={`flex h-7 w-7 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40 ${
+                    reclamation.urgente ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                  }`}
+                >
+                  <Flame className="h-3.5 w-3.5" />
                 </button>
               )}
               {onAssign && reclamation.statut !== 'Résolue' && (

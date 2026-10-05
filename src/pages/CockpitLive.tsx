@@ -735,6 +735,21 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                 {reclamationsCockpit.horsDelai > 0 ? `${reclamationsCockpit.horsDelai} hors délai` : 'Aucune hors délai'}
               </span>
             </div>
+            {(reclamationsCockpit.accusesAEnvoyer > 0 || reclamationsCockpit.relances > 0) && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {reclamationsCockpit.accusesAEnvoyer > 0 && (
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${reclamationsCockpit.accusesEnRetard > 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}`}>
+                    {reclamationsCockpit.accusesAEnvoyer} accusé{reclamationsCockpit.accusesAEnvoyer > 1 ? 's' : ''} à envoyer
+                    {reclamationsCockpit.accusesEnRetard > 0 ? ` (${reclamationsCockpit.accusesEnRetard} en retard)` : ''}
+                  </span>
+                )}
+                {reclamationsCockpit.relances > 0 && (
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                    {reclamationsCockpit.relances} famille{reclamationsCockpit.relances > 1 ? 's' : ''} à relancer
+                  </span>
+                )}
+              </div>
+            )}
             {reclamationsCockpit.ouvertes === 0 ? (
               <p className="py-6 text-center text-sm text-slate-400">Aucune réclamation en attente.</p>
             ) : (
@@ -750,7 +765,7 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                       </p>
                       <p className="truncate text-xs text-slate-500">{r.objet}</p>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${r.jours > 3 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${r.horsDelai ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
                       {r.jours} j
                     </span>
                   </div>

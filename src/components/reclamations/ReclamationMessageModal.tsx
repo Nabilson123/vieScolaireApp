@@ -2,6 +2,7 @@ import type { ReclamationRecord } from '../../data/studentDetails'
 import { getStudentIdentitySnapshot } from '../../services/studentIdentityService'
 import { buildReclamationMessage, type ReclamationMessageKind } from '../../utils/whatsapp'
 import { cleanReclamationText } from '../../utils/reclamationsLogic'
+import { delaiResolutionAutorise } from '../../utils/reclamationsPolicy'
 import MessageWhatsAppModal, { type WhatsAppRecipient } from '../MessageWhatsAppModal'
 
 export const MESSAGE_KIND_LABELS: Record<ReclamationMessageKind, string> = {
@@ -57,6 +58,7 @@ export default function ReclamationMessageModal({ reclamation, studentId, studen
     responsable: reclamation.responsable,
     echeance: reclamation.echeance,
     resolution: reclamation.resolution,
+    delaiJours: delaiResolutionAutorise(reclamation),
   })
 
   return (

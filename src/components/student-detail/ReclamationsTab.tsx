@@ -63,6 +63,8 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
               onAssign={(responsable, echeance) => actions.assigner(studentId, r.id, responsable, echeance || undefined)}
               onReopen={() => actions.rouvrir(studentId, r.id)}
               onHistory={() => setDrawerId(r.id)}
+              onMarkAccuse={() => actions.marquerAccuse(studentId, r.id)}
+              onToggleUrgent={() => actions.basculerUrgente(studentId, r.id)}
               onEdit={() => setEditing(r)}
               onDelete={() => actions.supprimer(studentId, r.id)}
             />
@@ -79,7 +81,7 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
           studentName={studentName}
           classe={classe}
           kind={message.kind}
-          onShared={(kind) => actions.journaliserMessage(studentId, message.reclamation.id, MESSAGE_KIND_LABELS[kind])}
+          onShared={(kind) => actions.messagePartage(studentId, message.reclamation, kind, MESSAGE_KIND_LABELS[kind])}
           onClose={() => setMessage(null)}
         />
       )}

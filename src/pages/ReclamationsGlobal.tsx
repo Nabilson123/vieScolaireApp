@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Columns3, List, Megaphone, PlusCircle, Printer, Search, Timer, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, CalendarCheck, ChevronDown, ChevronRight, Columns3, List, Megaphone, PlusCircle, Printer, Search, X } from 'lucide-react'
 import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import { RECLAMATION_CATEGORIES, type ReclamationRecord } from '../data/studentDetails'
 import { useStudentExtras } from '../services/studentDetailsService'
@@ -9,7 +9,9 @@ import EditReclamationModal from '../components/reclamations/EditReclamationModa
 import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../components/reclamations/ReclamationMessageModal'
 import type { ReclamationMessageKind } from '../utils/whatsapp'
 import { computeReclamationSignals, type ReclamationSignal } from '../utils/reclamationsAlerts'
-import { delaiResolutionAutorise } from '../utils/reclamationsPolicy'
+import { delaiResolutionAutorise, niveauOf } from '../utils/reclamationsPolicy'
+import ReclamationAgenda from '../components/reclamations/ReclamationAgenda'
+import { agendaTotal, computeAgenda } from '../utils/reclamationsAgenda'
 import ReclamationBridgeModal from '../components/reclamations/ReclamationBridgeModal'
 import ReclamationDrawer from '../components/reclamations/ReclamationDrawer'
 import ReclamationKanban from '../components/reclamations/ReclamationKanban'
@@ -28,6 +30,8 @@ import {
   cleanReclamationText,
   delaiResolutionJours,
   echeanceStatut,
+  isAccuseAEnvoyer,
+  isAccuseEnRetard,
   isHorsDelai,
 } from '../utils/reclamationsLogic'
 
@@ -46,12 +50,15 @@ interface MessageTarget {
   banner?: string
 }
 
-type QuickFilter = 'toutes' | 'a_traiter' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
+type QuickFilter = 'toutes' | 'a_traiter' | 'accuse_a_envoyer' | 'urgentes' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
 type SortMode = 'urgence' | 'recent'
+type View = 'aujourdhui' | 'liste' | 'kanban'
 
 const CHIPS: { key: QuickFilter; label: string }[] = [
   { key: 'toutes', label: 'Toutes' },
   { key: 'a_traiter', label: 'À traiter' },
+  { key: 'accuse_a_envoyer', label: 'Accusé à envoyer' },
+  { key: 'urgentes', label: 'Urgentes' },
   { key: 'en_attente', label: 'En attente' },
   { key: 'en_cours', label: 'En cours' },
   { key: 'hors_delai', label: 'Hors délai' },
@@ -84,7 +91,14 @@ export default function ReclamationsGlobal() {
   const [messageTarget, setMessageTarget] = useState<MessageTarget | null>(null)
   const [signalFilter, setSignalFilter] = useState<ReclamationSignal | null>(null)
   const [bridgeTarget, setBridgeTarget] = useState<{ kind: BridgeKind; item: FlatReclamation } | null>(null)
-  const [view, setView] = useState<'liste' | 'kanban'>('liste')
+  const [view, setView] = useState<View>('liste')
+  // Tant que l'utilisateur n'a pas choisi sa vue, la page s'ouvre sur « Aujourd'hui » s'il y a quelque chose à faire.
+  const viewChosen = useRef(false)
+  const chooseView = (v: View) => {
+    viewChosen.current = true
+    setView(v)
+  }
+  const [signalsOpen, setSignalsOpen] = useState(false)
   const [drawerKey, setDrawerKey] = useState<{ studentId: string; id: string } | null>(null)
   const [resolveTarget, setResolveTarget] = useState<FlatReclamation | null>(null)
   const [hint, setHint] = useState<string | null>(null)
@@ -127,6 +141,8 @@ export default function ReclamationsGlobal() {
   const predicates: Record<QuickFilter, (r: FlatReclamation) => boolean> = {
     toutes: () => true,
     a_traiter: (r) => r.statut !== 'Résolue',
+    accuse_a_envoyer: (r) => isAccuseAEnvoyer(r),
+    urgentes: (r) => r.statut !== 'Résolue' && niveauOf(r) === 'urgent',
     en_attente: (r) => r.statut === 'En attente',
     en_cours: (r) => r.statut === 'En cours',
     hors_delai: (r) => isHorsDelai(r),
@@ -139,8 +155,26 @@ export default function ReclamationsGlobal() {
 
   const filtered = kpiBase.filter(predicates[quick])
 
-  // « Urgence » : hors délai d'abord, puis l'échéance la plus proche, puis la plus ancienne réception.
+  // « Aujourd'hui » : le compteur de l'onglet porte sur tout, la vue respecte la recherche et la catégorie.
+  const agendaAll = useMemo(() => computeAgenda(flat, myName), [flat, myName])
+  const agendaSections = computeAgenda(kpiBase, myName)
+  const agendaCount = agendaTotal(agendaAll)
+  useEffect(() => {
+    if (viewChosen.current || !students || !extrasMap) return
+    viewChosen.current = true
+    setView(agendaCount > 0 ? 'aujourdhui' : 'liste')
+  }, [students, extrasMap, agendaCount])
+
+  const pickQuick = (k: QuickFilter) => {
+    setQuick(k)
+    if (view === 'aujourdhui') chooseView('liste')
+  }
+
+  // « Urgence » : urgentes d'abord, puis hors délai, puis l'échéance la plus proche, puis la plus ancienne réception.
   const urgency = (a: FlatReclamation, b: FlatReclamation) => {
+    const au = niveauOf(a) === 'urgent' ? 0 : 1
+    const bu = niveauOf(b) === 'urgent' ? 0 : 1
+    if (au !== bu) return au - bu
     const ah = isHorsDelai(a) ? 0 : 1
     const bh = isHorsDelai(b) ? 0 : 1
     if (ah !== bh) return ah - bh
@@ -158,6 +192,8 @@ export default function ReclamationsGlobal() {
   const aTraiter = counts.a_traiter
   const enCours = counts.en_cours
   const horsDelai = counts.hors_delai
+  const accusesAEnvoyer = counts.accuse_a_envoyer
+  const accusesEnRetard = kpiBase.filter((r) => isAccuseEnRetard(r)).length
   const resolues = counts.resolues
   const tauxResolution = total > 0 ? Math.round((resolues / total) * 100) : 0
   // Durées réelles : seulement pour les réclamations résolues APRÈS l'enregistrement de la date de
@@ -224,6 +260,8 @@ export default function ReclamationsGlobal() {
       bridges={availableBridges(item, item.classe, logicalGroups, teachers)}
       onBridge={(kind) => setBridgeTarget({ kind, item })}
       onHistory={() => setDrawerKey({ studentId: item.studentId, id: item.id })}
+      onMarkAccuse={() => actions.marquerAccuse(item.studentId, item.id)}
+      onToggleUrgent={() => actions.basculerUrgente(item.studentId, item.id)}
       onReopen={() => actions.rouvrir(item.studentId, item.id)}
       onEdit={() => setEditing(item)}
       onDelete={() => actions.supprimer(item.studentId, item.id)}
@@ -278,169 +316,165 @@ export default function ReclamationsGlobal() {
 
       {hint && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{hint}</div>}
 
-      {signals.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Signaux à surveiller ({signals.length})
-            {signalFilter && (
-              <button type="button" onClick={() => setSignalFilter(null)} className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-700 hover:bg-amber-100">
-                Afficher toutes les réclamations
+      {(signals.length > 0 || signalFilter) && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {signals.length > 0 && (
+              <button type="button" onClick={() => setSignalsOpen((v) => !v)} className="flex items-center gap-1.5 text-xs font-bold text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {signals.length} signal{signals.length > 1 ? 'aux' : ''} à surveiller
+                {signalsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </button>
             )}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {signals.slice(0, 6).map((s) => (
+            {signalFilter && (
               <button
-                key={s.key}
                 type="button"
-                onClick={() => setSignalFilter(signalFilter?.key === s.key ? null : s)}
-                title="Filtrer sur ce regroupement"
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  signalFilter?.key === s.key ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
-                }`}
+                onClick={() => setSignalFilter(null)}
+                title="Afficher toutes les réclamations"
+                className="flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-amber-600"
               >
-                {s.label}
+                Filtre : {signalFilter.label}
+                <X className="h-3 w-3" />
               </button>
-            ))}
-            {signals.length > 6 && <span className="self-center text-xs text-amber-700">+ {signals.length - 6} autre(s)</span>}
+            )}
           </div>
+          {signalsOpen && signals.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {signals.slice(0, 8).map((sg) => (
+                <button
+                  key={sg.key}
+                  type="button"
+                  onClick={() => setSignalFilter(signalFilter?.key === sg.key ? null : sg)}
+                  title="Filtrer sur ce regroupement"
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    signalFilter?.key === sg.key ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  {sg.label}
+                </button>
+              ))}
+              {signals.length > 8 && <span className="self-center text-xs text-amber-700">+ {signals.length - 8} autre(s)</span>}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
-        <KpiCard
-          icon={Megaphone}
-          iconBg="bg-rose-50"
-          iconColor="text-rose-500"
-          value={total}
-          label="Total réclamations"
-          active={quick === 'toutes'}
-          onClick={() => setQuick('toutes')}
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        <StatTile value={total} label="Total" active={quick === 'toutes'} onClick={() => pickQuick('toutes')} />
+        <StatTile value={aTraiter} label="À traiter" sub={`dont ${enCours} en cours`} active={quick === 'a_traiter'} onClick={() => pickQuick('a_traiter')} />
+        <StatTile
+          value={accusesAEnvoyer}
+          label="Accusés à envoyer"
+          sub={accusesEnRetard > 0 ? `dont ${accusesEnRetard} en retard` : undefined}
+          tone={accusesEnRetard > 0 ? 'danger' : accusesAEnvoyer > 0 ? 'warning' : undefined}
+          active={quick === 'accuse_a_envoyer'}
+          onClick={() => pickQuick('accuse_a_envoyer')}
         />
-        <KpiCard
-          icon={Clock}
-          iconBg="bg-amber-50"
-          iconColor="text-amber-500"
-          value={aTraiter}
-          label="À traiter"
-          sub={`dont ${enCours} en cours`}
-          active={quick === 'a_traiter'}
-          onClick={() => setQuick('a_traiter')}
-        />
-        <KpiCard
-          icon={AlertTriangle}
-          iconBg={horsDelai > 0 ? 'bg-rose-100' : 'bg-emerald-50'}
-          iconColor={horsDelai > 0 ? 'text-rose-600' : 'text-emerald-500'}
-          value={horsDelai}
-          label="Hors délai"
-          valueClass={horsDelai > 0 ? 'text-rose-600' : undefined}
-          active={quick === 'hors_delai'}
-          onClick={() => setQuick('hors_delai')}
-        />
-        <KpiCard
-          icon={Megaphone}
-          iconBg="bg-emerald-50"
-          iconColor="text-emerald-500"
-          value={resolues}
-          label="Résolues"
-          sub={`${tauxResolution} % du total`}
-          active={quick === 'resolues'}
-          onClick={() => setQuick('resolues')}
-        />
-        <KpiCard
-          icon={Timer}
-          iconBg="bg-sky-50"
-          iconColor="text-sky-500"
+        <StatTile value={horsDelai} label="Hors délai" tone={horsDelai > 0 ? 'danger' : undefined} active={quick === 'hors_delai'} onClick={() => pickQuick('hors_delai')} />
+        <StatTile value={resolues} label="Résolues" sub={`${tauxResolution} % du total`} active={quick === 'resolues'} onClick={() => pickQuick('resolues')} />
+        <StatTile
           value={sousDelai === null ? '—' : `${sousDelai} %`}
-          label="Résolues dans le délai"
+          label="Dans le délai"
           sub={sousDelai === null ? 'dès les prochaines résolutions' : `sur ${delais.length} datée${delais.length > 1 ? 's' : ''}`}
         />
-        <KpiCard
-          icon={Timer}
-          iconBg="bg-sky-50"
-          iconColor="text-sky-500"
+        <StatTile
           value={delaiMoyen === null ? '—' : `${delaiMoyen.toFixed(1).replace('.', ',')} j`}
           label="Délai moyen"
           sub={delaiMoyen === null ? 'dès les prochaines résolutions' : 'de résolution'}
         />
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
-          <Search className="h-4 w-4 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher élève, parent, prof, motif..."
-            className="w-full text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-500">Catégorie :</span>
+      <div className="sticky top-0 z-20 -mx-6 mb-3 border-b border-slate-200/70 bg-[#f3f4f8]/95 px-6 py-2 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Affichage">
+            {([
+              { key: 'aujourdhui', label: "Aujourd'hui", Icon: CalendarCheck },
+              { key: 'liste', label: 'Liste', Icon: List },
+              { key: 'kanban', label: 'Colonnes', Icon: Columns3 },
+            ] as const).map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => chooseView(key)}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${view === key ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+                {key === 'aujourdhui' && agendaCount > 0 && (
+                  <span className={`rounded-full px-1.5 text-[10px] font-bold ${view === key ? 'bg-white/25' : 'bg-rose-100 text-rose-700'}`}>{agendaCount}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher élève, parent, prof, motif..."
+              className="w-full text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+            />
+          </div>
           <select
             value={categorieFilter}
             onChange={(e) => setCategorieFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none"
+            aria-label="Catégorie"
+            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:outline-none"
           >
-            <option>Toutes</option>
+            <option value="Toutes">Toutes les catégories</option>
             {RECLAMATION_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
           </select>
-        </div>
-        <div className="flex items-center rounded-lg border border-slate-200 p-0.5" role="group" aria-label="Affichage">
-          {([
-            { key: 'liste', label: 'Liste', Icon: List },
-            { key: 'kanban', label: 'Colonnes', Icon: Columns3 },
-          ] as const).map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${view === key ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+          {view !== 'aujourdhui' && (
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortMode)}
+              aria-label="Tri"
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:outline-none"
             >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
+              <option value="urgence">Urgence d'abord</option>
+              <option value="recent">Plus récentes d'abord</option>
+            </select>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-500">Tri :</span>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortMode)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none"
-          >
-            <option value="urgence">Urgence d'abord</option>
-            <option value="recent">Plus récentes d'abord</option>
-          </select>
-        </div>
+        {view !== 'aujourdhui' && (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
+            {CHIPS.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setQuick(c.key)}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  quick === c.key
+                    ? 'bg-indigo-600 text-white'
+                    : (c.key === 'hors_delai' || c.key === 'urgentes') && counts[c.key] > 0
+                      ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      : c.key === 'accuse_a_envoyer' && counts.accuse_a_envoyer > 0
+                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {c.label}
+                <span className={`rounded-full px-1.5 text-[10px] font-bold ${quick === c.key ? 'bg-white/25' : 'bg-slate-100'}`}>{counts[c.key]}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {CHIPS.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            onClick={() => setQuick(c.key)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              quick === c.key
-                ? 'bg-indigo-600 text-white'
-                : c.key === 'hors_delai' && counts.hors_delai > 0
-                  ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {c.label}
-            <span className={`rounded-full px-1.5 text-[10px] font-bold ${quick === c.key ? 'bg-white/25' : 'bg-white'}`}>{counts[c.key]}</span>
-          </button>
-        ))}
-      </div>
-
-      {filtered.length === 0 ? (
+      {view === 'aujourdhui' ? (
+        <ReclamationAgenda
+          sections={agendaSections}
+          isEditable={isEditable}
+          onAccuse={(item) => openMessage(item, item, 'accuse')}
+          onTakeCharge={handleTakeCharge}
+          onOpen={(item) => setDrawerKey({ studentId: item.studentId, id: item.id })}
+          onShowList={() => chooseView('liste')}
+        />
+      ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
           Aucune réclamation ne correspond à ces filtres.
         </div>
@@ -539,7 +573,11 @@ export default function ReclamationsGlobal() {
           classe={messageTarget.classe}
           kind={messageTarget.kind}
           banner={messageTarget.banner}
-          onShared={(kind) => actions.journaliserMessage(messageTarget.studentId, messageTarget.reclamation.id, MESSAGE_KIND_LABELS[kind])}
+          onShared={(kind) => {
+            // L'enregistrement le plus récent : l'accusé a pu être posé depuis une autre vue entre-temps.
+            const current = flat.find((r) => r.studentId === messageTarget.studentId && r.id === messageTarget.reclamation.id) ?? messageTarget.reclamation
+            actions.messagePartage(messageTarget.studentId, current, kind, MESSAGE_KIND_LABELS[kind])
+          }}
           onClose={() => setMessageTarget(null)}
         />
       )}
@@ -549,40 +587,33 @@ export default function ReclamationsGlobal() {
   )
 }
 
-function KpiCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
+/** Indicateur compact d'une ligne ; cliquable quand il sert de filtre. */
+function StatTile({
   value,
   label,
   sub,
-  valueClass,
+  tone,
   active,
   onClick,
 }: {
-  icon: typeof Megaphone
-  iconBg: string
-  iconColor: string
   value: string | number
   label: string
   sub?: string
-  valueClass?: string
+  tone?: 'danger' | 'warning'
   active?: boolean
   onClick?: () => void
 }) {
+  const valueClass = tone === 'danger' ? 'text-rose-600' : tone === 'warning' ? 'text-amber-600' : 'text-slate-900'
   const content = (
     <>
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
-        <Icon className={`h-5 w-5 ${iconColor}`} />
-      </div>
-      <div className="min-w-0 text-left">
-        <p className={`text-xl font-bold ${valueClass ?? 'text-slate-900'}`}>{value}</p>
-        <p className="text-xs text-slate-500">{label}</p>
-        {sub && <p className="text-[11px] text-slate-400">{sub}</p>}
-      </div>
+      <p className="flex items-baseline gap-1.5">
+        <span className={`text-lg font-bold leading-none ${valueClass}`}>{value}</span>
+        <span className="text-[11px] font-medium leading-tight text-slate-500">{label}</span>
+      </p>
+      {sub && <p className="mt-0.5 text-[10px] leading-tight text-slate-400">{sub}</p>}
     </>
   )
-  const base = 'flex items-center gap-3 rounded-2xl border bg-white p-3.5 shadow-sm'
+  const base = 'rounded-xl border bg-white px-3 py-2 text-left shadow-sm'
   if (!onClick) return <div className={`${base} border-slate-100`}>{content}</div>
   return (
     <button type="button" onClick={onClick} className={`${base} transition-colors hover:bg-slate-50 ${active ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-slate-100'}`}>

@@ -211,7 +211,7 @@ export default function AlertesCentreCard({ onNavigateToStudent }: AlertesCentre
           onNavigateToStudent={onNavigateToStudent}
         />
         <StudentAlertList
-          title="Réclamations hors délai (> 72 h)"
+          title="Réclamations hors délai"
           icon={Megaphone}
           color="orange"
           items={reclamationsHorsDelai}

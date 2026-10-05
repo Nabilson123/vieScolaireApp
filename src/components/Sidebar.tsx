@@ -18,11 +18,11 @@ import GlobalSearchModal from './GlobalSearchModal'
 
 const YEAR_RANGE_SPAN = 2
 
-/** Pastille rouge de l'entrée « Réclamations Parents » : nombre de réclamations non résolues depuis plus de 72 h. */
+/** Pastille rouge de l'entrée « Réclamations Parents » : nombre de réclamations non résolues au-delà du délai de leur niveau. */
 function HorsDelaiBadge({ count }: { count: number }) {
   return (
     <span
-      title={`${count} réclamation${count > 1 ? 's' : ''} hors délai (plus de 72 h)`}
+      title={`${count} réclamation${count > 1 ? 's' : ''} hors délai`}
       className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
     >
       {count}
@@ -64,7 +64,7 @@ export default function Sidebar({
   const currentProfile = useCurrentProfile()
   const { data: alertRules } = useAlertRules()
   const alertCount = alertRules ? countUnseenAlerts(computeActiveAlertsSummary(alertRules)) : 0
-  // Réclamations hors délai (> 72 h) : badge sur l'entrée de menu, calculé depuis les données des requêtes.
+  // Réclamations hors délai : badge sur l'entrée de menu, calculé depuis les données des requêtes.
   const { data: extrasForBadge } = useStudentExtras()
   const { data: studentsForBadge } = useStudents()
   const reclamationsHorsDelai = useMemo(() => countHorsDelaiIn(studentsForBadge ?? [], extrasForBadge), [extrasForBadge, studentsForBadge])

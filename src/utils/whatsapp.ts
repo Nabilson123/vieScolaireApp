@@ -226,6 +226,15 @@ export interface ReclamationWhatsAppInfo {
   /** AAAA-MM-JJ : date à laquelle l'établissement s'engage à revenir vers la famille. */
   echeance?: string
   resolution?: string
+  /** Jours accordés pour résoudre (selon le niveau de la réclamation) ; 3 par défaut. */
+  delaiJours?: number
+}
+
+/** « 24 heures », « 72 heures », « 5 jours » : le délai annoncé à la famille. */
+export function delaiLabel(jours: number): string {
+  if (jours <= 1) return '24 heures'
+  if (jours === 3) return '72 heures'
+  return `${jours} jours`
 }
 
 /** Phrase d'action adaptée à la catégorie : dit à la famille ce que l'établissement fait réellement. */
@@ -266,7 +275,7 @@ export function buildReclamationMessage(kind: ReclamationMessageKind, info: Recl
     lines.push(
       `Nous avons bien reçu votre réclamation du ${dateCourte(info.date)} concernant ${eleve} : *${info.objet}*.`,
       '',
-      "Elle a été transmise à la Direction de la Vie Scolaire et sera traitée sous 72 heures."
+      `Elle a été transmise à la Direction de la Vie Scolaire et sera traitée sous ${delaiLabel(info.delaiJours ?? 3)}.`
     )
   } else if (kind === 'prise_en_charge') {
     lines.push(

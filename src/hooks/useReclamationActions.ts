@@ -16,6 +16,7 @@ import {
   type CreateReclamationsInput,
   type ReclamationPatch,
 } from '../services/studentDetailsService'
+import type { ReclamationMessageKind } from '../utils/whatsapp'
 
 /**
  * Actions sur les réclamations, communes à la page Réclamations et à la fiche élève (jusqu'ici la même
@@ -106,5 +107,11 @@ export function useReclamationActions() {
     /** Trace dans la frise qu'un message a été copié ou ouvert dans WhatsApp. */
     journaliserMessage: (studentId: string, id: string, detail: string) =>
       one(studentId, id, () => updateReclamation(studentId, id, {}, { action: 'message_parent', detail })),
+    /** Message copié ou ouvert dans WhatsApp. Pour l'accusé de réception, c'est aussi ce qui le marque comme
+     * envoyé (une seule fois : un second envoi est seulement tracé dans la frise). */
+    messagePartage: (studentId: string, reclamation: Pick<ReclamationRecord, 'id' | 'accuseLe'>, kind: ReclamationMessageKind, label: string) =>
+      kind === 'accuse' && !reclamation.accuseLe
+        ? one(studentId, reclamation.id, () => marquerAccuseEnvoye(studentId, reclamation.id))
+        : one(studentId, reclamation.id, () => updateReclamation(studentId, reclamation.id, {}, { action: 'message_parent', detail: label })),
   }
 }

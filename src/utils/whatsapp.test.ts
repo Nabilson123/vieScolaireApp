@@ -130,6 +130,11 @@ describe('buildReclamationMessage', () => {
     expect(message.endsWith('Direction de la Vie Scolaire — Groupe Scolaire Mondrian')).toBe(true)
   })
 
+  it("accusé de réception : le délai annoncé suit le niveau de la réclamation", () => {
+    expect(buildReclamationMessage('accuse', { ...info, delaiJours: 1 })).toContain('sous 24 heures')
+    expect(buildReclamationMessage('accuse', { ...info, delaiJours: 5 })).toContain('sous 5 jours')
+  })
+
   it('prise en charge : responsable, action selon la catégorie et échéance', () => {
     const message = buildReclamationMessage('prise_en_charge', info)
     expect(message).toContain('est prise en charge par Nabil Lahrache')

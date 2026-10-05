@@ -2,7 +2,7 @@ import type { ReclamationRecord, StudentExtra } from '../data/studentDetails'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { cycleOfClasse, type StudentAlert } from './alertEngine'
-import { cleanReclamationText, isHorsDelai, joursOuverts } from './reclamationsLogic'
+import { cleanReclamationText, isAccuseAEnvoyer, isAccuseEnRetard, isHorsDelai, isRelanceDue, joursOuverts } from './reclamationsLogic'
 
 export interface ReclamationRef {
   studentId: string
@@ -20,7 +20,7 @@ export function collectAllReclamations(): ReclamationRef[] {
   return out
 }
 
-/** Élèves ayant au moins une réclamation non résolue au-delà de 72 h, les plus en retard d'abord — même
+/** Élèves ayant au moins une réclamation non résolue au-delà de leur délai, les plus en retard d'abord — même
  * forme que les autres alertes élèves du Centre d'Alertes (`id` = élève, `value` = jours d'attente de
  * leur réclamation la plus ancienne). */
 export function computeReclamationsHorsDelai(now: Date = new Date()): StudentAlert[] {
@@ -129,8 +129,13 @@ export function computeReclamationSignals(refs: ReclamationRef[], now: Date = ne
 export interface CockpitReclamations {
   ouvertes: number
   horsDelai: number
+  /** Accusés de réception pas encore envoyés à la famille, dont ceux qui dépassent déjà leur délai. */
+  accusesAEnvoyer: number
+  accusesEnRetard: number
+  /** Familles à relancer après une résolution (« la réponse vous a-t-elle convenu ? »). */
+  relances: number
   /** Les plus anciennes réclamations non résolues. */
-  anciennes: { id: string; studentName: string; classe: string; objet: string; jours: number }[]
+  anciennes: { id: string; studentName: string; classe: string; objet: string; jours: number; horsDelai: boolean }[]
   signaux: ReclamationSignal[]
 }
 
@@ -141,8 +146,18 @@ export function computeCockpitReclamations(now: Date = new Date()): CockpitRecla
   return {
     ouvertes: ouvertes.length,
     horsDelai: ouvertes.filter((r) => isHorsDelai(r.record, now)).length,
+    accusesAEnvoyer: refs.filter((r) => isAccuseAEnvoyer(r.record)).length,
+    accusesEnRetard: refs.filter((r) => isAccuseEnRetard(r.record, now)).length,
+    relances: refs.filter((r) => isRelanceDue(r.record, now)).length,
     anciennes: ouvertes
-      .map((r) => ({ id: r.record.id, studentName: r.studentName, classe: r.classe, objet: cleanReclamationText(r.record.objet), jours: joursOuverts(r.record.date, now) }))
+      .map((r) => ({
+        id: r.record.id,
+        studentName: r.studentName,
+        classe: r.classe,
+        objet: cleanReclamationText(r.record.objet),
+        jours: joursOuverts(r.record.date, now),
+        horsDelai: isHorsDelai(r.record, now),
+      }))
       .sort((a, b) => b.jours - a.jours)
       .slice(0, 4),
     signaux: computeReclamationSignals(refs, now),
