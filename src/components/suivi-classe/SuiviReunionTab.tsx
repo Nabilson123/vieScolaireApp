@@ -8,7 +8,13 @@ import type { SuiviProf } from '../../data/suiviProfs'
 import type { SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import { useSuiviProfs, useSaveCompteRendu, useValidateCompteRendu } from '../../services/suiviProfsService'
 import { computeLogicalGroups, type LogicalGroup } from '../../utils/suiviClasseGroups'
-import { computeAtRiskStudentsForNiveaux, computeAllReclamationsForNiveaux } from '../../utils/suiviClasseRisqueAggregation'
+import {
+  computeAtRiskStudentsForNiveaux,
+  computeAllReclamationsForNiveaux,
+  getReclamationNote,
+  reclamationNoteKey,
+  type OpenReclamation,
+} from '../../utils/suiviClasseRisqueAggregation'
 import { useAlertRules } from '../../services/alertRulesService'
 import { useCurrentProfile } from '../../services/permissions'
 import { markReclamationTraitee } from '../../services/studentDetailsService'
@@ -230,10 +236,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   // Une réclamation résolue ailleurs (hors de cette réunion) ne doit pas s'inviter ici, mais une
   // réclamation qu'on vient de marquer "Traitée" PENDANT cette réunion (donc déjà présente dans
   // cr.point5) doit rester visible — sinon elle disparaît du compte-rendu sans laisser de trace.
-  const treatedThisMeeting = new Set(Object.keys(cr.point5 ?? {}))
-  const reclamations = computeAllReclamationsForNiveaux(group.niveauxBruts).filter(
-    (r) => r.statut !== 'Résolue' || treatedThisMeeting.has(`${r.studentId}:${r.indexInStudent}`)
-  )
+  const reclamations = computeAllReclamationsForNiveaux(group.niveauxBruts).filter((r) => r.statut !== 'Résolue' || !!getReclamationNote(cr.point5, r))
   const owners = [...group.teachers.map(teacherName), directionName]
   const participants = [
     ...group.divisions
@@ -260,8 +263,8 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const patchRecord = (field: 'point2' | 'point4', key: string, value: string) => setCr((prev) => ({ ...prev, [field]: { ...prev[field], [key]: value } }))
   const patchRisk = (studentId: string, patch: Partial<{ constat: string; mesure: string }>) =>
     setCr((prev) => ({ ...prev, point3: { ...prev.point3, [studentId]: { constat: '', mesure: '', ...prev.point3?.[studentId], ...patch } } }))
-  const patchReclamation = (key: string, patch: Partial<{ faits: string; reponse: string }>) =>
-    setCr((prev) => ({ ...prev, point5: { ...prev.point5, [key]: { faits: '', reponse: '', ...prev.point5?.[key], ...patch } } }))
+  const patchReclamation = (r: OpenReclamation, patch: Partial<{ faits: string; reponse: string }>) =>
+    setCr((prev) => ({ ...prev, point5: { ...prev.point5, [reclamationNoteKey(r)]: { faits: '', reponse: '', ...getReclamationNote(prev.point5, r), ...patch } } }))
   const togglePresence = (name: string) =>
     setCr((prev) => {
       const current = prev.presence?.[name] ?? 'present'
@@ -286,14 +289,15 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   // est déjà "Résolue" côté réel mais l'entrée cr.point5 qui la garde visible ici n'a jamais été
   // persistée, et elle disparaît purement et simplement du compte-rendu. On sauvegarde donc le
   // brouillon dans la foulée, pas seulement l'état local.
-  const handleMarkTraitee = async (studentId: string, indexInStudent: number, key: string) => {
-    const reponse = cr.point5?.[key]?.reponse?.trim()
+  const handleMarkTraitee = async (r: OpenReclamation) => {
+    const key = reclamationNoteKey(r)
+    const reponse = getReclamationNote(cr.point5, r)?.reponse?.trim()
     if (!reponse || !suivi) return
     setReclamationBusy(key)
     try {
-      await markReclamationTraitee(studentId, indexInStudent, reponse)
+      await markReclamationTraitee(r.studentId, r.id, reponse)
       await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
-      const updatedCr: SuiviCompteRendu = { ...cr, point5: { ...cr.point5, [key]: { faits: cr.point5?.[key]?.faits ?? '', reponse } } }
+      const updatedCr: SuiviCompteRendu = { ...cr, point5: { ...cr.point5, [key]: { faits: getReclamationNote(cr.point5, r)?.faits ?? '', reponse } } }
       setCr(updatedCr)
       await saveMutation.mutateAsync({ id: suivi.id, compteRendu: updatedCr })
     } finally {
@@ -408,8 +412,9 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
         ) : (
           <div className="flex flex-col gap-2.5">
             {reclamations.map((r) => {
-              const key = `${r.studentId}:${r.indexInStudent}`
-              const reponse = cr.point5?.[key]?.reponse ?? ''
+              const key = reclamationNoteKey(r)
+              const note = getReclamationNote(cr.point5, r)
+              const reponse = note?.reponse ?? ''
               const traitee = r.statut === 'Résolue'
               return (
                 <div key={key} className={`rounded-lg border p-2.5 ${traitee ? 'border-emerald-100 bg-emerald-50/40' : 'border-amber-100 bg-amber-50/40'}`}>
@@ -425,15 +430,15 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                   </div>
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                     <input
-                      value={cr.point5?.[key]?.faits ?? ''}
-                      onChange={(e) => patchReclamation(key, { faits: e.target.value })}
+                      value={note?.faits ?? ''}
+                      onChange={(e) => patchReclamation(r, { faits: e.target.value })}
                       disabled={!isEditable}
                       placeholder="Faits vérifiés"
                       className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
                     />
                     <input
                       value={reponse}
-                      onChange={(e) => patchReclamation(key, { reponse: e.target.value })}
+                      onChange={(e) => patchReclamation(r, { reponse: e.target.value })}
                       disabled={!isEditable}
                       placeholder="Réponse / suite"
                       className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
@@ -442,7 +447,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                   {!traitee && (
                     <button
                       type="button"
-                      onClick={() => handleMarkTraitee(r.studentId, r.indexInStudent, key)}
+                      onClick={() => handleMarkTraitee(r)}
                       disabled={!isEditable || !reponse.trim() || reclamationBusy === key}
                       className="mt-1.5 rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >

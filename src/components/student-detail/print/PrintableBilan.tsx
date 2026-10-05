@@ -8,6 +8,7 @@ import { moyenneScaleForClasse } from '../../../utils/alertEngine'
 import { INK, MUTED, PAGE_BG, BORDER, INDIGO, TEAL, RED, AMBER, PAGE_FONT } from '../../print/reportTheme'
 import ReportEmptyStateBox from '../../print/ReportEmptyStateBox'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../../print/PaginatedPrintDocument'
+import { cleanReclamationText } from '../../../utils/reclamationsLogic'
 
 interface PrintableBilanProps {
   student: Student
@@ -311,7 +312,7 @@ export default function PrintableBilan({ student, extra, view, periodLabel, eval
                     <div key={idx} className="rounded-lg p-2" style={{ background: '#F7F6F5' }}>
                       <div className="flex items-center justify-between text-[9.5px]">
                         <span className="font-semibold">
-                          {r.date} · {r.type} — {r.objet}
+                          {r.date} · {r.type} — {cleanReclamationText(r.objet)}
                         </span>
                         <span
                           className="rounded-full px-2 py-0.5 text-[8.5px] font-bold"

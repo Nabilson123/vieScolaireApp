@@ -9,6 +9,7 @@ import {
 } from './alertEngine'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
+import { cleanReclamationText } from './reclamationsLogic'
 
 export interface RiskStudent {
   id: string
@@ -53,10 +54,26 @@ export interface OpenReclamation {
   type: string
   date: string
   statut: 'En cours' | 'En attente' | 'Résolue'
-  /** Position dans le tableau `reclamations` de CET élève (pas un index global) — seule clé stable
-   * pour réécrire cette entrée précise via `markReclamationTraitee`, `ReclamationRecord` n'ayant pas
-   * d'id propre. */
+  /** Identifiant stable de la réclamation (`ReclamationRecord.id`) — sert à la réécrire et à repérer ses notes. */
+  id: string
+  /** Position dans le tableau `reclamations` de CET élève : conservée uniquement pour relire les anciennes
+   * notes de compte-rendu, enregistrées avant l'identifiant sous la clé `studentId:index`. */
   indexInStudent: number
+}
+
+/** Clé d'une réclamation dans `SuiviCompteRendu.point5` : `studentId:id` (stable, contrairement à l'index
+ * qui se décalait à chaque ajout ou suppression). */
+export function reclamationNoteKey(r: Pick<OpenReclamation, 'studentId' | 'id'>): string {
+  return `${r.studentId}:${r.id}`
+}
+
+function legacyReclamationNoteKey(r: Pick<OpenReclamation, 'studentId' | 'indexInStudent'>): string {
+  return `${r.studentId}:${r.indexInStudent}`
+}
+
+/** Notes de réunion d'une réclamation : clé stable, avec repli sur l'ancienne clé par index. */
+export function getReclamationNote<T>(point5: Record<string, T> | undefined, r: Pick<OpenReclamation, 'studentId' | 'id' | 'indexInStudent'>): T | undefined {
+  return point5?.[reclamationNoteKey(r)] ?? point5?.[legacyReclamationNoteKey(r)]
 }
 
 /** Réclamations parents encore ouvertes (pas "Résolue") pour les élèves d'un niveau logique — ce
@@ -69,7 +86,7 @@ export function computeOpenReclamationsForNiveaux(niveauxBruts: string[]): OpenR
     if (!inScope(s.classe)) return
     getStudentExtraSnapshot(s.id).reclamations.forEach((r, idx) => {
       if (r.statut === 'Résolue') return
-      rows.push({ studentId: s.id, studentName: s.name, classe: s.classe, objet: r.objet, type: r.type, date: r.date, statut: r.statut, indexInStudent: idx })
+      rows.push({ studentId: s.id, studentName: s.name, classe: s.classe, objet: cleanReclamationText(r.objet), type: r.type, date: r.date, statut: r.statut, id: r.id, indexInStudent: idx })
     })
   })
   return rows.sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -85,7 +102,7 @@ export function computeAllReclamationsForNiveaux(niveauxBruts: string[]): OpenRe
   getStudentsSnapshot().forEach((s) => {
     if (!inScope(s.classe)) return
     getStudentExtraSnapshot(s.id).reclamations.forEach((r, idx) => {
-      rows.push({ studentId: s.id, studentName: s.name, classe: s.classe, objet: r.objet, type: r.type, date: r.date, statut: r.statut, indexInStudent: idx })
+      rows.push({ studentId: s.id, studentName: s.name, classe: s.classe, objet: cleanReclamationText(r.objet), type: r.type, date: r.date, statut: r.statut, id: r.id, indexInStudent: idx })
     })
   })
   return rows.sort((a, b) => (a.date < b.date ? 1 : -1))

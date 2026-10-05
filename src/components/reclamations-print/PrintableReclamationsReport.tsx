@@ -4,6 +4,7 @@ import { RECLAMATION_CATEGORIES, type ReclamationRecord } from '../../data/stude
 import { ROLE_LABELS } from '../../data/profiles'
 import { useCurrentProfile } from '../../services/permissions'
 import { useSchoolIdentity } from '../../services/schoolIdentityService'
+import { cleanReclamationText, delaiResolutionJours, isHorsDelai, joursOuverts, RECLAMATION_DELAI_JOURS } from '../../utils/reclamationsLogic'
 
 export interface FlatReclamation extends ReclamationRecord {
   studentName: string
@@ -44,6 +45,8 @@ interface EnrichedReclamation extends FlatReclamation {
   ref: string
   statutKey: StatutKey
   joursOuverts: number
+  /** Durée réelle de traitement ; null tant que la date de résolution n'a pas été enregistrée. */
+  delaiResolution: number | null
   horsDelai: boolean
 }
 
@@ -131,13 +134,16 @@ function SyntheseDelais({ delais }: { delais: { label: string; value: number; co
 function FicheCard({ r }: { r: EnrichedReclamation }) {
   const style = STATUT_STYLE[r.statutKey]
   const suivi = r.statutKey === 'resolue' && r.resolution.trim() ? r.resolution.trim() : 'Aucune action enregistrée'
+  const jours = (n: number) => `${n} jour${n > 1 ? 's' : ''}`
   const suiviMeta =
     r.statutKey === 'resolue'
-      ? `Résolue après ${r.joursOuverts} jour${r.joursOuverts > 1 ? 's' : ''} de traitement`
-      : `Ouverte depuis ${r.joursOuverts} jour${r.joursOuverts > 1 ? 's' : ''}${r.horsDelai ? ' · au-delà du délai de 72 h' : ''}`
+      ? r.delaiResolution !== null
+        ? `Résolue en ${jours(r.delaiResolution)}`
+        : 'Résolue — durée de traitement non enregistrée'
+      : `Ouverte depuis ${jours(r.joursOuverts)}${r.horsDelai ? ' · au-delà du délai de 72 h' : ''}${r.responsable ? ` · Responsable : ${r.responsable}` : ''}`
   const attrs: [string, string][] = [
     ['Catégorie', r.type],
-    ['Objet', r.objet],
+    ['Objet', cleanReclamationText(r.objet)],
     ['Parent déclarant', r.parentNom],
     ['Concernant', r.enseignant],
   ]
@@ -184,7 +190,7 @@ function FicheCard({ r }: { r: EnrichedReclamation }) {
             Description transmise par le parent
           </div>
           <p className="text-[10px]" style={{ lineHeight: 1.45, color: 'oklch(0.35 0.01 260)' }}>
-            {r.description}
+            {cleanReclamationText(r.description)}
           </p>
         </div>
         <div className="shrink-0 rounded-[9px] px-2.5 py-1.5" style={{ width: 196, background: style.soft }}>
@@ -206,18 +212,27 @@ function FicheCard({ r }: { r: EnrichedReclamation }) {
 export default function PrintableReclamationsReport({ records }: PrintableReclamationsReportProps) {
   const profile = useCurrentProfile()
   const { data: schoolIdentity } = useSchoolIdentity()
-  const now = Date.now()
-  const enriched: EnrichedReclamation[] = records.map((r, i) => {
+  const now = new Date()
+  const enriched: EnrichedReclamation[] = records.map((r) => {
     const statutKey = STATUT_KEY[r.statut]
-    const joursOuverts = Math.max(0, Math.floor((now - Date.parse(r.date + 'T00:00:00')) / 86400000))
-    const horsDelai = statutKey !== 'resolue' && joursOuverts > 3
-    return { ...r, ref: `RC-${String(i + 1).padStart(2, '0')}`, statutKey, joursOuverts, horsDelai }
+    return {
+      ...r,
+      // Code court stable (fin de l'identifiant) : le même dans tous les rapports, contrairement à un numéro d'ordre.
+      ref: `RC-${r.id.slice(-4).toUpperCase()}`,
+      statutKey,
+      joursOuverts: joursOuverts(r.date, now),
+      delaiResolution: delaiResolutionJours(r),
+      horsDelai: isHorsDelai(r, now),
+    }
   })
 
   const total = enriched.length
   const count = (k: StatutKey) => enriched.filter((r) => r.statutKey === k).length
   const counts: Record<StatutKey, number> = { attente: count('attente'), cours: count('cours'), resolue: count('resolue') }
   const horsDelaiCount = enriched.filter((r) => r.horsDelai).length
+  // Seules les résolutions datées permettent de dire « sous 72 h » ; les plus anciennes ne sont pas comptées au hasard.
+  const traiteesSousDelai = enriched.filter((r) => r.delaiResolution !== null && r.delaiResolution <= RECLAMATION_DELAI_JOURS).length
+  const ouvertesDansDelai = enriched.filter((r) => r.statutKey !== 'resolue' && !r.horsDelai).length
 
   const parCat = enriched.reduce<Record<string, number>>((acc, r) => {
     acc[r.type] = (acc[r.type] ?? 0) + 1
@@ -235,8 +250,8 @@ export default function PrintableReclamationsReport({ records }: PrintableReclam
     }
   })
   const delais = [
-    { label: 'Traitées sous 72h', value: counts.resolue, color: STATUT_STYLE.resolue.color },
-    { label: 'En cours dans les délais', value: counts.cours, color: STATUT_STYLE.cours.color },
+    { label: 'Traitées sous 72h', value: traiteesSousDelai, color: STATUT_STYLE.resolue.color },
+    { label: 'Ouvertes dans les délais', value: ouvertesDansDelai, color: STATUT_STYLE.cours.color },
     { label: 'Hors délai (>72h)', value: horsDelaiCount, color: 'oklch(0.55 0.19 25)' },
   ]
 
@@ -255,7 +270,7 @@ export default function PrintableReclamationsReport({ records }: PrintableReclam
             ),
           },
         ]
-      : enriched.map((r) => ({ key: r.ref, node: <FicheCard r={r} /> }))
+      : enriched.map((r) => ({ key: r.id, node: <FicheCard r={r} /> }))
 
   return (
     <PaginatedPrintDocument

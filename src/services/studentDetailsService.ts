@@ -11,12 +11,19 @@ import {
   type CantineInfo,
   type SanteInfo,
   type ReclamationRecord,
+  type ReclamationAction,
+  type ReclamationEvent,
+  type StoredReclamationRecord,
+  normalizeReclamations,
+  newReclamationId,
   type RendezVousRecord,
   type StoredRendezVousRecord,
   normalizeRendezVous,
   type ProjetPersonnelInfo,
 } from '../data/studentDetails'
 import { logAudit } from './auditLogService'
+import { getCurrentActorName } from './permissions'
+import { RECLAMATION_DELAI_JOURS, addDaysISO, cleanReclamationText, todayLocalISO } from '../utils/reclamationsLogic'
 
 interface StudentExtraRow {
   student_id: string
@@ -28,7 +35,7 @@ interface StudentExtraRow {
   cantine: CantineInfo
   projet: ProjetPersonnelInfo
   sante: SanteInfo
-  reclamations: ReclamationRecord[]
+  reclamations: StoredReclamationRecord[]
   rendez_vous: StoredRendezVousRecord[]
 }
 
@@ -42,7 +49,7 @@ function rowToExtra(row: StudentExtraRow): StudentExtra {
     cantine: { ...defaultExtra.cantine, ...row.cantine },
     projet: { ...defaultExtra.projet, ...row.projet },
     sante: { ...defaultExtra.sante, ...row.sante },
-    reclamations: row.reclamations ?? defaultExtra.reclamations,
+    reclamations: row.reclamations ? normalizeReclamations(row.reclamations, row.student_id) : defaultExtra.reclamations,
     rendezVous: row.rendez_vous ? normalizeRendezVous(row.rendez_vous) : defaultExtra.rendezVous,
   }
 }
@@ -138,15 +145,84 @@ export async function updateStudentReclamations(id: string, reclamations: Reclam
   await patchStudentExtra(id, { reclamations })
 }
 
+function reclamationEvent(action: ReclamationAction, detail?: string): ReclamationEvent {
+  return { at: new Date().toISOString(), action, ...(detail ? { detail } : {}), auteur: getCurrentActorName() }
+}
+
+export type ReclamationPatch = Partial<Omit<ReclamationRecord, 'id' | 'historique'>>
+
+/** Seul point de modification d'une réclamation existante : la retrouve **par son id** (et non par sa
+ * position, qui se décale à chaque ajout/suppression), applique `patch`, ajoute l'événement à la frise
+ * chronologique puis enregistre via `updateStudentReclamations` (audit déjà branché). Utilisé par la page
+ * Réclamations, la fiche élève, la Réunion de suivi et l'Assistant IA. */
+export async function updateReclamation(
+  studentId: string,
+  id: string,
+  patch: ReclamationPatch,
+  event?: { action: ReclamationAction; detail?: string }
+): Promise<ReclamationRecord[]> {
+  const current = getStudentExtraSnapshot(studentId).reclamations
+  if (!current.some((r) => r.id === id)) throw new Error('Réclamation introuvable (elle a peut-être été supprimée).')
+  const updated = current.map((r) =>
+    r.id !== id ? r : { ...r, ...patch, historique: event ? [...r.historique, reclamationEvent(event.action, event.detail)] : r.historique }
+  )
+  await updateStudentReclamations(studentId, updated)
+  return updated
+}
+
+/** « Prendre en charge » : le responsable est, par défaut, la personne connectée, et l'échéance est
+ * fixée à 72 h (3 jours) — l'un et l'autre restent modifiables ensuite. */
+export function prendreEnChargeReclamation(studentId: string, id: string, options: { responsable?: string; echeance?: string } = {}) {
+  const responsable = options.responsable ?? getCurrentActorName()
+  return updateReclamation(
+    studentId,
+    id,
+    {
+      statut: 'En cours',
+      responsable,
+      echeance: options.echeance ?? addDaysISO(todayLocalISO(), RECLAMATION_DELAI_JOURS),
+      priseEnChargeLe: new Date().toISOString(),
+    },
+    { action: 'prise_en_charge', detail: responsable ? `Responsable : ${responsable}` : undefined }
+  )
+}
+
+export function resoudreReclamation(studentId: string, id: string, resolution: string) {
+  return updateReclamation(
+    studentId,
+    id,
+    { statut: 'Résolue', resolution: resolution.trim(), resoluLe: new Date().toISOString() },
+    { action: 'resolue', detail: resolution.trim() }
+  )
+}
+
+/** Rouvre une réclamation résolue ; la solution précédente reste lisible dans la frise chronologique. */
+export function rouvrirReclamation(studentId: string, id: string) {
+  const previous = getStudentExtraSnapshot(studentId).reclamations.find((r) => r.id === id)?.resolution
+  return updateReclamation(
+    studentId,
+    id,
+    { statut: 'En cours', resolution: '', resoluLe: undefined },
+    { action: 'rouverte', detail: previous ? `Solution précédente : ${previous}` : undefined }
+  )
+}
+
+export function assignerReclamation(studentId: string, id: string, responsable: string, echeance: string | undefined) {
+  const detail = [responsable ? `Responsable : ${responsable}` : 'Sans responsable', echeance ? `échéance ${echeance}` : ''].filter(Boolean).join(' · ')
+  return updateReclamation(studentId, id, { responsable: responsable || undefined, echeance: echeance || undefined }, { action: 'responsable', detail })
+}
+
+export async function supprimerReclamation(studentId: string, id: string): Promise<ReclamationRecord[]> {
+  const updated = getStudentExtraSnapshot(studentId).reclamations.filter((r) => r.id !== id)
+  await updateStudentReclamations(studentId, updated)
+  return updated
+}
+
 /** Marque une réclamation précise comme traitée — utilisé par le point "Traitement des
  * réclamations" de la réunion de suivi de classe, qui écrit réellement dans le module Réclamations
- * Parents plutôt que de dupliquer un suivi parallèle. `indexInStudent` vient de
- * `computeOpenReclamationsForNiveaux`, seule clé stable puisque `ReclamationRecord` n'a pas d'id
- * propre. */
-export async function markReclamationTraitee(studentId: string, indexInStudent: number, resolution: string): Promise<void> {
-  const current = getStudentExtraSnapshot(studentId).reclamations
-  const updated = current.map((r, i) => (i === indexInStudent ? { ...r, statut: 'Résolue' as const, resolution } : r))
-  await updateStudentReclamations(studentId, updated)
+ * Parents plutôt que de dupliquer un suivi parallèle. */
+export async function markReclamationTraitee(studentId: string, id: string, resolution: string): Promise<void> {
+  await resoudreReclamation(studentId, id, resolution)
 }
 
 export interface CreateReclamationsInput {
@@ -157,17 +233,21 @@ export interface CreateReclamationsInput {
 }
 
 /** Chemin partagé par l'UI (ReclamationsGlobal.tsx) et l'outil d'écriture de l'Assistant IA — une
- * seule implémentation du mapping items → ReclamationRecord[], pour éviter toute divergence. */
+ * seule implémentation du mapping items → ReclamationRecord[], pour éviter toute divergence. Les textes
+ * sont nettoyés à l'écriture (le texte du modèle d'IA ou d'un collage arrive souvent en markdown :
+ * « **Objet : … ** »). */
 export async function createReclamations(input: CreateReclamationsInput): Promise<ReclamationRecord[]> {
   const newRecords: ReclamationRecord[] = input.items.map((item) => ({
-    date: input.date,
+    id: newReclamationId(),
+    date: input.date || todayLocalISO(),
     statut: 'En attente',
     type: item.category,
-    objet: item.objet,
-    description: item.description,
+    objet: cleanReclamationText(item.objet),
+    description: cleanReclamationText(item.description),
     resolution: '',
-    enseignant: item.concernant,
-    parentNom: input.parentNom,
+    enseignant: item.concernant.trim(),
+    parentNom: input.parentNom.trim(),
+    historique: [reclamationEvent('creee')],
   }))
   const updated = [...newRecords, ...getStudentExtraSnapshot(input.studentId).reclamations]
   await updateStudentReclamations(input.studentId, updated)

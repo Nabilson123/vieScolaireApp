@@ -2,7 +2,7 @@ import SchoolLogo from '../print/SchoolLogo'
 import type { SuiviProf } from '../../data/suiviProfs'
 import type { SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import type { LogicalGroup } from '../../utils/suiviClasseGroups'
-import type { RiskStudent, OpenReclamation } from '../../utils/suiviClasseRisqueAggregation'
+import { getReclamationNote, reclamationNoteKey, type RiskStudent, type OpenReclamation } from '../../utils/suiviClasseRisqueAggregation'
 import { teacherName } from '../../data/teachers'
 import { weekdayLabelFromDate } from './SuiviClasseTab'
 import { minutesToTime, timeToMinutes } from '../../data/classSchedules'
@@ -191,7 +191,8 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
           </thead>
           <tbody>
             {reclamations.map((r) => {
-              const key = `${r.studentId}:${r.indexInStudent}`
+              const key = reclamationNoteKey(r)
+              const note = getReclamationNote(cr.point5, r)
               const traitee = r.statut === 'Résolue'
               return (
                 <tr key={key}>
@@ -202,10 +203,10 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
                     {r.type} — {r.objet}
                   </td>
                   <td className="border px-1.5 py-1" style={{ borderColor: C.rule }}>
-                    {cr.point5?.[key]?.faits || '—'}
+                    {note?.faits || '—'}
                   </td>
                   <td className="border px-1.5 py-1" style={{ borderColor: C.rule }}>
-                    {cr.point5?.[key]?.reponse || '—'}
+                    {note?.reponse || '—'}
                   </td>
                   <td className="border px-1.5 py-1 font-bold" style={{ borderColor: C.rule, color: traitee ? '#15803d' : '#b45309' }}>
                     {traitee ? 'Traitée' : 'Ouverte'}

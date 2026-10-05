@@ -1,4 +1,4 @@
-import { useCurrentUserId } from './currentUser'
+import { useCurrentUserId, getCurrentUserIdSnapshot } from './currentUser'
 import { useProfiles, getProfilesSnapshot } from './profilesService'
 import type { Profile } from '../data/profiles'
 
@@ -12,6 +12,14 @@ export function useCurrentProfile(): Profile | undefined {
   const userId = useCurrentUserId()
   const { data: profiles = getProfilesSnapshot() } = useProfiles()
   return profiles.find((p) => p.id === userId)
+}
+
+/** Nom de la personne connectée, hors React (même convention que l'écran Cockpit : nom complet, sinon
+ * e-mail) — pour signer un événement d'historique. Chaîne vide si la session n'est pas prête. */
+export function getCurrentActorName(): string {
+  const userId = getCurrentUserIdSnapshot()
+  const profile = getProfilesSnapshot().find((p) => p.id === userId)
+  return profile?.nomComplet || profile?.email || ''
 }
 
 /**

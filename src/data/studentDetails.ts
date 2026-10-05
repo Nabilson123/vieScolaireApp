@@ -38,15 +38,83 @@ export interface NoteRow {
   classeAverage: number
 }
 
+export type ReclamationAction =
+  | 'creee'
+  | 'prise_en_charge'
+  | 'resolue'
+  | 'rouverte'
+  | 'modifiee'
+  | 'responsable'
+  | 'message_parent'
+  | 'action_creee'
+
+/** Une ligne de la frise chronologique d'une réclamation (qui a fait quoi, et quand). */
+export interface ReclamationEvent {
+  /** Date et heure ISO (UTC) de l'événement. */
+  at: string
+  action: ReclamationAction
+  detail?: string
+  auteur: string
+}
+
 export interface ReclamationRecord {
+  /** Identifiant stable : une réclamation n'est plus repérée par sa position dans le tableau de
+   * l'élève (qui se décale à chaque ajout/suppression). Voir `normalizeReclamations`. */
+  id: string
   date: string
   statut: 'En cours' | 'Résolue' | 'En attente'
   type: string
   objet: string
   description: string
   resolution: string
+  /** « Concernant » : enseignant ou service visé par la réclamation. */
   enseignant: string
   parentNom: string
+  /** Nom de la personne (compte de l'app) qui suit la réclamation. */
+  responsable?: string
+  /** Date limite de traitement (AAAA-MM-JJ). */
+  echeance?: string
+  priseEnChargeLe?: string
+  resoluLe?: string
+  historique: ReclamationEvent[]
+}
+
+/** Forme stockée en base : les réclamations créées avant l'ajout de l'identifiant et de la frise
+ * chronologique n'ont ni `id` ni `historique`. */
+export type StoredReclamationRecord = Omit<ReclamationRecord, 'id' | 'historique'> & { id?: string; historique?: ReclamationEvent[] }
+
+/** Hachage FNV-1a 32 bits, en hexadécimal — déterministe, sans dépendance. */
+function hashString(input: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16).padStart(8, '0')
+}
+
+/** Identifiant d'une nouvelle réclamation. */
+export function newReclamationId(): string {
+  const uuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : null
+  return uuid ?? `rc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** Complète les anciennes réclamations : un `id` déterministe (calculé depuis le contenu, donc identique
+ * à chaque lecture tant qu'il n'est pas encore enregistré ; deux réclamations strictement identiques
+ * reçoivent un suffixe) et une frise vide. Appelé une seule fois à la lecture, comme
+ * `normalizeRendezVous` ; l'identifiant est enregistré à la prochaine écriture du tableau. */
+export function normalizeReclamations(list: StoredReclamationRecord[] | null | undefined, studentId: string): ReclamationRecord[] {
+  const seen = new Map<string, number>()
+  return (list ?? []).map((r) => {
+    let id = r.id
+    if (!id) {
+      const base = `rc-${hashString([studentId, r.date, r.type, r.objet, r.description].join('|'))}`
+      const n = (seen.get(base) ?? 0) + 1
+      seen.set(base, n)
+      id = n === 1 ? base : `${base}-${n}`
+    }
+    return { ...r, id, historique: r.historique ?? [] }
+  })
 }
 
 export interface CompteRenduRdvDecision {

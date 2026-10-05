@@ -6,6 +6,7 @@ import { RECLAMATION_CATEGORIES } from '../data/studentDetails'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
+import { todayLocalISO } from '../utils/reclamationsLogic'
 
 const AUTRE_SENTINEL = '__AUTRE__'
 
@@ -31,10 +32,6 @@ interface NewReclamationModalProps {
   }) => void
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export default function NewReclamationModal({ onClose, onSubmit }: NewReclamationModalProps) {
   const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
   const staffNames = getTeachersSnapshot()
@@ -45,7 +42,7 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
   const [studentId, setStudentId] = useState('')
   const [parentSelect, setParentSelect] = useState('')
   const [parentAutre, setParentAutre] = useState('')
-  const [date, setDate] = useState(todayISO())
+  const [date, setDate] = useState(todayLocalISO())
   const [items, setItems] = useState<ReclamationItem[]>([makeEmptyItem()])
 
   const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)

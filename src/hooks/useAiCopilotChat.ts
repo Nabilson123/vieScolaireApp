@@ -5,6 +5,7 @@ import { useIsViewedYearEditable } from '../services/viewedYear'
 import { useMarkAppelParentDone } from '../services/appelsParentsService'
 import { useDeclareSortieAnticipeeStaff } from '../services/sortiesAnticipeesService'
 import { createReclamations } from '../services/studentDetailsService'
+import { todayLocalISO } from '../utils/reclamationsLogic'
 import { callAiCopilot, buildSystemPrompt, getAvailableTools, isWriteTool, READ_TOOLS, WRITE_TOOLS } from '../services/aiCopilot'
 import type { GeminiContent, GeminiPart } from '../services/aiCopilot/types'
 
@@ -113,7 +114,7 @@ export function useAiCopilotChat() {
       await createReclamations({
         studentId: String(args.studentId ?? ''),
         parentNom: String(args.parentNom ?? ''),
-        date: String(args.date ?? new Date().toISOString().slice(0, 10)),
+        date: String(args.date ?? todayLocalISO()),
         items: (args.items as { category: string; objet: string; description: string; concernant: string }[] | undefined) ?? [],
       })
       await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })

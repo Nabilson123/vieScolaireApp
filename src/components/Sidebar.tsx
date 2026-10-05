@@ -6,6 +6,9 @@ import { useSchoolIdentity } from '../services/schoolIdentityService'
 import { useAlertRules } from '../services/alertRulesService'
 import { computeActiveAlertsSummary } from '../utils/alertEngine'
 import { countUnseenAlerts } from '../utils/alertsSeenStore'
+import { countHorsDelaiIn } from '../utils/reclamationsAlerts'
+import { useStudentExtras } from '../services/studentDetailsService'
+import { useStudents } from '../services/studentsService'
 import { useAnneesScolaires, getActiveYearIdSnapshot, getAnneesScolairesSnapshot } from '../services/anneesScolairesService'
 import { useViewedYearId, setViewedYearId } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
@@ -14,6 +17,18 @@ import { avatarGradient } from '../utils/avatarColor'
 import GlobalSearchModal from './GlobalSearchModal'
 
 const YEAR_RANGE_SPAN = 2
+
+/** Pastille rouge de l'entrée « Réclamations Parents » : nombre de réclamations non résolues depuis plus de 72 h. */
+function HorsDelaiBadge({ count }: { count: number }) {
+  return (
+    <span
+      title={`${count} réclamation${count > 1 ? 's' : ''} hors délai (plus de 72 h)`}
+      className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
+    >
+      {count}
+    </span>
+  )
+}
 
 interface SidebarProps {
   active: string
@@ -49,6 +64,10 @@ export default function Sidebar({
   const currentProfile = useCurrentProfile()
   const { data: alertRules } = useAlertRules()
   const alertCount = alertRules ? countUnseenAlerts(computeActiveAlertsSummary(alertRules)) : 0
+  // Réclamations hors délai (> 72 h) : badge sur l'entrée de menu, calculé depuis les données des requêtes.
+  const { data: extrasForBadge } = useStudentExtras()
+  const { data: studentsForBadge } = useStudents()
+  const reclamationsHorsDelai = useMemo(() => countHorsDelaiIn(studentsForBadge ?? [], extrasForBadge), [extrasForBadge, studentsForBadge])
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ scolarite: true })
   const [showSearch, setShowSearch] = useState(false)
   const [showYearMenu, setShowYearMenu] = useState(false)
@@ -228,6 +247,7 @@ export default function Sidebar({
                     >
                       <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
                       <span className="truncate">{item.label}</span>
+                      {item.key === 'reclamations' && reclamationsHorsDelai > 0 && <HorsDelaiBadge count={reclamationsHorsDelai} />}
                     </button>
                     <button
                       type="button"
@@ -282,6 +302,7 @@ export default function Sidebar({
                                 À venir
                               </span>
                             )}
+                            {item.key === 'reclamations' && reclamationsHorsDelai > 0 && <HorsDelaiBadge count={reclamationsHorsDelai} />}
                           </button>
                           <button
                             type="button"

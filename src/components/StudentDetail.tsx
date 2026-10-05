@@ -28,7 +28,6 @@ import { recomputeStudentAttendance } from '../data/students'
 import { defaultExtra, subjectColorClasses, EVALUATION_TYPES, type EventRecord, type RendezVousRecord } from '../data/studentDetails'
 import {
   useStudentExtras,
-  updateStudentReclamations,
   updateStudentRendezVous,
   updateStudentEventJustified,
   getStudentExtraSnapshot,
@@ -87,24 +86,6 @@ export default function StudentDetail({ student, onBack, initialTab, onStudentUp
   const { data: extrasMap } = useStudentExtras()
   const extra = extrasMap?.[student.id] ?? defaultExtra
   const { reclamations, rendezVous } = extra
-
-  const handleTakeChargeReclamation = async (index: number) => {
-    const next = reclamations.map((r, i) => (i === index ? { ...r, statut: 'En cours' as const } : r))
-    await updateStudentReclamations(student.id, next)
-    await invalidateExtras()
-  }
-
-  const handleResolveReclamation = async (index: number, resolution: string) => {
-    const next = reclamations.map((r, i) => (i === index ? { ...r, statut: 'Résolue' as const, resolution } : r))
-    await updateStudentReclamations(student.id, next)
-    await invalidateExtras()
-  }
-
-  const handleDeleteReclamation = async (index: number) => {
-    const next = reclamations.filter((_, i) => i !== index)
-    await updateStudentReclamations(student.id, next)
-    await invalidateExtras()
-  }
 
   const handleRendezVousChange = async (list: RendezVousRecord[]) => {
     await updateStudentRendezVous(student.id, list)
@@ -313,12 +294,7 @@ export default function StudentDetail({ student, onBack, initialTab, onStudentUp
       {activeTab === 'projet' && <ProjetPersonnelTab student={student} projet={extra.projet} />}
       {activeTab === 'sante' && <SanteTab sante={extra.sante} />}
       {activeTab === 'reclamations' && (
-        <ReclamationsTab
-          reclamations={reclamations}
-          onTakeCharge={handleTakeChargeReclamation}
-          onResolve={handleResolveReclamation}
-          onDelete={handleDeleteReclamation}
-        />
+        <ReclamationsTab studentId={student.id} studentName={student.name} reclamations={reclamations} />
       )}
       {activeTab === 'rendezvous' && (
         <RendezVousTab studentId={student.id} rendezVous={rendezVous} onChange={handleRendezVousChange} />

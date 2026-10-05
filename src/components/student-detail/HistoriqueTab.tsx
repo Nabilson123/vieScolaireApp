@@ -20,6 +20,7 @@ import { getAnneesScolairesSnapshot } from '../../services/anneesScolairesServic
 import { getStudentExtraSnapshot } from '../../services/studentDetailsService'
 import { getStudentIdentitySnapshot } from '../../services/studentIdentityService'
 import { computeMoyenneGenerale, computeSubjectMoyenne } from '../../utils/studentAggregation'
+import { cleanReclamationText } from '../../utils/reclamationsLogic'
 
 interface HistoriqueTabProps {
   dossierId?: string
@@ -285,7 +286,7 @@ function HistoryYearDetail({ year, onBack }: { year: HistoryYear; onBack: () => 
                 <span className="font-semibold text-slate-700">
                   {r.date} · {r.type}
                 </span>{' '}
-                — {r.objet} <span className="text-slate-400">({r.statut})</span>
+                — {cleanReclamationText(r.objet)} <span className="text-slate-400">({r.statut})</span>
               </li>
             ))}
           </ul>

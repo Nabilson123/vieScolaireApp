@@ -12,6 +12,7 @@ import { getAppelsParentsTodaySnapshot } from '../services/appelsParentsService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getWeekdayName, getPendingReplacements, mergeIntervals, subtractCoveredIntervals, type TimeInterval } from './replacementAggregation'
 import { isWithinPeriod } from './period'
+import { cleanReclamationText } from './reclamationsLogic'
 
 // ---------------------------------------------------------------------------
 // Créneau en cours par classe / appels non faits
@@ -404,7 +405,7 @@ export function buildRecentEvents(today: string, limit = 20): RecentEvent[] {
     })
     extra.reclamations.forEach((r) => {
       if (!isWithinPeriod(r.date, today, today)) return
-      rows.push({ kind: 'reclamation', studentName: s.name, classe: s.classe, label: r.objet, detail: r.description, index: index++ })
+      rows.push({ kind: 'reclamation', studentName: s.name, classe: s.classe, label: cleanReclamationText(r.objet), detail: cleanReclamationText(r.description), index: index++ })
     })
   })
   return rows

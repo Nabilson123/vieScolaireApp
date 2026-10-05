@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { GraduationCap, Eye, Clock, ShieldAlert, HeartPulse, Wrench, Repeat, ChevronRight, Download, Gavel } from 'lucide-react'
+import { GraduationCap, Eye, Clock, ShieldAlert, HeartPulse, Wrench, Repeat, ChevronRight, Download, Gavel, Megaphone } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cycleLabel, type CycleKey } from '../data/alertRules'
 import { useAlertRules } from '../services/alertRulesService'
 import { computeActiveAlertsSummary, type StudentAlert, type CycleMetric } from '../utils/alertEngine'
 import { computeConseilsDisciplineEnAttente, computeElevesSousAlerteConduite } from '../utils/pedagogieDisciplineAggregation'
 import { downloadCSV } from '../utils/csvExport'
+import { computeReclamationsHorsDelai } from '../utils/reclamationsAlerts'
 
 interface AlertesCentreCardProps {
   onNavigateToStudent: (id: string) => void
@@ -29,6 +30,7 @@ const LIST_THEME = {
 function formatStudentValue(s: StudentAlert): string {
   if (s.unit === 'min') return `${Math.round(s.value)} min`
   if (s.unit === ' cas') return `${Math.round(s.value)} cas`
+  if (s.unit === ' j') return `${Math.round(s.value)} j`
   return `${s.value.toFixed(1)}${s.unit}`
 }
 
@@ -145,6 +147,7 @@ export default function AlertesCentreCard({ onNavigateToStudent }: AlertesCentre
   const retards = filterByCycle(summary.retards)
   const conseilsDiscipline = filterByCycle(computeConseilsDisciplineEnAttente())
   const alertesDisciplinaires = filterByCycle(computeElevesSousAlerteConduite())
+  const reclamationsHorsDelai = filterByCycle(computeReclamationsHorsDelai())
 
   const climat = aggregateSum(summary.climat, tab)
   const pai = aggregateSum(summary.pai, tab)
@@ -204,6 +207,13 @@ export default function AlertesCentreCard({ onNavigateToStudent }: AlertesCentre
           icon={ShieldAlert}
           color="rose"
           items={alertesDisciplinaires}
+          onNavigateToStudent={onNavigateToStudent}
+        />
+        <StudentAlertList
+          title="Réclamations hors délai (> 72 h)"
+          icon={Megaphone}
+          color="orange"
+          items={reclamationsHorsDelai}
           onNavigateToStudent={onNavigateToStudent}
         />
         <StudentAlertList

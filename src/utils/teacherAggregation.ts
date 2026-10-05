@@ -6,6 +6,7 @@ import { getClassesSnapshot } from '../services/classesService'
 import { SCHEDULE_DAYS } from '../data/classSchedules'
 import { getClassScheduleSnapshot } from '../services/classSchedulesService'
 import { isWithinPeriod } from './period'
+import { cleanReclamationText } from './reclamationsLogic'
 import { cycleOfNiveau } from '../data/referentiel'
 
 /** Cycles réellement couverts par un prof (dérivés de ses niveaux réels, pas déclaratifs) — un prof
@@ -184,7 +185,7 @@ export function collectTeacherReclamations(teacher: Teacher, periodStart: string
   getStudentsSnapshot().forEach((s) => {
     getStudentExtraSnapshot(s.id).reclamations.forEach((r) => {
       if (matchesTeacher(r.enseignant, teacher) && isWithinPeriod(r.date, periodStart, periodEnd)) {
-        rows.push({ date: r.date, studentName: s.name, objet: r.objet, statut: r.statut })
+        rows.push({ date: r.date, studentName: s.name, objet: cleanReclamationText(r.objet), statut: r.statut })
       }
     })
   })
