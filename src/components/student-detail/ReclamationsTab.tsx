@@ -3,6 +3,7 @@ import { MessageSquareWarning, X } from 'lucide-react'
 import type { ReclamationRecord } from '../../data/studentDetails'
 import ReclamationCard from '../ReclamationCard'
 import EditReclamationModal from '../reclamations/EditReclamationModal'
+import ReclamationDrawer from '../reclamations/ReclamationDrawer'
 import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../reclamations/ReclamationMessageModal'
 import type { ReclamationMessageKind } from '../../utils/whatsapp'
 import { useIsViewedYearEditable } from '../../services/viewedYear'
@@ -21,6 +22,8 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
   const isEditable = useIsViewedYearEditable() && getModuleAccess(profile, 'reclamations').canEdit
   const actions = useReclamationActions()
   const [editing, setEditing] = useState<ReclamationRecord | null>(null)
+  const [drawerId, setDrawerId] = useState<string | null>(null)
+  const drawerRecord = drawerId ? reclamations.find((r) => r.id === drawerId) : undefined
   const [message, setMessage] = useState<{ reclamation: ReclamationRecord; kind: ReclamationMessageKind } | null>(null)
 
   return (
@@ -59,12 +62,15 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
               onMessage={() => setMessage({ reclamation: r, kind: messageKindForStatut(r.statut) })}
               onAssign={(responsable, echeance) => actions.assigner(studentId, r.id, responsable, echeance || undefined)}
               onReopen={() => actions.rouvrir(studentId, r.id)}
+              onHistory={() => setDrawerId(r.id)}
               onEdit={() => setEditing(r)}
               onDelete={() => actions.supprimer(studentId, r.id)}
             />
           ))}
         </div>
       )}
+
+      {drawerRecord && <ReclamationDrawer reclamation={drawerRecord} studentName={studentName} classe={classe} onClose={() => setDrawerId(null)} />}
 
       {message && (
         <ReclamationMessageModal

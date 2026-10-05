@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, MessageCircle, Pencil, RotateCcw, Trash2, UserCog, X } from 'lucide-react'
+import { ArrowRightCircle, CheckCircle2, History, MessageCircle, Pencil, RotateCcw, Trash2, UserCog, X } from 'lucide-react'
 import type { ReclamationRecord } from '../data/studentDetails'
 import {
   cleanReclamationText,
@@ -11,6 +11,7 @@ import {
   type EcheanceStatut,
 } from '../utils/reclamationsLogic'
 import { buildStaffOptions } from '../utils/staffOptions'
+import { BRIDGE_LABELS, type BridgeKind } from './reclamations/bridges'
 
 /** Une couleur par catégorie (les 19 du référentiel), pour repérer d'un coup d'œil. */
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -84,6 +85,11 @@ interface ReclamationCardProps {
   onMessage?: () => void
   /** Change le responsable et l'échéance. */
   onAssign?: (responsable: string, echeance: string) => void
+  /** « Transformer en… » : ponts disponibles pour cette réclamation et leur déclenchement. */
+  bridges?: BridgeKind[]
+  onBridge?: (kind: BridgeKind) => void
+  /** Ouvre le tiroir de détail avec l'historique. */
+  onHistory?: () => void
 }
 
 export default function ReclamationCard({
@@ -98,7 +104,11 @@ export default function ReclamationCard({
   onDelete,
   onMessage,
   onAssign,
+  bridges = [],
+  onBridge,
+  onHistory,
 }: ReclamationCardProps) {
+  const [showBridges, setShowBridges] = useState(false)
   const [showResolveForm, setShowResolveForm] = useState(false)
   const [showAssign, setShowAssign] = useState(false)
   const [draftResponsable, setDraftResponsable] = useState('')
@@ -176,6 +186,27 @@ export default function ReclamationCard({
             >
               Valider la résolution
             </button>
+          </div>
+        </div>
+      )}
+
+      {showBridges && onBridge && bridges.length > 0 && (
+        <div className="mb-3 rounded-lg border border-violet-100 bg-violet-50/50 p-3">
+          <p className="mb-2 text-[11px] font-semibold text-violet-700">Transformer cette réclamation en…</p>
+          <div className="flex flex-wrap gap-1.5">
+            {bridges.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => {
+                  setShowBridges(false)
+                  onBridge(b)
+                }}
+                className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100"
+              >
+                {BRIDGE_LABELS[b]}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -317,6 +348,26 @@ export default function ReclamationCard({
                 >
                   <RotateCcw className="h-3 w-3" />
                   Rouvrir
+                </button>
+              )}
+              {onHistory && (
+                <button
+                  type="button"
+                  onClick={onHistory}
+                  title="Détail et historique"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
+                >
+                  <History className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onBridge && bridges.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowBridges((v) => !v)}
+                  title="Transformer en action dans un autre module"
+                  className={`flex h-7 w-7 items-center justify-center rounded-lg ${showBridges ? 'bg-violet-200 text-violet-700' : 'bg-violet-50 text-violet-600 hover:bg-violet-100'}`}
+                >
+                  <ArrowRightCircle className="h-3.5 w-3.5" />
                 </button>
               )}
               {onMessage && (

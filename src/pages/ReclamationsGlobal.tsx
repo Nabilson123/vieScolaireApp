@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Megaphone, PlusCircle, Printer, Search, Timer, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Columns3, List, Megaphone, PlusCircle, Printer, Search, Timer, X } from 'lucide-react'
 import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import { RECLAMATION_CATEGORIES, type ReclamationRecord } from '../data/studentDetails'
 import { useStudentExtras } from '../services/studentDetailsService'
@@ -8,6 +8,15 @@ import ReclamationCard from '../components/ReclamationCard'
 import EditReclamationModal from '../components/reclamations/EditReclamationModal'
 import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../components/reclamations/ReclamationMessageModal'
 import type { ReclamationMessageKind } from '../utils/whatsapp'
+import { computeReclamationSignals, type ReclamationSignal } from '../utils/reclamationsAlerts'
+import ReclamationBridgeModal from '../components/reclamations/ReclamationBridgeModal'
+import ReclamationDrawer from '../components/reclamations/ReclamationDrawer'
+import ReclamationKanban from '../components/reclamations/ReclamationKanban'
+import ResolveReclamationModal from '../components/reclamations/ResolveReclamationModal'
+import { availableBridges, type BridgeKind } from '../components/reclamations/bridges'
+import { computeLogicalGroups } from '../utils/suiviClasseGroups'
+import { useClasses } from '../services/classesService'
+import { getTeachersSnapshot } from '../services/teachersService'
 import ReclamationsPrintPreviewModal from '../components/reclamations-print/ReclamationsPrintPreviewModal'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
@@ -73,6 +82,15 @@ export default function ReclamationsGlobal() {
   const [resolvedOpen, setResolvedOpen] = useState(false)
   const [editing, setEditing] = useState<FlatReclamation | null>(null)
   const [messageTarget, setMessageTarget] = useState<MessageTarget | null>(null)
+  const [signalFilter, setSignalFilter] = useState<ReclamationSignal | null>(null)
+  const [bridgeTarget, setBridgeTarget] = useState<{ kind: BridgeKind; item: FlatReclamation } | null>(null)
+  const [view, setView] = useState<'liste' | 'kanban'>('liste')
+  const [drawerKey, setDrawerKey] = useState<{ studentId: string; id: string } | null>(null)
+  const [resolveTarget, setResolveTarget] = useState<FlatReclamation | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
+  const { data: classes = [] } = useClasses()
+  const teachers = getTeachersSnapshot()
+  const logicalGroups = useMemo(() => computeLogicalGroups(classes, teachers), [classes, teachers])
 
   const flat: FlatReclamation[] = useMemo(() => {
     const list: FlatReclamation[] = []
@@ -83,6 +101,12 @@ export default function ReclamationsGlobal() {
     })
     return list
   }, [students, extrasMap])
+
+  // Regroupements récents qui méritent l'attention (même classe + même catégorie, même enseignant, même élève).
+  const signals = useMemo(
+    () => computeReclamationSignals(flat.map((r) => ({ studentId: r.studentId, studentName: r.studentName, classe: r.classe, record: r }))),
+    [flat]
+  )
 
   // Base des indicateurs et des compteurs de filtres : recherche + catégorie seulement, PAS le filtre
   // rapide — sinon choisir « Hors délai » ramènerait mécaniquement les autres compteurs à 0.
@@ -96,7 +120,8 @@ export default function ReclamationsGlobal() {
       (r.responsable ?? '').toLowerCase().includes(q) ||
       cleanReclamationText(r.objet).toLowerCase().includes(q)
     const matchesCategorie = categorieFilter === 'Toutes' || r.type === categorieFilter
-    return matchesSearch && matchesCategorie
+    const matchesSignal = !signalFilter || signalFilter.ids.includes(r.id)
+    return matchesSearch && matchesCategorie && matchesSignal
   })
 
   const predicates: Record<QuickFilter, (r: FlatReclamation) => boolean> = {
@@ -144,6 +169,25 @@ export default function ReclamationsGlobal() {
   const openMessage = (item: FlatReclamation, record: ReclamationRecord, kind: ReclamationMessageKind, banner?: string) =>
     setMessageTarget({ reclamation: record, studentId: item.studentId, studentName: item.studentName, classe: item.classe, kind, banner })
 
+  const handleTakeCharge = async (item: FlatReclamation) => {
+    const updated = await actions.prendreEnCharge(item.studentId, item.id)
+    if (updated) openMessage(item, updated, 'prise_en_charge')
+  }
+
+  // Dépôt d'une carte sur une autre colonne du Kanban. « Résolue » demande toujours le texte de la solution ;
+  // on ne revient pas à « En attente » (une réclamation prise en charge ne repasse pas en attente).
+  const handleKanbanDrop = async (item: FlatReclamation, target: ReclamationRecord['statut']) => {
+    if (target === 'En cours') {
+      if (item.statut === 'En attente') await handleTakeCharge(item)
+      else await actions.rouvrir(item.studentId, item.id)
+    } else if (target === 'Résolue') {
+      setResolveTarget(item)
+    } else {
+      setHint('Une réclamation prise en charge ne repasse pas « En attente ». Utilisez « Rouvrir » pour une réclamation résolue.')
+      setTimeout(() => setHint(null), 5000)
+    }
+  }
+
   const handleCreate = async (payload: Parameters<typeof actions.creer>[0]) => {
     const list = await actions.creer(payload)
     if (!list) return
@@ -169,16 +213,16 @@ export default function ReclamationsGlobal() {
       studentName={item.studentName}
       classe={item.classe}
       isEditable={isEditable}
-      onTakeCharge={async () => {
-        const updated = await actions.prendreEnCharge(item.studentId, item.id)
-        if (updated) openMessage(item, updated, 'prise_en_charge')
-      }}
+      onTakeCharge={() => handleTakeCharge(item)}
       onResolve={async (resolution) => {
         const updated = await actions.resoudre(item.studentId, item.id, resolution)
         if (updated) openMessage(item, updated, 'resolution')
       }}
       onMessage={() => openMessage(item, item, messageKindForStatut(item.statut))}
       onAssign={(responsable, echeance) => actions.assigner(item.studentId, item.id, responsable, echeance || undefined)}
+      bridges={availableBridges(item, item.classe, logicalGroups, teachers)}
+      onBridge={(kind) => setBridgeTarget({ kind, item })}
+      onHistory={() => setDrawerKey({ studentId: item.studentId, id: item.id })}
       onReopen={() => actions.rouvrir(item.studentId, item.id)}
       onEdit={() => setEditing(item)}
       onDelete={() => actions.supprimer(item.studentId, item.id)}
@@ -228,6 +272,38 @@ export default function ReclamationsGlobal() {
           <button type="button" onClick={actions.clearError} title="Fermer" className="shrink-0 text-rose-400 hover:text-rose-600">
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+
+      {hint && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{hint}</div>}
+
+      {signals.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Signaux à surveiller ({signals.length})
+            {signalFilter && (
+              <button type="button" onClick={() => setSignalFilter(null)} className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-700 hover:bg-amber-100">
+                Afficher toutes les réclamations
+              </button>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {signals.slice(0, 6).map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSignalFilter(signalFilter?.key === s.key ? null : s)}
+                title="Filtrer sur ce regroupement"
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  signalFilter?.key === s.key ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+            {signals.length > 6 && <span className="self-center text-xs text-amber-700">+ {signals.length - 6} autre(s)</span>}
+          </div>
         </div>
       )}
 
@@ -314,6 +390,22 @@ export default function ReclamationsGlobal() {
             ))}
           </select>
         </div>
+        <div className="flex items-center rounded-lg border border-slate-200 p-0.5" role="group" aria-label="Affichage">
+          {([
+            { key: 'liste', label: 'Liste', Icon: List },
+            { key: 'kanban', label: 'Colonnes', Icon: Columns3 },
+          ] as const).map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${view === key ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-slate-500">Tri :</span>
           <select
@@ -351,6 +443,15 @@ export default function ReclamationsGlobal() {
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
           Aucune réclamation ne correspond à ces filtres.
         </div>
+      ) : view === 'kanban' ? (
+        <ReclamationKanban
+          items={[...active, ...resolved]}
+          getKey={(i) => `${i.studentId}-${i.id}`}
+          getStatut={(i) => i.statut}
+          renderCard={renderCard}
+          canDrag={isEditable}
+          onDropTo={handleKanbanDrop}
+        />
       ) : (
         <div className="space-y-6">
           {active.length > 0 && (
@@ -389,6 +490,43 @@ export default function ReclamationsGlobal() {
             setEditing(null)
             await actions.modifier(target.studentId, target.id, patch, detail)
           }}
+        />
+      )}
+
+      {drawerKey &&
+        (() => {
+          const current = flat.find((r) => r.studentId === drawerKey.studentId && r.id === drawerKey.id)
+          return current ? <ReclamationDrawer reclamation={current} studentName={current.studentName} classe={current.classe} onClose={() => setDrawerKey(null)} /> : null
+        })()}
+
+      {resolveTarget && (
+        <ResolveReclamationModal
+          title={`${resolveTarget.studentName} — ${cleanReclamationText(resolveTarget.objet)}`}
+          onClose={() => setResolveTarget(null)}
+          onSubmit={async (resolution) => {
+            const target = resolveTarget
+            setResolveTarget(null)
+            const updated = await actions.resoudre(target.studentId, target.id, resolution)
+            if (updated) openMessage(target, updated, 'resolution')
+          }}
+        />
+      )}
+
+      {bridgeTarget && (
+        <ReclamationBridgeModal
+          kind={bridgeTarget.kind}
+          reclamation={bridgeTarget.item}
+          studentId={bridgeTarget.item.studentId}
+          studentName={bridgeTarget.item.studentName}
+          classe={bridgeTarget.item.classe}
+          groups={logicalGroups}
+          teachers={teachers}
+          onDone={(detail) => {
+            const target = bridgeTarget
+            setBridgeTarget(null)
+            actions.journaliserAction(target.item.studentId, target.item.id, detail)
+          }}
+          onClose={() => setBridgeTarget(null)}
         />
       )}
 

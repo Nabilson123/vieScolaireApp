@@ -35,6 +35,8 @@ interface SuiviProfModalProps {
   // Classe, qui propose déjà un jour/heure) — distinct de `initial` (édition d'un suivi existant,
   // toujours ponctuel).
   prefillRecurrent?: SuiviProfRecurrentPrefill
+  // Pré-remplit un NOUVEAU suivi ponctuel (ex. depuis une réclamation parent qui vise un enseignant).
+  prefillPonctuel?: { teacherIds: string[]; motif?: string }
 }
 
 const DUREE_OPTIONS = [15, 30, 45, 60]
@@ -48,14 +50,14 @@ const JOUR_LABELS: Record<string, string> = {
   VENDREDI: 'Vendredi',
 }
 
-export default function SuiviProfModal({ onClose, onSubmit, initial, prefillRecurrent }: SuiviProfModalProps) {
+export default function SuiviProfModal({ onClose, onSubmit, initial, prefillRecurrent, prefillPonctuel }: SuiviProfModalProps) {
   const allTeachers = getTeachersSnapshot()
   const matieresDisponibles = Array.from(new Set(allTeachers.flatMap((t) => t.matieres))).sort()
 
   const [matiereFilter, setMatiereFilter] = useState('')
   const [niveauFilter, setNiveauFilter] = useState('')
   const [cycleFilter, setCycleFilter] = useState('')
-  const [teacherIds, setTeacherIds] = useState<string[]>(initial?.teacherIds ?? prefillRecurrent?.teacherIds ?? [])
+  const [teacherIds, setTeacherIds] = useState<string[]>(initial?.teacherIds ?? prefillRecurrent?.teacherIds ?? prefillPonctuel?.teacherIds ?? [])
   // Le mode récurrent n'a de sens qu'à la création (pas d'édition d'une série existante) — un suivi
   // en cours de modification (`initial` présent) reste toujours en mode ponctuel.
   const [mode, setMode] = useState<'ponctuel' | 'recurrent'>(prefillRecurrent ? 'recurrent' : 'ponctuel')
@@ -65,7 +67,7 @@ export default function SuiviProfModal({ onClose, onSubmit, initial, prefillRecu
   const [duree, setDuree] = useState(initial?.duree ?? prefillRecurrent?.duree ?? 30)
   const [heure, setHeure] = useState(initial?.heure ?? prefillRecurrent?.heure ?? '')
   const [lieu, setLieu] = useState(initial?.lieu ?? '')
-  const [motif, setMotif] = useState(initial?.motif ?? prefillRecurrent?.motif ?? '')
+  const [motif, setMotif] = useState(initial?.motif ?? prefillRecurrent?.motif ?? prefillPonctuel?.motif ?? '')
   // Le compte-rendu se rédige/modifie désormais via RedigerSuiviCompteRenduModal (bouton dédié sur
   // la carte) — ce champ n'est plus édité ici, seulement préservé tel quel à chaque sauvegarde des
   // informations logistiques (date/heure/lieu/motif) pour ne pas écraser un compte-rendu existant.

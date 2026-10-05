@@ -49,6 +49,7 @@ import {
   buildRecentEvents,
   type ParentToCall,
 } from '../utils/liveCockpitAggregation'
+import { computeCockpitReclamations } from '../utils/reclamationsAlerts'
 import { computeConduite } from '../data/disciplineTypes'
 import RemplacementDirectModal from '../components/RemplacementDirectModal'
 import TimelineCreneauxModal from '../components/TimelineCreneauxModal'
@@ -164,6 +165,7 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
   const classesLiveStatus = useMemo(() => getClassesLiveStatus(new Date()), [today, nowTick, schedules, classes, appelsToday])
   const parentsToCall = useMemo(() => getParentsToCallToday(today), [today, students, studentExtras, appelsParentsToday])
   const recentEvents = useMemo(() => buildRecentEvents(today, 20), [today, students, studentExtras])
+  const reclamationsCockpit = useMemo(() => computeCockpitReclamations(), [today, students, studentExtras])
 
   const nowMin = useMemo(() => {
     void nowTick
@@ -714,6 +716,50 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                     <p className="text-xs italic text-slate-500">« {inc.description} »</p>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Réclamations parents à traiter */}
+          <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquareWarning className="h-4 w-4 text-rose-500" />
+                <h3 className="text-sm font-bold text-slate-800">Réclamations parents</h3>
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  reclamationsCockpit.horsDelai > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                }`}
+              >
+                {reclamationsCockpit.horsDelai > 0 ? `${reclamationsCockpit.horsDelai} hors délai` : 'Aucune hors délai'}
+              </span>
+            </div>
+            {reclamationsCockpit.ouvertes === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">Aucune réclamation en attente.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500">
+                  {reclamationsCockpit.ouvertes} réclamation{reclamationsCockpit.ouvertes > 1 ? 's' : ''} à traiter · les plus anciennes :
+                </p>
+                {reclamationsCockpit.anciennes.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-2 rounded-xl bg-white p-3 shadow-sm">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {r.studentName} <span className="font-normal text-slate-400">{r.classe}</span>
+                      </p>
+                      <p className="truncate text-xs text-slate-500">{r.objet}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${r.jours > 3 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {r.jours} j
+                    </span>
+                  </div>
+                ))}
+                {reclamationsCockpit.signaux.length > 0 && (
+                  <p className="pt-1 text-xs font-medium text-amber-700">
+                    {reclamationsCockpit.signaux.length} signal{reclamationsCockpit.signaux.length > 1 ? 'aux' : ''} de récurrence — voir Réclamations Parents.
+                  </p>
+                )}
               </div>
             )}
           </div>

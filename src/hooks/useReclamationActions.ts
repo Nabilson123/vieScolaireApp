@@ -58,6 +58,9 @@ export function useReclamationActions() {
       one(studentId, id, () => updateReclamation(studentId, id, patch, { action: 'modifiee', detail })),
     assigner: (studentId: string, id: string, responsable: string, echeance: string | undefined) =>
       one(studentId, id, () => assignerReclamation(studentId, id, responsable, echeance)),
+    /** Trace dans la frise qu'une action a été créée dans un autre module (« Transformer en… »). */
+    journaliserAction: (studentId: string, id: string, detail: string) =>
+      one(studentId, id, () => updateReclamation(studentId, id, {}, { action: 'action_creee', detail })),
     /** Trace dans la frise qu'un message a été copié ou ouvert dans WhatsApp. */
     journaliserMessage: (studentId: string, id: string, detail: string) =>
       one(studentId, id, () => updateReclamation(studentId, id, {}, { action: 'message_parent', detail })),

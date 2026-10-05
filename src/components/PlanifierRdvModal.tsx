@@ -44,6 +44,8 @@ interface PlanifierRdvModalProps {
   onSubmit: (payload: PlanifierRdvPayload) => void
   fixedStudentId?: string
   initial?: PlanifierRdvPayload
+  /** Motif proposé pour un NOUVEAU rendez-vous (ex. depuis une réclamation). */
+  prefillMotif?: string
 }
 
 function todayISO() {
@@ -54,7 +56,7 @@ const DUREE_OPTIONS = [15, 30, 45, 60]
 
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none'
 
-export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, initial }: PlanifierRdvModalProps) {
+export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, initial, prefillMotif }: PlanifierRdvModalProps) {
   const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
   const staffNames = getTeachersSnapshot()
     .map((t) => teacherName(t))
@@ -77,7 +79,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
   const [duree, setDuree] = useState(initial?.duree ?? 30)
   const [mode, setMode] = useState<'Présentiel' | 'Virtuel'>(initial?.mode ?? 'Présentiel')
   const [lieu, setLieu] = useState(initial?.lieu ?? '')
-  const [motif, setMotif] = useState(initial?.motif ?? '')
+  const [motif, setMotif] = useState(initial?.motif ?? prefillMotif ?? '')
   const [notesParents, setNotesParents] = useState(initial?.notesParents ?? '')
 
   const elevesDeLaClasse = fixedStudent ? [fixedStudent] : getStudentsSnapshot().filter((s) => s.classe === classe)

@@ -6,7 +6,7 @@ import { useAlertRules } from '../services/alertRulesService'
 import { computeActiveAlertsSummary, type StudentAlert, type CycleMetric } from '../utils/alertEngine'
 import { computeConseilsDisciplineEnAttente, computeElevesSousAlerteConduite } from '../utils/pedagogieDisciplineAggregation'
 import { downloadCSV } from '../utils/csvExport'
-import { computeReclamationsHorsDelai } from '../utils/reclamationsAlerts'
+import { collectAllReclamations, computeReclamationSignals, computeReclamationsHorsDelai } from '../utils/reclamationsAlerts'
 
 interface AlertesCentreCardProps {
   onNavigateToStudent: (id: string) => void
@@ -148,6 +148,7 @@ export default function AlertesCentreCard({ onNavigateToStudent }: AlertesCentre
   const conseilsDiscipline = filterByCycle(computeConseilsDisciplineEnAttente())
   const alertesDisciplinaires = filterByCycle(computeElevesSousAlerteConduite())
   const reclamationsHorsDelai = filterByCycle(computeReclamationsHorsDelai())
+  const signauxReclamations = computeReclamationSignals(collectAllReclamations())
 
   const climat = aggregateSum(summary.climat, tab)
   const pai = aggregateSum(summary.pai, tab)
@@ -216,6 +217,21 @@ export default function AlertesCentreCard({ onNavigateToStudent }: AlertesCentre
           items={reclamationsHorsDelai}
           onNavigateToStudent={onNavigateToStudent}
         />
+        {signauxReclamations.length > 0 && (
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-amber-500" />
+              <h3 className="text-sm font-semibold text-slate-800">Réclamations : signaux de récurrence</h3>
+            </div>
+            <ul className="space-y-2">
+              {signauxReclamations.map((s) => (
+                <li key={s.key} className="rounded-xl bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm">
+                  {s.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <StudentAlertList
           title="Conseil de Discipline en attente"
           icon={Gavel}

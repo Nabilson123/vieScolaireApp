@@ -6,16 +6,18 @@ import { useDeclarantsOptions } from '../../hooks/useDeclarantsOptions'
 interface IncidentModalProps {
   onClose: () => void
   onSubmit: (data: { titre: string; categorie: string; lieu: string; priorite: Priorite; description: string; declarant: string; photo?: string }) => void
+  /** Valeurs proposées pour un NOUVEL incident (ex. depuis une réclamation) ; le titre reste à choisir. */
+  initial?: { description?: string; lieu?: string }
 }
 
-export default function IncidentModal({ onClose, onSubmit }: IncidentModalProps) {
+export default function IncidentModal({ onClose, onSubmit, initial }: IncidentModalProps) {
   const declarants = useDeclarantsOptions()
 
   const [titre, setTitre] = useState('')
-  const [lieu, setLieu] = useState('')
+  const [lieu, setLieu] = useState(initial?.lieu ?? '')
   const [priorite, setPriorite] = useState<Priorite>('NORMALE')
   const [declarant, setDeclarant] = useState('')
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(initial?.description ?? '')
   const [photo, setPhoto] = useState<string | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
