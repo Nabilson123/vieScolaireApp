@@ -16,6 +16,7 @@ import { useIsViewedYearEditable } from '../services/viewedYear'
 import { enqueueNotification } from '../services/notificationQueueService'
 import { defaultIdentity } from '../data/studentIdentity'
 import { useStudentIdentities } from '../services/studentIdentityService'
+import StudentSearchSelect from './StudentSearchSelect'
 import DeclarerSortieAnticipeeModal from './student-detail/DeclarerSortieAnticipeeModal'
 import SortieAnticipeePrintPreviewModal from './sortie-anticipee-print/SortieAnticipeePrintPreviewModal'
 import TransportSortieWhatsAppModal from './transport/TransportSortieWhatsAppModal'
@@ -141,7 +142,13 @@ export default function SignalerAbsenceModal({ onClose, onSaved, initialTypeCibl
   const eleveIdentity = identities[eleveId] ?? defaultIdentity
   const eleveCantine = extrasMap[eleveId]?.cantine ?? defaultExtra.cantine
 
-  const elevesDeLaClasse = useMemo(() => students.filter((s) => s.classe === classe), [classe, students])
+  // L'élève choisi par la recherche peut venir d'une autre classe : la classe suit, car c'est elle qui donne l'emploi du temps
+  // des cours manqués.
+  const handleEleveChange = (id: string) => {
+    setEleveId(id)
+    const eleve = students.find((st) => st.id === id)
+    if (eleve && eleve.classe !== classe && realClasses.includes(eleve.classe)) setClasse(eleve.classe)
+  }
 
   const slotsForDay = (iso: string): DaySlot[] => {
     const day = dayNameFor(iso)
@@ -436,18 +443,7 @@ export default function SignalerAbsenceModal({ onClose, onSaved, initialTypeCibl
 
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné</label>
-                <select
-                  value={eleveId}
-                  onChange={(e) => setEleveId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-                >
-                  <option value="">Sélectionner un élève...</option>
-                  {elevesDeLaClasse.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <StudentSearchSelect students={students} value={eleveId} onChange={handleEleveChange} classe={classe} placeholder="Rechercher ou sélectionner un élève..." />
               </div>
             </>
           ) : (
