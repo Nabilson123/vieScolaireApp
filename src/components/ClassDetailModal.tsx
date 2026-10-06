@@ -15,6 +15,7 @@ import {
 } from '../utils/classAggregation'
 import ScheduleTimeGrid from './schedule/ScheduleTimeGrid'
 import { formatHeures } from '../utils/teacherAggregation'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 interface ClassDetailModalProps {
   schoolClass: SchoolClass
@@ -119,19 +120,14 @@ export default function ClassDetailModal({
             </div>
             <div className="rounded-2xl border border-slate-100 p-3">
               <p className="mb-1 text-[11px] font-semibold text-slate-500">Professeur Principal</p>
-              <select
+              <TeacherSearchSelect
+                teachers={classTeachers}
                 value={schoolClass.professeurPrincipalId ?? ''}
-                onChange={(e) => onAssignPP(e.target.value || undefined)}
+                onChange={(id) => onAssignPP(id || undefined)}
                 disabled={!isEditable}
-                className="w-full rounded-lg border border-slate-200 px-1.5 py-1 text-xs text-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">Non assigné</option>
-                {classTeachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {teacherName(t)}
-                  </option>
-                ))}
-              </select>
+                size="sm"
+                placeholder="Non assigné"
+              />
             </div>
           </div>
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
-import { teacherName, type Teacher } from '../data/teachers'
+import { type Teacher } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import {
   computeCalendarEvents,
@@ -22,6 +22,7 @@ import MonthGrid from '../components/calendar/MonthGrid'
 import CalendarLegend from '../components/calendar/CalendarLegend'
 import DayDetailModal from '../components/calendar/DayDetailModal'
 import CalendarPrintPreviewModal from '../components/calendar-print/CalendarPrintPreviewModal'
+import TeacherSearchSelect from '../components/TeacherSearchSelect'
 
 interface CalendrierMensuelProps {
   onNavigateToStudent: (id: string) => void
@@ -173,18 +174,9 @@ export default function CalendrierMensuel({ onNavigateToStudent, onNavigateToTea
               />
             </div>
           ) : (
-            <select
-              value={personId}
-              onChange={(e) => handlePersonChange(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none"
-            >
-              <option value="">Tous les enseignants</option>
-              {(personOptions as Teacher[]).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {teacherName(t)}
-                </option>
-              ))}
-            </select>
+            <div className="w-56">
+              <TeacherSearchSelect teachers={personOptions as Teacher[]} value={personId} onChange={(id) => handlePersonChange(id)} placeholder="Tous les enseignants" />
+            </div>
           )}
           <button
             type="button"

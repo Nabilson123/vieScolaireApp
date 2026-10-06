@@ -8,6 +8,7 @@ import { useMatieresConfig } from '../services/matieresConfigService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { buildRemplacementMessage, buildWhatsAppLink } from '../utils/whatsapp'
 import { useIsViewedYearEditable } from '../services/viewedYear'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 interface RemplacementModalProps {
   otherTeachers: Teacher[]
@@ -82,34 +83,12 @@ export default function RemplacementModal({ otherTeachers, initialRemplacantId, 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Professeur remplacé*</label>
-            <select
-              value={profRemplace}
-              onChange={(e) => setProfRemplace(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-            >
-              <option value="">Sélectionnez un professeur...</option>
-              {otherTeachers.map((t) => (
-                <option key={t.id} value={`${t.prenom} ${t.nom}`}>
-                  {t.prenom} {t.nom}
-                </option>
-              ))}
-            </select>
+            <TeacherSearchSelect teachers={otherTeachers} valueBy="name" value={profRemplace} onChange={setProfRemplace} placeholder="Sélectionnez un professeur..." />
           </div>
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Professeur remplaçant*</label>
-            <select
-              value={remplacantId}
-              onChange={(e) => setRemplacantId(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-            >
-              <option value="">Sélectionnez un professeur...</option>
-              {remplacants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.prenom} {t.nom}
-                </option>
-              ))}
-            </select>
+            <TeacherSearchSelect teachers={remplacants} value={remplacantId} onChange={setRemplacantId} placeholder="Sélectionnez un professeur..." />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

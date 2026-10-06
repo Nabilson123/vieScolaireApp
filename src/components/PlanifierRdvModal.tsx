@@ -8,6 +8,7 @@ import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import StudentSearchSelect from './StudentSearchSelect'
 import { buildStaffOptions } from '../utils/staffOptions'
 import type { RdvDemandeur, RdvDemandeurType, RendezVousRecord } from '../data/studentDetails'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 export interface PlanifierRdvPayload {
   studentId: string
@@ -198,14 +199,9 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
               <option value="autre">Autre (saisie libre)</option>
             </select>
             {demandeurType === 'enseignant' && (
-              <select value={demandeurNom} onChange={(e) => setDemandeurNom(e.target.value)} className={`${inputClass} mt-2`}>
-                <option value="">Sélectionnez l'enseignant demandeur...</option>
-                {staffNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2">
+                <TeacherSearchSelect teachers={getTeachersSnapshot()} valueBy="name" value={demandeurNom} onChange={setDemandeurNom} placeholder="Sélectionnez l'enseignant demandeur..." />
+              </div>
             )}
             {demandeurType === 'autre' && (
               <input

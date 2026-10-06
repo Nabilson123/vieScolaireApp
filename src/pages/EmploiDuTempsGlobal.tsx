@@ -45,6 +45,7 @@ import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
+import TeacherSearchSelect from '../components/TeacherSearchSelect'
 
 const QUOTA_HEURES = 20
 
@@ -284,17 +285,9 @@ export default function EmploiDuTempsGlobal() {
               ))}
             </select>
           ) : (
-            <select
-              value={selectedTeacherId}
-              onChange={(e) => setSelectedTeacherId(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none"
-            >
-              {getTeachersSnapshot().map((t) => (
-                <option key={t.id} value={t.id}>
-                  {teacherName(t)}
-                </option>
-              ))}
-            </select>
+            <div className="w-60">
+              <TeacherSearchSelect teachers={getTeachersSnapshot()} value={selectedTeacherId} onChange={setSelectedTeacherId} clearable={false} />
+            </div>
           )}
           <input
             type="date"

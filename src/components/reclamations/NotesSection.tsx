@@ -5,6 +5,7 @@ import { teacherName } from '../../data/teachers'
 import { getTeachersSnapshot } from '../../services/teachersService'
 import { useReclamationActions } from '../../hooks/useReclamationActions'
 import { findTeacherFor } from './bridges'
+import TeacherSearchSelect from '../TeacherSearchSelect'
 
 function formatWhen(iso: string): string {
   const d = new Date(iso)
@@ -71,22 +72,9 @@ export default function NotesSection({ reclamation, studentId, isEditable }: { r
               <option value="enseignant">Avis de l'enseignant</option>
             </select>
             {type === 'enseignant' && (
-              <select
-                value={enseignant}
-                onChange={(e) => setEnseignant(e.target.value)}
-                aria-label="Enseignant"
-                className="min-w-[160px] flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                <option value="">Quel enseignant ?</option>
-                {teachers
-                  .map((t) => teacherName(t))
-                  .sort((a, b) => a.localeCompare(b))
-                  .map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-              </select>
+              <div className="min-w-[200px] flex-1">
+                <TeacherSearchSelect teachers={teachers} valueBy="name" value={enseignant} onChange={setEnseignant} size="sm" placeholder="Quel enseignant ?" />
+              </div>
             )}
           </div>
           <textarea

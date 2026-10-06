@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { X, ClipboardCheck, Star, Paperclip } from 'lucide-react'
-import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { INSPECTEUR_OPTIONS, computeNote, getMention, type InspectionRecord } from '../data/inspections'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 interface NewInspectionModalProps {
   onClose: () => void
@@ -96,19 +96,7 @@ export default function NewInspectionModal({ onClose, onSubmit, initial }: NewIn
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Enseignant à évaluer*</label>
-            <select
-              value={teacherId}
-              onChange={(e) => setTeacherId(e.target.value)}
-              disabled={isEdit}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">-- Sélectionner un enseignant --</option>
-              {getTeachersSnapshot().map((t) => (
-                <option key={t.id} value={t.id}>
-                  {teacherName(t)}
-                </option>
-              ))}
-            </select>
+            <TeacherSearchSelect teachers={getTeachersSnapshot()} value={teacherId} onChange={setTeacherId} disabled={isEdit} placeholder="Sélectionner un enseignant..." />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

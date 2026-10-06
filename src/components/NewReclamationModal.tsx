@@ -11,6 +11,7 @@ import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { cleanReclamationText, formatDateFR, todayLocalISO } from '../utils/reclamationsLogic'
 import { findSimilarReclamations, type SimilarReclamation } from '../utils/reclamationsDoublons'
 import { parseParentMessage, type IntakeContext, type IntakeResult, type IntakeStudent } from '../utils/reclamationsIntake'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 const AUTRE_SENTINEL = '__AUTRE__'
 
@@ -382,21 +383,17 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
 
                     <div>
                       <label className="mb-1.5 block text-sm font-semibold text-slate-700">Concernant</label>
-                      <select
+                      <TeacherSearchSelect
+                        teachers={getTeachersSnapshot()}
+                        valueBy="name"
                         value={item.concernantSelect}
-                        onChange={(e) => {
-                          updateItem(idx, { concernantSelect: e.target.value, concernantAutre: e.target.value === AUTRE_SENTINEL ? item.concernantAutre : '' })
+                        inputClassName={flagClass(lowFlags.items[idx]?.concernant)}
+                        extra={{ value: AUTRE_SENTINEL, label: 'Autre / Personnel non-enseignant...' }}
+                        placeholder="Sélectionner..."
+                        onChange={(v) => {
+                          updateItem(idx, { concernantSelect: v, concernantAutre: v === AUTRE_SENTINEL ? item.concernantAutre : '' })
                         }}
-                        className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none${flagClass(lowFlags.items[idx]?.concernant)}`}
-                      >
-                        <option value="">Sélectionner...</option>
-                        {staffNames.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                        <option value={AUTRE_SENTINEL}>Autre / Personnel non-enseignant...</option>
-                      </select>
+                      />
                       {item.concernantSelect === AUTRE_SENTINEL && (
                         <input
                           type="text"

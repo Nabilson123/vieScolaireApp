@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { X, BookOpen, AlertCircle } from 'lucide-react'
-import { teacherName } from '../data/teachers'
 import { useTeachers } from '../services/teachersService'
 import { SCHEDULE_DAYS } from '../data/classSchedules'
 import { detectConflictForTeacher } from '../services/classSchedulesService'
@@ -8,6 +7,7 @@ import { formatHeures } from '../utils/teacherAggregation'
 import { useMatieresConfig } from '../services/matieresConfigService'
 import { getClassesSnapshot } from '../services/classesService'
 import { getMatieresForNiveau } from '../data/referentiel'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 const DAY_LABELS: Record<string, string> = { LUNDI: 'Lundi', MARDI: 'Mardi', MERCREDI: 'Mercredi', JEUDI: 'Jeudi', VENDREDI: 'Vendredi' }
 
@@ -124,18 +124,7 @@ export default function CourseSlotModal({ className, initialDay, onClose, onSubm
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Enseignant*</label>
-            <select
-              value={teacherId}
-              onChange={(e) => setTeacherId(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-            >
-              <option value="">Sélectionnez un enseignant...</option>
-              {eligibleTeachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {teacherName(t)}
-                </option>
-              ))}
-            </select>
+            <TeacherSearchSelect teachers={eligibleTeachers} value={teacherId} onChange={setTeacherId} placeholder="Sélectionnez un enseignant..." />
             {subject && eligibleTeachers.length === 0 && (
               <p className="mt-1 text-[11px] text-amber-600">
                 Aucun professeur ne déclare enseigner {subject}. Déclarez-le d’abord via « Éditer » dans Corps Professoral.

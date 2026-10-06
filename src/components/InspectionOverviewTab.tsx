@@ -27,6 +27,7 @@ import {
   getLatestInspection,
   getTeachersBelowThreshold,
 } from '../utils/inspectionAggregation'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 const SOUS_SEUIL_THRESHOLD = 12
 
@@ -59,18 +60,16 @@ export default function InspectionOverviewTab({ onOpenPlanProgres }: InspectionO
       <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-800">Profil de compétences</h3>
-          <select
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 focus:outline-none"
-          >
-            {teachersWithData.length === 0 && <option value="">Aucun professeur inspecté</option>}
-            {teachersWithData.map((t) => (
-              <option key={t.id} value={t.id}>
-                {teacherName(t)}
-              </option>
-            ))}
-          </select>
+          <div className="w-56">
+            <TeacherSearchSelect
+              teachers={teachersWithData}
+              value={selectedId}
+              onChange={setSelectedId}
+              size="sm"
+              clearable={false}
+              placeholder={teachersWithData.length === 0 ? 'Aucun professeur inspecté' : 'Rechercher un enseignant...'}
+            />
+          </div>
         </div>
 
         {radarData.length > 0 ? (

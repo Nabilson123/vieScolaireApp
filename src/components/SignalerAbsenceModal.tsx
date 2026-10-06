@@ -26,6 +26,7 @@ import { useAidesMaitresses } from '../services/aidesMaitressesService'
 import { useServicesCapacite } from '../services/servicesCapaciteService'
 import { resolveStudentTransport } from '../utils/transportStudentResolver'
 import { buildSortieAnticipeeTransportMessage } from '../utils/whatsapp'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 interface SignalerAbsenceModalProps {
   onClose: () => void
@@ -449,17 +450,7 @@ export default function SignalerAbsenceModal({ onClose, onSaved, initialTypeCibl
           ) : (
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Professeur concerné</label>
-              <select
-                value={professeurId}
-                onChange={(e) => setProfesseurId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.prenom} {t.nom}
-                  </option>
-                ))}
-              </select>
+              <TeacherSearchSelect teachers={teachers} value={professeurId} onChange={setProfesseurId} clearable={false} />
             </div>
           )}
 

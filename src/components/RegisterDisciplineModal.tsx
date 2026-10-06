@@ -7,6 +7,7 @@ import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { DISCIPLINE_TYPES, SANCTION_LEVELS, SANCTION_POINTS, type SanctionLevel } from '../data/disciplineTypes'
+import TeacherSearchSelect from './TeacherSearchSelect'
 
 interface RegisterDisciplineModalProps {
   onClose: () => void
@@ -509,17 +510,7 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Enseignant</label>
-              <select
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                {professeurs.map((p) => (
-                  <option key={p.id} value={teacherName(p)}>
-                    {teacherName(p)}
-                  </option>
-                ))}
-              </select>
+              <TeacherSearchSelect teachers={professeurs} valueBy="name" value={author} onChange={setAuthor} clearable={false} />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Date</label>

@@ -8,6 +8,7 @@ import type { ReclamationPatch } from '../../services/studentDetailsService'
 import { cleanReclamationText } from '../../utils/reclamationsLogic'
 import { useReclamationServices } from '../../services/reclamationServicesService'
 import { serviceFor } from '../../utils/reclamationsServices'
+import TeacherSearchSelect from '../TeacherSearchSelect'
 
 const AUTRE_SENTINEL = '__AUTRE__'
 
@@ -139,15 +140,14 @@ export default function EditReclamationModal({ reclamation, studentId, studentNa
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Concernant</label>
-              <select value={concernantSelect} onChange={(e) => setConcernantSelect(e.target.value)} className={inputClass}>
-                <option value="">Non précisé</option>
-                {staffNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-                <option value={AUTRE_SENTINEL}>Autre / Personnel non-enseignant...</option>
-              </select>
+              <TeacherSearchSelect
+                teachers={getTeachersSnapshot()}
+                valueBy="name"
+                value={concernantSelect}
+                onChange={setConcernantSelect}
+                extra={{ value: AUTRE_SENTINEL, label: 'Autre / Personnel non-enseignant...' }}
+                placeholder="Non précisé"
+              />
               {concernantSelect === AUTRE_SENTINEL && (
                 <input
                   type="text"
