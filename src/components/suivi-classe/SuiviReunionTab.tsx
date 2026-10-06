@@ -549,8 +549,9 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
             <Printer className="h-4 w-4" />
             Imprimer / Télécharger
           </button>
-          <div className="overflow-hidden rounded-lg shadow-md">
-            <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} />
+          {/* Une ou plusieurs pages A4 : chacune porte déjà son ombre, on les sépare simplement. */}
+          <div className="flex flex-col gap-4">
+            <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} />
           </div>
         </div>
       ) : (
@@ -730,7 +731,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
       )}
 
       {showPrint && suivi && group && (
-        <SuiviReunionPrintPreviewModal group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} onClose={() => setShowPrint(false)} />
+        <SuiviReunionPrintPreviewModal group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} onClose={() => setShowPrint(false)} />
       )}
     </>
   )

@@ -4,6 +4,7 @@ import PrintPreviewShell from '../print/PrintPreviewShell'
 import { sanitizeFileName, todayFileStamp } from '../print/printFileName'
 import type { SuiviProf } from '../../data/suiviProfs'
 import type { SuiviCompteRendu } from '../../data/suiviCompteRendu'
+import type { SuiviClasseAction } from '../../data/suiviClasseActions'
 import type { LogicalGroup } from '../../utils/suiviClasseGroups'
 import type { RiskStudent, OpenReclamation } from '../../utils/suiviClasseRisqueAggregation'
 
@@ -13,10 +14,11 @@ interface SuiviReunionPrintPreviewModalProps {
   compteRendu: SuiviCompteRendu
   riskStudents: RiskStudent[]
   reclamations: OpenReclamation[]
+  actions?: SuiviClasseAction[]
   onClose: () => void
 }
 
-export default function SuiviReunionPrintPreviewModal({ group, suivi, compteRendu, riskStudents, reclamations, onClose }: SuiviReunionPrintPreviewModalProps) {
+export default function SuiviReunionPrintPreviewModal({ group, suivi, compteRendu, riskStudents, reclamations, actions, onClose }: SuiviReunionPrintPreviewModalProps) {
   const [blank, setBlank] = useState(false)
 
   return (
@@ -32,7 +34,7 @@ export default function SuiviReunionPrintPreviewModal({ group, suivi, compteRend
         </label>
       }
     >
-      <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={compteRendu} riskStudents={riskStudents} reclamations={reclamations} blank={blank} />
+      <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={compteRendu} riskStudents={riskStudents} reclamations={reclamations} actions={actions} blank={blank} />
     </PrintPreviewShell>
   )
 }
