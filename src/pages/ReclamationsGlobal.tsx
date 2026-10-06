@@ -21,6 +21,8 @@ import ReclamationKanban from '../components/reclamations/ReclamationKanban'
 import ResolveReclamationModal from '../components/reclamations/ResolveReclamationModal'
 import { availableBridges, type BridgeKind } from '../components/reclamations/bridges'
 import { computeLogicalGroups } from '../utils/suiviClasseGroups'
+import { useReclamationServices } from '../services/reclamationServicesService'
+import { isInMyServices, serviceFor } from '../utils/reclamationsServices'
 import { useClasses } from '../services/classesService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import ReclamationsPrintPreviewModal from '../components/reclamations-print/ReclamationsPrintPreviewModal'
@@ -54,7 +56,7 @@ interface MessageTarget {
   banner?: string
 }
 
-type QuickFilter = 'toutes' | 'a_traiter' | 'accuse_a_envoyer' | 'urgentes' | 'a_relancer' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
+type QuickFilter = 'toutes' | 'a_traiter' | 'accuse_a_envoyer' | 'urgentes' | 'a_relancer' | 'mon_service' | 'en_attente' | 'en_cours' | 'hors_delai' | 'sans_responsable' | 'mes' | 'echeance_depassee' | 'resolues'
 type SortMode = 'urgence' | 'recent'
 type View = 'aujourdhui' | 'liste' | 'kanban'
 
@@ -64,6 +66,7 @@ const CHIPS: { key: QuickFilter; label: string }[] = [
   { key: 'accuse_a_envoyer', label: 'Accusé à envoyer' },
   { key: 'urgentes', label: 'Urgentes' },
   { key: 'a_relancer', label: 'À relancer' },
+  { key: 'mon_service', label: 'Mon service' },
   { key: 'en_attente', label: 'En attente' },
   { key: 'en_cours', label: 'En cours' },
   { key: 'hors_delai', label: 'Hors délai' },
@@ -79,6 +82,7 @@ export default function ReclamationsGlobal() {
   // traitée » dans la Réunion de suivi, la fiche élève — apparaît ici sans recharger la page.
   const { data: extrasMap } = useStudentExtras()
   const profile = useCurrentProfile()
+  const { data: services = [] } = useReclamationServices()
   const canEditYear = useIsViewedYearEditable()
   const canEditModule = getModuleAccess(profile, 'reclamations').canEdit
   const isEditable = canEditYear && canEditModule
@@ -87,6 +91,7 @@ export default function ReclamationsGlobal() {
 
   const [search, setSearch] = useState('')
   const [categorieFilter, setCategorieFilter] = useState('Toutes')
+  const [serviceFilter, setServiceFilter] = useState('')
   const [quick, setQuick] = useState<QuickFilter>('toutes')
   const [sort, setSort] = useState<SortMode>('urgence')
   const [showNewModal, setShowNewModal] = useState(false)
@@ -148,7 +153,9 @@ export default function ReclamationsGlobal() {
       cleanReclamationText(r.objet).toLowerCase().includes(q)
     const matchesCategorie = categorieFilter === 'Toutes' || r.type === categorieFilter
     const matchesSignal = !signalFilter || signalFilter.ids.includes(r.id)
-    return matchesSearch && matchesCategorie && matchesSignal
+    const service = serviceFor(r, services)
+    const matchesService = !serviceFilter || (serviceFilter === '__none__' ? !service : service?.id === serviceFilter)
+    return matchesSearch && matchesCategorie && matchesSignal && matchesService
   })
 
   const predicates: Record<QuickFilter, (r: FlatReclamation) => boolean> = {
@@ -157,6 +164,7 @@ export default function ReclamationsGlobal() {
     accuse_a_envoyer: (r) => isAccuseAEnvoyer(r),
     urgentes: (r) => r.statut !== 'Résolue' && niveauOf(r) === 'urgent',
     a_relancer: (r) => isRelanceDue(r),
+    mon_service: (r) => r.statut !== 'Résolue' && isInMyServices(r, services, profile ?? undefined),
     en_attente: (r) => r.statut === 'En attente',
     en_cours: (r) => r.statut === 'En cours',
     hors_delai: (r) => isHorsDelai(r),
@@ -170,8 +178,10 @@ export default function ReclamationsGlobal() {
   const filtered = kpiBase.filter(predicates[quick])
 
   // « Aujourd'hui » : le compteur de l'onglet porte sur tout, la vue respecte la recherche et la catégorie.
-  const agendaAll = useMemo(() => computeAgenda(flat, myName), [flat, myName])
-  const agendaSections = computeAgenda(kpiBase, myName)
+  // Le contexte « mon service » : les réclamations des services de la personne connectée, que personne n'a prises.
+  const agendaCtx = { aMonService: (r: FlatReclamation) => isInMyServices(r, services, profile ?? undefined) }
+  const agendaAll = useMemo(() => computeAgenda(flat, myName, new Date(), agendaCtx), [flat, myName, services, profile])
+  const agendaSections = computeAgenda(kpiBase, myName, new Date(), agendaCtx)
   const agendaCount = agendaTotal(agendaAll)
   useEffect(() => {
     if (viewChosen.current || !students || !extrasMap) return
@@ -303,6 +313,7 @@ export default function ReclamationsGlobal() {
     <ReclamationCard
       key={`${item.studentId}-${item.id}`}
       reclamation={item}
+      service={serviceFor(item, services)}
       studentName={item.studentName}
       classe={item.classe}
       isEditable={isEditable}
@@ -507,6 +518,22 @@ export default function ReclamationsGlobal() {
               </option>
             ))}
           </select>
+          {services.length > 0 && (
+            <select
+              value={serviceFilter}
+              onChange={(e) => setServiceFilter(e.target.value)}
+              aria-label="Service"
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:outline-none"
+            >
+              <option value="">Tous les services</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nom}
+                </option>
+              ))}
+              <option value="__none__">Sans service</option>
+            </select>
+          )}
           {view !== 'aujourdhui' && (
             <select
               value={sort}
@@ -521,7 +548,7 @@ export default function ReclamationsGlobal() {
         </div>
         {view !== 'aujourdhui' && (
           <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-            {CHIPS.map((c) => (
+            {CHIPS.filter((c) => c.key !== 'mon_service' || services.some((s) => profile?.serviceIds.includes(s.id))).map((c) => (
               <button
                 key={c.key}
                 type="button"
@@ -555,6 +582,7 @@ export default function ReclamationsGlobal() {
           onFollowUp={(item) => openMessage(item, item, 'relance')}
           onOpen={(item) => setDrawerKey({ studentId: item.studentId, id: item.id })}
           onShowList={() => chooseView('liste')}
+          serviceName={(item) => serviceFor(item, services)?.nom}
         />
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
@@ -655,6 +683,7 @@ export default function ReclamationsGlobal() {
           onAccuse={(item) => openMessage(item, item, 'accuse')}
           onMessage={(item, kind) => openMessage(item, item, kind)}
           onClose={() => setQueueKeys(null)}
+          serviceOf={(item) => serviceFor(item, services)}
         />
       )}
 

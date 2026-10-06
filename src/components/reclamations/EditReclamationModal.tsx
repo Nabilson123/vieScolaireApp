@@ -6,6 +6,8 @@ import { getTeachersSnapshot } from '../../services/teachersService'
 import { getStudentIdentitySnapshot } from '../../services/studentIdentityService'
 import type { ReclamationPatch } from '../../services/studentDetailsService'
 import { cleanReclamationText } from '../../utils/reclamationsLogic'
+import { useReclamationServices } from '../../services/reclamationServicesService'
+import { serviceFor } from '../../utils/reclamationsServices'
 
 const AUTRE_SENTINEL = '__AUTRE__'
 
@@ -43,6 +45,9 @@ export default function EditReclamationModal({ reclamation, studentId, studentNa
   const [concernantAutre, setConcernantAutre] = useState(enseignantIsStaff ? '' : reclamation.enseignant)
   const [parentNom, setParentNom] = useState(reclamation.parentNom)
   const [date, setDate] = useState(reclamation.date)
+  const { data: services = [] } = useReclamationServices()
+  const [serviceChoice, setServiceChoice] = useState(reclamation.serviceId ?? '')
+  const defaultService = serviceFor({ type }, services)
 
   const concernant = concernantSelect === AUTRE_SENTINEL ? concernantAutre.trim() : concernantSelect
   const isValid = objet.trim() !== '' && description.trim() !== '' && date !== ''
@@ -56,6 +61,7 @@ export default function EditReclamationModal({ reclamation, studentId, studentNa
       enseignant: concernant,
       parentNom: parentNom.trim(),
       date,
+      serviceId: serviceChoice || undefined,
     }
     const changed: string[] = []
     if (patch.type !== reclamation.type) changed.push('catégorie')
@@ -64,6 +70,7 @@ export default function EditReclamationModal({ reclamation, studentId, studentNa
     if (patch.enseignant !== reclamation.enseignant) changed.push('concerné')
     if (patch.parentNom !== reclamation.parentNom) changed.push('parent')
     if (patch.date !== reclamation.date) changed.push('date')
+    if ((patch.serviceId ?? '') !== (reclamation.serviceId ?? '')) changed.push('service')
     if (changed.length === 0) {
       onClose()
       return
@@ -104,6 +111,20 @@ export default function EditReclamationModal({ reclamation, studentId, studentNa
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
             </div>
           </div>
+
+          {services.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Service chargé du traitement</label>
+              <select value={serviceChoice} onChange={(e) => setServiceChoice(e.target.value)} className={inputClass}>
+                <option value="">Selon la catégorie{defaultService ? ` (${defaultService.nom})` : ''}</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Objet</label>

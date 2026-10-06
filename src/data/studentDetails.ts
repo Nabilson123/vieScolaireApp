@@ -103,6 +103,9 @@ export interface ReclamationRecord {
   accuseLe?: string
   notes?: ReclamationNote[]
   suiviFamille?: ReclamationSuiviFamille
+  /** Service chargé du traitement, désigné à la main ; sinon il se déduit de la catégorie (voir
+   * `serviceFor` dans utils/reclamationsServices.ts). */
+  serviceId?: string
   historique: ReclamationEvent[]
 }
 

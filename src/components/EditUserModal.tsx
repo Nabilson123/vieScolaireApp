@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { X, UserCog, AlertCircle, MailWarning } from 'lucide-react'
 import { useUpdateProfile, useUpdateUserEmail } from '../services/profilesService'
 import { ROLE_LABELS, type Profile, type ProfileRole } from '../data/profiles'
+import { useReclamationServices } from '../services/reclamationServicesService'
+import ServicesPicker from './ServicesPicker'
 
 interface EditUserModalProps {
   profile: Profile
@@ -28,6 +30,8 @@ export default function EditUserModal({ profile, onClose }: EditUserModalProps) 
   const updateEmail = useUpdateUserEmail()
   const [nomComplet, setNomComplet] = useState(profile.nomComplet)
   const [role, setRole] = useState<ProfileRole>(profile.role)
+  const { data: services = [] } = useReclamationServices()
+  const [serviceIds, setServiceIds] = useState<string[]>(profile.serviceIds)
   const [email, setEmail] = useState(profile.email)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
@@ -41,8 +45,9 @@ export default function EditUserModal({ profile, onClose }: EditUserModalProps) 
     if (!canSubmit) return
     setError('')
     try {
-      if (nomComplet.trim() !== profile.nomComplet || role !== profile.role) {
-        await updateProfile.mutateAsync({ id: profile.id, nomComplet: nomComplet.trim(), role })
+      const servicesChanged = serviceIds.length !== profile.serviceIds.length || serviceIds.some((id) => !profile.serviceIds.includes(id))
+      if (nomComplet.trim() !== profile.nomComplet || role !== profile.role || servicesChanged) {
+        await updateProfile.mutateAsync({ id: profile.id, nomComplet: nomComplet.trim(), role, serviceIds })
       }
       if (emailChanged) {
         await updateEmail.mutateAsync({ userId: profile.id, newEmail: trimmedEmail })
@@ -94,6 +99,11 @@ export default function EditUserModal({ profile, onClose }: EditUserModalProps) 
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Services</label>
+            <ServicesPicker services={services} value={serviceIds} onChange={setServiceIds} />
+            <p className="mt-1 text-xs text-slate-400">Les services dont la personne traite les réclamations.</p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Email</label>

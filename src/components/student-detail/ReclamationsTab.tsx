@@ -5,6 +5,8 @@ import ReclamationCard from '../ReclamationCard'
 import EditReclamationModal from '../reclamations/EditReclamationModal'
 import ReclamationDrawer from '../reclamations/ReclamationDrawer'
 import ReclamationMessageModal, { MESSAGE_KIND_LABELS, messageKindForStatut } from '../reclamations/ReclamationMessageModal'
+import { useReclamationServices } from '../../services/reclamationServicesService'
+import { serviceFor } from '../../utils/reclamationsServices'
 import type { ReclamationMessageKind } from '../../utils/whatsapp'
 import { useIsViewedYearEditable } from '../../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../../services/permissions'
@@ -23,6 +25,7 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
   const actions = useReclamationActions()
   const [editing, setEditing] = useState<ReclamationRecord | null>(null)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  const { data: services = [] } = useReclamationServices()
   const drawerRecord = drawerId ? reclamations.find((r) => r.id === drawerId) : undefined
   const [message, setMessage] = useState<{ reclamation: ReclamationRecord; kind: ReclamationMessageKind } | null>(null)
 
@@ -50,6 +53,7 @@ export default function ReclamationsTab({ studentId, studentName, classe, reclam
             <ReclamationCard
               key={r.id}
               reclamation={r}
+              service={serviceFor(r, services)}
               isEditable={isEditable}
               onTakeCharge={async () => {
                 const updated = await actions.prendreEnCharge(studentId, r.id)

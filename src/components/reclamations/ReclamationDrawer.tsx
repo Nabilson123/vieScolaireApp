@@ -4,6 +4,9 @@ import type { ReclamationAction, ReclamationRecord } from '../../data/studentDet
 import { cleanReclamationText, delaiResolutionJours, formatDateFR, isAccuseAEnvoyer, isAccuseEnRetard, isHorsDelai, joursOuverts, todayLocalISO } from '../../utils/reclamationsLogic'
 import { NIVEAU_LABELS, delaiResolutionAutorise, niveauOf } from '../../utils/reclamationsPolicy'
 import NotesSection from './NotesSection'
+import { useReclamationServices } from '../../services/reclamationServicesService'
+import { getProfilesSnapshot } from '../../services/profilesService'
+import { membersOf, serviceFor } from '../../utils/reclamationsServices'
 import StudentContextBlock from './StudentContextBlock'
 import SuiviFamilleSection from './SuiviFamilleSection'
 
@@ -42,6 +45,9 @@ export default function ReclamationDrawer({ reclamation, studentId, studentName,
   const hasCreation = reclamation.historique.some((e) => e.action === 'creee')
   const events = [...reclamation.historique].sort((a, b) => (a.at < b.at ? 1 : -1))
   const resolutionDays = delaiResolutionJours(reclamation)
+  const { data: services = [] } = useReclamationServices()
+  const service = serviceFor(reclamation, services)
+  const membres = service ? membersOf(service, getProfilesSnapshot()).map((p) => p.nomComplet || p.email) : []
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onClick={onClose}>
@@ -107,6 +113,13 @@ export default function ReclamationDrawer({ reclamation, studentId, studentName,
                       ? 'à envoyer — en retard'
                       : 'à envoyer'
                     : '—'}
+              </dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-slate-400">Service chargé du traitement</dt>
+              <dd className="font-semibold text-slate-700">
+                {service ? service.nom : '—'}
+                {membres.length > 0 && <span className="font-normal text-slate-500"> · {membres.join(', ')}</span>}
               </dd>
             </div>
             <div className="col-span-2">

@@ -17,6 +17,7 @@ const SECTION_STYLE: Record<AgendaSectionKey, { bar: string; title: string }> = 
   accuses: { bar: 'border-l-amber-400', title: 'text-amber-700' },
   echeances: { bar: 'border-l-rose-500', title: 'text-rose-700' },
   sans_responsable: { bar: 'border-l-rose-300', title: 'text-rose-600' },
+  mon_service: { bar: 'border-l-indigo-400', title: 'text-indigo-700' },
   relances: { bar: 'border-l-violet-400', title: 'text-violet-700' },
   mes: { bar: 'border-l-sky-400', title: 'text-sky-700' },
 }
@@ -32,10 +33,12 @@ interface ReclamationAgendaProps {
   onOpen: (item: AgendaItem) => void
   /** Retour à la liste complète, quand rien n'est à faire. */
   onShowList: () => void
+  /** Nom du service chargé de la réclamation (pastille sur chaque ligne). */
+  serviceName?: (item: AgendaItem) => string | undefined
 }
 
 /** « Que dois-je faire aujourd'hui ? » : les réclamations qui demandent une action, rangées par urgence. */
-export default function ReclamationAgenda({ sections, isEditable, onAccuse, onTakeCharge, onFollowUp, onOpen, onShowList }: ReclamationAgendaProps) {
+export default function ReclamationAgenda({ sections, isEditable, onAccuse, onTakeCharge, onFollowUp, onOpen, onShowList, serviceName }: ReclamationAgendaProps) {
   if (sections.length === 0) {
     return (
       <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-10 text-center">
@@ -73,6 +76,7 @@ export default function ReclamationAgenda({ sections, isEditable, onAccuse, onTa
                   onTakeCharge={onTakeCharge}
                   onFollowUp={onFollowUp}
                   onOpen={onOpen}
+                  serviceName={serviceName?.(item)}
                 />
               ))}
             </div>
@@ -92,8 +96,10 @@ function AgendaRow({
   onTakeCharge,
   onFollowUp,
   onOpen,
+  serviceName,
 }: {
   item: AgendaItem
+  serviceName?: string
   sectionKey: AgendaSectionKey
   barClass: string
   isEditable: boolean
@@ -118,6 +124,7 @@ function AgendaRow({
               {NIVEAU_LABELS.urgent}
             </span>
           )}
+          {serviceName && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{serviceName}</span>}
           <DelaiBadge reclamation={item} />
           <AccuseBadge reclamation={item} />
         </div>

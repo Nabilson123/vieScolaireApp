@@ -2,7 +2,7 @@ import type { ReclamationRecord } from '../data/studentDetails'
 import { isAccuseAEnvoyer, isHorsDelai, isRelanceDue, relanceDueLe, todayLocalISO } from './reclamationsLogic'
 import { niveauOf } from './reclamationsPolicy'
 
-export type AgendaSectionKey = 'urgentes' | 'accuses' | 'echeances' | 'sans_responsable' | 'relances' | 'mes'
+export type AgendaSectionKey = 'urgentes' | 'accuses' | 'echeances' | 'sans_responsable' | 'mon_service' | 'relances' | 'mes'
 
 export interface AgendaSection<T> {
   key: AgendaSectionKey
@@ -16,20 +16,27 @@ const SECTIONS: { key: AgendaSectionKey; title: string; hint: string }[] = [
   { key: 'accuses', title: 'Accusés de réception à envoyer', hint: "La famille n'a pas encore reçu de confirmation." },
   { key: 'echeances', title: 'Échéance atteinte ou dépassée', hint: 'Prises en charge dont la date limite est aujourd’hui ou passée.' },
   { key: 'sans_responsable', title: 'Hors délai, sans responsable', hint: 'Personne ne s’en occupe encore.' },
+  { key: 'mon_service', title: 'À prendre par mon service', hint: 'Réclamations de votre service que personne n’a encore prises.' },
   { key: 'relances', title: 'Familles à relancer', hint: 'Vérifier que la réponse apportée a convenu.' },
   { key: 'mes', title: 'Mes réclamations en cours', hint: 'Prises en charge par vous.' },
 ]
 
 type AgendaRecord = Pick<ReclamationRecord, 'date' | 'statut' | 'type' | 'urgente' | 'accuseLe' | 'echeance' | 'responsable' | 'resoluLe' | 'suiviFamille'>
 
+/** Contexte facultatif : `aMonService` dit si la réclamation relève d'un service de la personne connectée. */
+export interface AgendaContext<T> {
+  aMonService?: (r: T) => boolean
+}
+
 /** Section d'une réclamation : la première qui s'applique, dans l'ordre de priorité ci-dessus — une
  * réclamation ne figure qu'une fois dans l'agenda, à l'endroit où elle demande l'action la plus pressée. */
-export function agendaSectionOf(r: AgendaRecord, moi: string, now: Date): AgendaSectionKey | null {
+export function agendaSectionOf<T extends AgendaRecord>(r: T, moi: string, now: Date, ctx?: AgendaContext<T>): AgendaSectionKey | null {
   const open = r.statut !== 'Résolue'
   if (open && niveauOf(r) === 'urgent') return 'urgentes'
   if (isAccuseAEnvoyer(r)) return 'accuses'
   if (open && r.echeance && r.echeance <= todayLocalISO(now)) return 'echeances'
   if (open && !r.responsable && isHorsDelai(r, now)) return 'sans_responsable'
+  if (open && !r.responsable && ctx?.aMonService?.(r)) return 'mon_service'
   if (isRelanceDue(r, now)) return 'relances'
   if (open && !!moi && r.responsable === moi) return 'mes'
   return null
@@ -40,10 +47,10 @@ export function agendaSectionOf(r: AgendaRecord, moi: string, now: Date): Agenda
  * moins pressé. Seules les sections non vides sont renvoyées. À l'intérieur d'une section, la plus ancienne
  * (ou la plus proche de son échéance) d'abord.
  */
-export function computeAgenda<T extends AgendaRecord>(items: T[], moi: string, now: Date = new Date()): AgendaSection<T>[] {
+export function computeAgenda<T extends AgendaRecord>(items: T[], moi: string, now: Date = new Date(), ctx?: AgendaContext<T>): AgendaSection<T>[] {
   const buckets = new Map<AgendaSectionKey, T[]>()
   items.forEach((r) => {
-    const key = agendaSectionOf(r, moi, now)
+    const key = agendaSectionOf(r, moi, now, ctx)
     if (key) buckets.set(key, [...(buckets.get(key) ?? []), r])
   })
   const sortKey = (key: AgendaSectionKey, r: T): string => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Users, Search, Plus, MoreVertical, UserX, UserCheck2, Trash2, ShieldCheck, Pencil } from 'lucide-react'
 import { useProfiles, useSetUserActive, useDeleteUser } from '../services/profilesService'
+import { useReclamationServices } from '../services/reclamationServicesService'
 import { useCurrentUserId } from '../services/currentUser'
 import { initials, ROLE_LABELS, type ProfileRole } from '../data/profiles'
 import { avatarGradient } from '../utils/avatarColor'
@@ -21,6 +22,8 @@ export default function UsersGlobal() {
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('Tous les profils')
+  const [serviceFilter, setServiceFilter] = useState('')
+  const { data: services = [] } = useReclamationServices()
   const [showAddModal, setShowAddModal] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -38,9 +41,10 @@ export default function UsersGlobal() {
       const matchesSearch =
         p.nomComplet.toLowerCase().includes(search.toLowerCase()) || p.email.toLowerCase().includes(search.toLowerCase())
       const matchesRole = roleFilter === 'Tous les profils' || p.role === roleFilter
-      return matchesSearch && matchesRole
+      const matchesService = !serviceFilter || p.serviceIds.includes(serviceFilter)
+      return matchesSearch && matchesRole && matchesService
     })
-  }, [profiles, search, roleFilter])
+  }, [profiles, search, roleFilter, serviceFilter])
 
   const handleToggleActive = (id: string, actif: boolean) => {
     setOpenMenuId(null)
@@ -91,6 +95,23 @@ export default function UsersGlobal() {
             ))}
           </select>
         </div>
+        {services.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-500">Service :</span>
+            <select
+              value={serviceFilter}
+              onChange={(e) => setServiceFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none"
+            >
+              <option value="">Tous les services</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nom}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -216,6 +237,24 @@ export default function UsersGlobal() {
               <div>
                 <p className="text-sm font-semibold text-slate-900">{p.nomComplet || p.email}</p>
                 <p className="text-xs text-slate-500">{ROLE_LABELS[p.role]}</p>
+                {(() => {
+                  const mine = services.filter((s) => p.serviceIds.includes(s.id))
+                  if (mine.length === 0) return null
+                  return (
+                    <div className="mt-1.5 flex flex-wrap justify-center gap-1">
+                      {mine.slice(0, 3).map((s) => (
+                        <span key={s.id} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                          {s.nom}
+                        </span>
+                      ))}
+                      {mine.length > 3 && (
+                        <span title={mine.slice(3).map((s) => s.nom).join(', ')} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                          +{mine.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()}
                 {!p.actif && (
                   <span className="mt-1 inline-block rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                     Désactivé

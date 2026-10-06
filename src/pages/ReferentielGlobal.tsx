@@ -7,6 +7,7 @@ import SallesTab from '../components/referentiel/SallesTab'
 import PeriodesTab from '../components/referentiel/PeriodesTab'
 import AbsencesConfigTab from '../components/referentiel/AbsencesConfigTab'
 import GardeEvenementsTab from '../components/referentiel/GardeEvenementsTab'
+import ReclamationServicesTab from '../components/referentiel/ReclamationServicesTab'
 import AnneesScolairesTab from '../components/referentiel/AnneesScolairesTab'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'periodes', label: 'Périodes' },
   { key: 'absences', label: 'Absences' },
   { key: 'gardeEvenements', label: 'Événements de Garde' },
+  { key: 'servicesReclamations', label: 'Services' },
   { key: 'annees', label: 'Années Scolaires' },
 ] as const
 
@@ -72,6 +74,7 @@ export default function ReferentielGlobal({ onDataChanged }: ReferentielGlobalPr
             {tab === 'periodes' && <PeriodesTab onSaved={onDataChanged} />}
             {tab === 'absences' && <AbsencesConfigTab onSaved={onDataChanged} />}
             {tab === 'gardeEvenements' && <GardeEvenementsTab onSaved={onDataChanged} />}
+            {tab === 'servicesReclamations' && <ReclamationServicesTab onSaved={onDataChanged} />}
             {tab === 'annees' && <AnneesScolairesTab onSaved={onDataChanged} />}
           </div>
         </fieldset>

@@ -24,6 +24,9 @@ export interface Profile {
   role: ProfileRole
   actif: boolean
   permissions: Record<string, ModulePermission>
+  /** Services de traitement des réclamations auxquels la personne appartient (identifiants de
+   * `reclamation_services`) ; vide si aucun. N'a aucun effet sur les droits d'accès. */
+  serviceIds: string[]
   /** Image de signature manuscrite scannée (data URI base64), pour les documents officiels signés
    * comme les Notes de Service — même mécanisme d'upload que le logo de l'établissement. */
   signatureImage?: string

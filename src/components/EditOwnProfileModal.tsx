@@ -3,6 +3,8 @@ import { X, UserCog, PenTool } from 'lucide-react'
 import { useUpdateProfile } from '../services/profilesService'
 import { useUploadSignature, useRemoveSignature, readImageAsDataUrl } from '../services/signatureService'
 import { ROLE_LABELS, type Profile, type ProfileRole } from '../data/profiles'
+import { useReclamationServices } from '../services/reclamationServicesService'
+import ServicesPicker from './ServicesPicker'
 
 interface EditOwnProfileModalProps {
   profile: Profile
@@ -27,12 +29,14 @@ export default function EditOwnProfileModal({ profile, onClose }: EditOwnProfile
   const removeSignature = useRemoveSignature()
   const [nomComplet, setNomComplet] = useState(profile.nomComplet)
   const [role, setRole] = useState<ProfileRole>(profile.role)
+  const { data: services = [] } = useReclamationServices()
+  const [serviceIds, setServiceIds] = useState<string[]>(profile.serviceIds)
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSave = async () => {
     if (!nomComplet.trim()) return
-    await updateOwnProfile.mutateAsync({ id: profile.id, nomComplet: nomComplet.trim(), role })
+    await updateOwnProfile.mutateAsync({ id: profile.id, nomComplet: nomComplet.trim(), role, serviceIds })
     setSaved(true)
     setTimeout(onClose, 700)
   }
@@ -85,6 +89,11 @@ export default function EditOwnProfileModal({ profile, onClose }: EditOwnProfile
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Services</label>
+            <ServicesPicker services={services} value={serviceIds} onChange={setServiceIds} />
+            <p className="mt-1 text-xs text-slate-400">Les services dont vous traitez les réclamations.</p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Identifiant</label>

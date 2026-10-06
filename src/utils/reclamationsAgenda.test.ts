@@ -38,6 +38,24 @@ describe('agendaSectionOf', () => {
     expect(agendaSectionOf(rec({ statut: 'Résolue' }), 'Moi', new Date(2026, 9, 30))).toBeNull()
   })
 
+  it('à prendre par mon service : sans responsable, ni plus pressée, ni hors délai', () => {
+    const accused = { accuseLe: '2026-10-05T08:00:00.000Z' }
+    const ctx = { aMonService: (r: { type: string }) => r.type === 'Cantine' }
+    expect(agendaSectionOf(rec({ ...accused, type: 'Cantine' }), 'Moi', now, ctx)).toBe('mon_service')
+    // Un autre service, ou une réclamation déjà prise : pas dans cette section.
+    expect(agendaSectionOf(rec({ ...accused, type: 'Transport' }), 'Moi', now, ctx)).toBeNull()
+    expect(agendaSectionOf(rec({ ...accused, type: 'Cantine', statut: 'En cours', responsable: 'Autre', echeance: '2026-10-09' }), 'Moi', now, ctx)).toBeNull()
+    // Sans contexte, comportement inchangé.
+    expect(agendaSectionOf(rec({ ...accused, type: 'Cantine' }), 'Moi', now)).toBeNull()
+  })
+
+  it('mon service passe après « hors délai sans responsable » et avant « mes réclamations »', () => {
+    const ctx = { aMonService: () => true }
+    const accused = { accuseLe: '2026-09-26T08:00:00.000Z' }
+    expect(agendaSectionOf(rec({ ...accused, date: '2026-09-25' }), 'Moi', now, ctx)).toBe('sans_responsable')
+    expect(agendaSectionOf(rec({ ...accused, date: '2026-10-04' }), 'Moi', now, ctx)).toBe('mon_service')
+  })
+
   it('mes réclamations en cours, quand rien de plus pressé ne s’applique', () => {
     expect(agendaSectionOf(rec({ statut: 'En cours', accuseLe: '2026-10-05T08:00:00.000Z', responsable: 'Moi', echeance: '2026-10-09' }), 'Moi', now)).toBe('mes')
     expect(agendaSectionOf(rec({ statut: 'En cours', accuseLe: '2026-10-05T08:00:00.000Z', responsable: 'Autre', echeance: '2026-10-09' }), 'Moi', now)).toBeNull()

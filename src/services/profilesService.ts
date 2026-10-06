@@ -11,6 +11,7 @@ interface ProfileRow {
   actif: boolean
   permissions: Profile['permissions']
   signature_image: string | null
+  service_ids: string[] | null
 }
 
 function rowToProfile(row: ProfileRow): Profile {
@@ -21,6 +22,7 @@ function rowToProfile(row: ProfileRow): Profile {
     role: row.role as Profile['role'],
     actif: row.actif,
     permissions: row.permissions ?? {},
+    serviceIds: row.service_ids ?? [],
     signatureImage: row.signature_image ?? undefined,
   }
 }
@@ -102,8 +104,12 @@ export function useSetUserActive() {
 export function useUpdateProfile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, nomComplet, role }: { id: string; nomComplet: string; role: ProfileRole }) => {
-      const { error } = await supabase.from('profiles').update({ nom_complet: nomComplet, role }).eq('id', id)
+    mutationFn: async ({ id, nomComplet, role, serviceIds }: { id: string; nomComplet: string; role: ProfileRole; serviceIds?: string[] }) => {
+      // `serviceIds` absent : on ne touche pas aux services de la personne.
+      const { error } = await supabase
+        .from('profiles')
+        .update({ nom_complet: nomComplet, role, ...(serviceIds ? { service_ids: serviceIds } : {}) })
+        .eq('id', id)
       if (error) throw error
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),

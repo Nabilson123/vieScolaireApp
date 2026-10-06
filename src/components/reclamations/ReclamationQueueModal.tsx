@@ -8,6 +8,8 @@ import { NIVEAU_PAR_CATEGORIE, delaiResolutionAutorise, niveauOf } from '../../u
 import { buildStaffOptions } from '../../utils/staffOptions'
 import { AccuseBadge, CATEGORY_COLORS, DelaiBadge } from '../ReclamationCard'
 import StudentContextBlock from './StudentContextBlock'
+import StaffOptions from '../StaffOptions'
+import type { ReclamationService } from '../../data/reclamationServices'
 
 export interface QueueReclamation extends ReclamationRecord {
   studentId: string
@@ -26,6 +28,8 @@ interface ReclamationQueueModalProps {
   onAccuse: (item: QueueReclamation) => void
   onMessage: (item: QueueReclamation, kind: ReclamationMessageKind) => void
   onClose: () => void
+  /** Service chargé d'une réclamation : pastille, et membres proposés en premier à l'assignation. */
+  serviceOf?: (item: QueueReclamation) => ReclamationService | undefined
 }
 
 function Step({ done, label, detail }: { done: boolean; label: string; detail?: string }) {
@@ -43,7 +47,7 @@ function Step({ done, label, detail }: { done: boolean; label: string; detail?: 
  * l'élève et les actions de tri (accusé, prise en charge, assignation, urgence). Aucune résolution ici :
  * résoudre demande un texte et se fait depuis la carte ou le tiroir.
  */
-export default function ReclamationQueueModal({ keys, items, isEditable, onAccuse, onMessage, onClose }: ReclamationQueueModalProps) {
+export default function ReclamationQueueModal({ keys, items, isEditable, onAccuse, onMessage, onClose, serviceOf }: ReclamationQueueModalProps) {
   const actions = useReclamationActions()
   const [index, setIndex] = useState(0)
   const [assignee, setAssignee] = useState('')
@@ -77,6 +81,7 @@ export default function ReclamationQueueModal({ keys, items, isEditable, onAccus
     setBusy(false)
   }
 
+  const currentService = current ? serviceOf?.(current) : undefined
   const urgentParCategorie = current ? NIVEAU_PAR_CATEGORIE[current.type] === 'urgent' : false
 
   return (
@@ -137,6 +142,7 @@ export default function ReclamationQueueModal({ keys, items, isEditable, onAccus
                       Urgent
                     </span>
                   )}
+                  {currentService && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">Service : {currentService.nom}</span>}
                   <DelaiBadge reclamation={current} />
                   <AccuseBadge reclamation={current} />
                 </div>
@@ -203,11 +209,7 @@ export default function ReclamationQueueModal({ keys, items, isEditable, onAccus
                       className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 focus:border-indigo-400 focus:outline-none"
                     >
                       <option value="">Assigner à…</option>
-                      {buildStaffOptions(current.responsable).map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
+                      <StaffOptions options={buildStaffOptions(current.responsable, currentService)} />
                     </select>
                     <button
                       type="button"

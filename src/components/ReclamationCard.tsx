@@ -17,6 +17,8 @@ import {
 } from '../utils/reclamationsLogic'
 import { NIVEAU_PAR_CATEGORIE, niveauOf } from '../utils/reclamationsPolicy'
 import { buildStaffOptions } from '../utils/staffOptions'
+import type { ReclamationService } from '../data/reclamationServices'
+import StaffOptions from './StaffOptions'
 import { BRIDGE_LABELS, type BridgeKind } from './reclamations/bridges'
 
 /** Une couleur par catégorie (les 19 du référentiel), pour repérer d'un coup d'œil. */
@@ -132,6 +134,8 @@ interface ReclamationCardProps {
   onMarkAccuse?: () => void
   /** Marque ou retire l'urgence. */
   onToggleUrgent?: () => void
+  /** Service chargé de la réclamation (déduit de sa catégorie, ou désigné à la main). */
+  service?: ReclamationService
   /** Mode sélection (actions groupées) : case à cocher en tête de carte. */
   selectable?: boolean
   selected?: boolean
@@ -155,6 +159,7 @@ export default function ReclamationCard({
   onHistory,
   onMarkAccuse,
   onToggleUrgent,
+  service,
   selectable = false,
   selected = false,
   onToggleSelect,
@@ -213,6 +218,11 @@ export default function ReclamationCard({
             <span className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">
               <Flame className="h-3 w-3" />
               Urgent
+            </span>
+          )}
+          {service && (
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700" title="Service chargé du traitement">
+              {service.nom}
             </span>
           )}
           <DelaiBadge reclamation={reclamation} />
@@ -293,11 +303,7 @@ export default function ReclamationCard({
               className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-indigo-400 focus:outline-none"
             >
               <option value="">Aucun</option>
-              {buildStaffOptions(reclamation.responsable).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
+              <StaffOptions options={buildStaffOptions(reclamation.responsable, service)} />
             </select>
           </div>
           <div>
@@ -395,11 +401,11 @@ export default function ReclamationCard({
                   type="button"
                   onClick={onMarkAccuse}
                   disabled={!isEditable}
-                  title="L'accusé de réception a été envoyé à la famille"
-                  className="flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="À utiliser quand la famille a déjà été prévenue autrement (appel, passage à l'école…) : enregistre l'accusé de réception comme envoyé, sans ouvrir de message"
+                  className="flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-left text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <MailCheck className="h-3.5 w-3.5" />
-                  Accusé envoyé
+                  <MailCheck className="h-3.5 w-3.5 shrink-0" />
+                  Marquer l'accusé comme envoyé
                 </button>
               )}
               {reclamation.statut === 'En attente' && !showResolveForm && (
