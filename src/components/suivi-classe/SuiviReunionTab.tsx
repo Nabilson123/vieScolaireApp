@@ -5,7 +5,7 @@ import { useClasses } from '../../services/classesService'
 import { getTeachersSnapshot } from '../../services/teachersService'
 import { teacherName } from '../../data/teachers'
 import type { SuiviProf } from '../../data/suiviProfs'
-import { estFusionne, fusionner, listeClasses, pointParClasseRempli, separer, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
+import { aUneZoneCommune, listeClasses, passerEnCommun, pointParClasseRempli, texteIdentiqueAToutesLesClasses, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import { useSuiviProfs, useSaveCompteRendu, useValidateCompteRendu } from '../../services/suiviProfsService'
 import { computeLogicalGroups, type LogicalGroup } from '../../utils/suiviClasseGroups'
 import {
@@ -317,45 +317,61 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
 
   const point = POINTS[currentPoint - 1]
 
-  // Points 2 et 4 : une zone par classe, ou une seule quand les mêmes remarques valent pour toutes les classes
-  // (mêmes enseignants, mêmes élèves) — case « fusionner ».
+  // Points 2 et 4 : une zone commune à toutes les classes (mêmes enseignants, mêmes élèves) ET une zone propre à
+  // chaque classe. On remplit l'une, l'autre ou les deux : le compte-rendu imprime le commun, puis ce qui est propre
+  // à chaque classe.
   const renderParClasse = (field: PointParClasse): ReactNode => {
     const classes = group.divisions.map((d) => d.classe.nom)
-    const fusion = estFusionne(cr, field, classes)
     const communField = field === 'point2' ? 'point2Commun' : 'point4Commun'
+    const plusieurs = aUneZoneCommune(classes)
+    // Le même texte a déjà été copié dans toutes les classes : on propose de le passer en commun.
+    const dejaIdentique = texteIdentiqueAToutesLesClasses(cr, field, classes) !== null
     return (
-      <div className="flex flex-col gap-2.5">
-        {classes.length > 1 && (
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-            <input
-              type="checkbox"
-              checked={fusion}
-              disabled={!isEditable}
-              onChange={(e) => setCr((prev) => (e.target.checked ? fusionner(prev, field, classes) : separer(prev, field, classes)))}
-              className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
-            />
-            <span>
-              Mêmes remarques pour {listeClasses(classes)} : <span className="font-semibold">une seule zone</span>
-            </span>
-          </label>
-        )}
-        {fusion ? (
-          <div>
-            <p className="mb-1 text-xs font-semibold text-slate-500">
-              {listeClasses(classes)} {group.teachers.length > 0 ? `· ${group.teachers.map(teacherName).join(', ')}` : ''}
-            </p>
-            <AutoGrowTextarea value={cr[communField] ?? ''} onChange={(e) => patch({ [communField]: e.target.value })} disabled={!isEditable} minRows={4} className={textareaClass} />
+      <div className="flex flex-col gap-3">
+        {plusieurs && dejaIdentique && isEditable && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <span>Toutes les classes ont exactement le même texte.</span>
+            <button
+              type="button"
+              onClick={() => setCr((prev) => passerEnCommun(prev, field, classes))}
+              className="rounded-lg bg-amber-500 px-3 py-1 font-semibold text-white hover:bg-amber-600"
+            >
+              Le passer en commun
+            </button>
           </div>
-        ) : (
-          group.divisions.map((d) => (
-            <div key={d.classe.id}>
-              <p className="mb-1 text-xs font-semibold text-slate-500">
-                {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
-              </p>
-              <AutoGrowTextarea value={cr[field]?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord(field, d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
-            </div>
-          ))
         )}
+        {plusieurs && (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+            <p className="mb-1 text-xs font-semibold text-indigo-700">
+              Commun à {listeClasses(classes)}
+              <span className="font-normal text-slate-500"> · valable pour toutes les classes{group.teachers.length > 0 ? ` · ${group.teachers.map(teacherName).join(', ')}` : ''}</span>
+            </p>
+            <AutoGrowTextarea
+              value={cr[communField] ?? ''}
+              onChange={(e) => patch({ [communField]: e.target.value })}
+              disabled={!isEditable}
+              minRows={3}
+              placeholder="Mêmes remarques pour toutes les classes (mêmes enseignants, mêmes élèves)…"
+              className={textareaClass}
+            />
+          </div>
+        )}
+        {group.divisions.map((d) => (
+          <div key={d.classe.id}>
+            <p className="mb-1 text-xs font-semibold text-slate-500">
+              {plusieurs ? 'Propre à ' : ''}
+              {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
+            </p>
+            <AutoGrowTextarea
+              value={cr[field]?.[d.classe.nom] ?? ''}
+              onChange={(e) => patchRecord(field, d.classe.nom, e.target.value)}
+              disabled={!isEditable}
+              minRows={plusieurs ? 2 : 3}
+              placeholder={plusieurs ? `Ce qui est propre à ${d.classe.nom} (facultatif)…` : undefined}
+              className={textareaClass}
+            />
+          </div>
+        ))}
       </div>
     )
   }

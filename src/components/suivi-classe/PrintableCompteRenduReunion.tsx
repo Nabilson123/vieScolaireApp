@@ -1,7 +1,7 @@
 import SchoolLogo from '../print/SchoolLogo'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import type { SuiviProf } from '../../data/suiviProfs'
-import { remarquesParClasse, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
+import { remarquesImprimees, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import type { SuiviClasseAction } from '../../data/suiviClasseActions'
 import type { LogicalGroup } from '../../utils/suiviClasseGroups'
 import { getReclamationNote, reclamationNoteKey, type RiskStudent, type OpenReclamation } from '../../utils/suiviClasseRisqueAggregation'
@@ -106,18 +106,25 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     ),
   })
 
-  // Points 2 et 4 : une zone par classe, ou une seule quand les mêmes remarques valent pour toutes les classes
-  // (fusion choisie dans le formulaire). La version vierge garde toujours une zone par classe, à remplir à la main.
+  // Points 2 et 4 : la remarque commune à toutes les classes (pleine largeur), puis ce qui est propre à chaque classe.
+  // La version vierge garde une zone par classe, à remplir à la main.
   const classes = group.divisions.map((d) => d.classe.nom)
   const parClasse = (n: number, title: string, field: PointParClasse, guide: (classe: string) => string) => {
-    const entries = blank ? classes.map((c) => ({ label: c, text: '' })) : remarquesParClasse(cr, field, classes)
+    const entries = blank ? classes.map((c) => ({ label: c, text: '', commune: false })) : remarquesImprimees(cr, field, classes)
+    const commune = entries.find((e) => e.commune)
+    const propres = entries.filter((e) => !e.commune)
     return (
       <div>
         <SectionTitle n={n} title={title} />
-        <div className={`grid gap-1.5 ${entries.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {entries.map((e) => (
-            <TextBlock key={e.label} label={classes.length > 1 ? e.label : undefined} text={e.text} guide={guide(e.label)} blank={blank} />
-          ))}
+        <div className="flex flex-col gap-1.5">
+          {commune && <TextBlock label={commune.label} text={commune.text} guide="" />}
+          {propres.length > 0 && (
+            <div className={`grid gap-1.5 ${propres.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {propres.map((e) => (
+                <TextBlock key={e.label} label={classes.length > 1 ? (commune ? `Propre à ${e.label}` : e.label) : undefined} text={e.text} guide={guide(e.label)} blank={blank} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     )

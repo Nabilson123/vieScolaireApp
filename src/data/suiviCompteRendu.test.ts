@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estFusionne, fusionner, hasCompteRenduContent, listeClasses, pointParClasseRempli, remarquesParClasse, separer } from './suiviCompteRendu'
+import { hasCompteRenduContent, listeClasses, passerEnCommun, pointParClasseRempli, remarquesImprimees, texteIdentiqueAToutesLesClasses } from './suiviCompteRendu'
 
 const classes = ['CE1-A', 'CE1-B']
 
@@ -11,78 +11,70 @@ describe('listeClasses', () => {
   })
 })
 
-describe('remarquesParClasse', () => {
-  it('une entrée par classe quand elles ne sont pas fusionnées', () => {
-    const cr = { point2: { 'CE1-A': 'Programme à jour', 'CE1-B': 'Un chapitre de retard' } }
-    expect(remarquesParClasse(cr, 'point2', classes)).toEqual([
-      { label: 'CE1-A', text: 'Programme à jour' },
-      { label: 'CE1-B', text: 'Un chapitre de retard' },
+describe('remarquesImprimees', () => {
+  it('sans remarque commune : une entrée par classe, même vide', () => {
+    const cr = { point2: { 'CE1-A': 'Programme à jour' } }
+    expect(remarquesImprimees(cr, 'point2', classes)).toEqual([
+      { label: 'CE1-A', text: 'Programme à jour', commune: false },
+      { label: 'CE1-B', text: '', commune: false },
     ])
   })
 
-  it('une seule entrée, nommée d’après toutes les classes, quand elles sont fusionnées', () => {
-    const cr = { point4Fusion: true, point4Commun: 'Mêmes retards', point4: { 'CE1-A': 'ignoré' } }
-    expect(remarquesParClasse(cr, 'point4', classes)).toEqual([{ label: 'CE1-A et CE1-B', text: 'Mêmes retards' }])
+  it('remarque commune seule : un seul bloc, nommé d’après toutes les classes', () => {
+    const cr = { point4Commun: 'Mêmes retards' }
+    expect(remarquesImprimees(cr, 'point4', classes)).toEqual([{ label: 'CE1-A et CE1-B', text: 'Mêmes retards', commune: true }])
   })
 
-  it('la fusion n’a pas d’effet avec une seule classe', () => {
-    const cr = { point2Fusion: true, point2Commun: 'x', point2: { 'CE1-A': 'texte de la classe' } }
-    expect(estFusionne(cr, 'point2', ['CE1-A'])).toBe(false)
-    expect(remarquesParClasse(cr, 'point2', ['CE1-A'])).toEqual([{ label: 'CE1-A', text: 'texte de la classe' }])
-  })
-})
-
-describe('fusionner', () => {
-  it('textes identiques : on n’en garde qu’un', () => {
-    const cr = { point2: { 'CE1-A': 'Même remarque', 'CE1-B': 'Même remarque' } }
-    const fused = fusionner(cr, 'point2', classes)
-    expect(fused.point2Fusion).toBe(true)
-    expect(fused.point2Commun).toBe('Même remarque')
+  it('commune + propres : la commune d’abord, puis seulement les classes qui ont une remarque propre', () => {
+    const cr = { point2Commun: 'Programme respecté', point2: { 'CE1-B': 'Un chapitre de retard', 'CE1-A': '  ' } }
+    expect(remarquesImprimees(cr, 'point2', classes)).toEqual([
+      { label: 'CE1-A et CE1-B', text: 'Programme respecté', commune: true },
+      { label: 'CE1-B', text: 'Un chapitre de retard', commune: false },
+    ])
   })
 
-  it('textes différents : chacun garde le nom de sa classe', () => {
-    const cr = { point4: { 'CE1-A': 'Deux retards', 'CE1-B': 'Une absence' } }
-    expect(fusionner(cr, 'point4', classes).point4Commun).toBe('CE1-A : Deux retards\nCE1-B : Une absence')
-  })
-
-  it('un seul texte renseigné : repris tel quel', () => {
-    expect(fusionner({ point2: { 'CE1-B': 'Seulement B' } }, 'point2', classes).point2Commun).toBe('Seulement B')
-  })
-
-  it('un texte commun déjà écrit est conservé', () => {
-    const cr = { point2Commun: 'Déjà saisi', point2: { 'CE1-A': 'autre chose' } }
-    expect(fusionner(cr, 'point2', classes).point2Commun).toBe('Déjà saisi')
-  })
-
-  it('ne touche pas aux textes par classe', () => {
-    const cr = { point2: { 'CE1-A': 'a', 'CE1-B': 'b' } }
-    expect(fusionner(cr, 'point2', classes).point2).toEqual({ 'CE1-A': 'a', 'CE1-B': 'b' })
+  it('la zone commune n’existe pas avec une seule classe', () => {
+    const cr = { point2Commun: 'ignoré', point2: { 'CE1-A': 'texte de la classe' } }
+    expect(remarquesImprimees(cr, 'point2', ['CE1-A'])).toEqual([{ label: 'CE1-A', text: 'texte de la classe', commune: false }])
   })
 })
 
-describe('separer', () => {
-  it('retrouve les textes par classe', () => {
-    const cr = { point2Fusion: true, point2Commun: 'commun', point2: { 'CE1-A': 'a', 'CE1-B': 'b' } }
-    const split = separer(cr, 'point2', classes)
-    expect(split.point2Fusion).toBe(false)
-    expect(split.point2).toEqual({ 'CE1-A': 'a', 'CE1-B': 'b' })
-  })
-
-  it('une classe sans texte reprend le texte commun', () => {
-    const cr = { point4Fusion: true, point4Commun: 'commun', point4: { 'CE1-A': 'a' } }
-    expect(separer(cr, 'point4', classes).point4).toEqual({ 'CE1-A': 'a', 'CE1-B': 'commun' })
-  })
-})
-
-describe('contenu du compte-rendu', () => {
-  it('un texte commun fusionné compte comme du contenu', () => {
-    expect(hasCompteRenduContent({ point4Fusion: true, point4Commun: 'Remarque' })).toBe(true)
-    expect(hasCompteRenduContent({ point4Fusion: false, point4Commun: 'Remarque' })).toBe(false)
-  })
-
-  it('pointParClasseRempli suit l’état de la fusion', () => {
-    expect(pointParClasseRempli({ point2Fusion: true, point2Commun: 'x' }, 'point2', classes)).toBe(true)
-    expect(pointParClasseRempli({ point2Fusion: true, point2: { 'CE1-A': 'x' } }, 'point2', classes)).toBe(false)
+describe('contenu', () => {
+  it('pointParClasseRempli : commun, propre à une classe, ou rien', () => {
+    expect(pointParClasseRempli({ point2Commun: 'x' }, 'point2', classes)).toBe(true)
     expect(pointParClasseRempli({ point2: { 'CE1-A': 'x' } }, 'point2', classes)).toBe(true)
+    expect(pointParClasseRempli({ point2Commun: '  ', point2: { 'CE1-A': ' ' } }, 'point2', classes)).toBe(false)
+    expect(pointParClasseRempli({ point2Commun: 'x' }, 'point2', ['CE1-A'])).toBe(false)
+  })
+
+  it('un texte commun suffit pour que le compte-rendu compte comme rédigé', () => {
+    expect(hasCompteRenduContent({ point4Commun: 'Remarque' })).toBe(true)
+    expect(hasCompteRenduContent({ point4Commun: '   ' })).toBe(false)
+  })
+})
+
+describe('passer un texte identique en commun', () => {
+  const identiques = { point4: { 'CE1-A': 'Mêmes retards', 'CE1-B': ' Mêmes retards ' } }
+
+  it('détecte le même texte dans toutes les classes', () => {
+    expect(texteIdentiqueAToutesLesClasses(identiques, 'point4', classes)).toBe('Mêmes retards')
+  })
+
+  it('rien à proposer : textes différents, absents, zone commune déjà remplie ou une seule classe', () => {
+    expect(texteIdentiqueAToutesLesClasses({ point4: { 'CE1-A': 'a', 'CE1-B': 'b' } }, 'point4', classes)).toBeNull()
+    expect(texteIdentiqueAToutesLesClasses({ point4: { 'CE1-A': 'a' } }, 'point4', classes)).toBeNull()
+    expect(texteIdentiqueAToutesLesClasses({ ...identiques, point4Commun: 'déjà' }, 'point4', classes)).toBeNull()
+    expect(texteIdentiqueAToutesLesClasses({ point4: { 'CE1-A': 'a' } }, 'point4', ['CE1-A'])).toBeNull()
+  })
+
+  it('le texte passe en commun et les zones par classe se vident', () => {
+    const moved = passerEnCommun(identiques, 'point4', classes)
+    expect(moved.point4Commun).toBe('Mêmes retards')
+    expect(moved.point4).toEqual({ 'CE1-A': '', 'CE1-B': '' })
+  })
+
+  it('sans texte identique, le compte-rendu reste tel quel', () => {
+    const cr = { point4: { 'CE1-A': 'a', 'CE1-B': 'b' } }
+    expect(passerEnCommun(cr, 'point4', classes)).toBe(cr)
   })
 })
