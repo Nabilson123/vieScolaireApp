@@ -8,6 +8,8 @@ import { getReclamationNote, reclamationNoteKey, type RiskStudent, type OpenRecl
 import { teacherName } from '../../data/teachers'
 import { weekdayLabelFromDate } from './SuiviClasseTab'
 import { minutesToTime, timeToMinutes } from '../../data/classSchedules'
+import { STATUT_RDV_LABELS, statutRdv, type RdvLigne, type StatutRdv } from '../../utils/suiviClasseRdv'
+import { todayLocalISO } from '../../utils/reclamationsLogic'
 
 interface PrintableCompteRenduReunionProps {
   group: LogicalGroup
@@ -17,6 +19,8 @@ interface PrintableCompteRenduReunionProps {
   reclamations: OpenReclamation[]
   /** Actions encore ouvertes du niveau (point 8 « Décisions & actions »). */
   actions?: SuiviClasseAction[]
+  /** Rendez-vous avec les parents du niveau (point 6), déjà filtrés et triés : à venir et tenus, sans les annulés. */
+  rendezVous?: RdvLigne[]
   blank?: boolean
 }
 
@@ -32,6 +36,9 @@ const C = {
  * ligne ne soit jamais coupée entre deux pages A4. */
 const RISK_ROWS_PER_BLOCK = 10
 const RECLAMATION_ROWS_PER_BLOCK = 5
+const RDV_ROWS_PER_BLOCK = 8
+
+const RDV_STATUT_COLOR: Record<StatutRdv, string> = { a_venir: '#15803d', a_cloturer: '#b45309', tenu: '#4338ca', annule: '#6b7280' }
 
 function formatDDMMYYYY(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
@@ -90,7 +97,7 @@ function Th({ children, width }: { children: string; width?: number }) {
 
 const cell = 'border px-1.5 py-[3px] whitespace-pre-line'
 
-export default function PrintableCompteRenduReunion({ group, suivi, compteRendu: cr, riskStudents, reclamations, actions = [], blank = false }: PrintableCompteRenduReunionProps) {
+export default function PrintableCompteRenduReunion({ group, suivi, compteRendu: cr, riskStudents, reclamations, actions = [], rendezVous = [], blank = false }: PrintableCompteRenduReunionProps) {
   const participants = [...group.teachers.map(teacherName), 'Direction de la vie scolaire']
   const heure = suivi.heure.slice(0, 5)
   const blocks: PaginatedBlock[] = []
@@ -245,16 +252,62 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     })
   }
 
-  // 6 et 7
-  blocks.push({
-    key: 's6',
-    node: (
-      <div>
-        <SectionTitle n={6} title="Relation avec les familles" />
-        <TextBlock text={cr.point6} guide="Contacts parents notables, rendez-vous programmés." blank={blank} />
-      </div>
-    ),
-  })
+  // 6. Relation avec les familles : le tableau des rendez-vous avec les parents (version remplie seulement), puis les remarques.
+  if (blank || rendezVous.length === 0) {
+    blocks.push({
+      key: 's6',
+      node: (
+        <div>
+          <SectionTitle n={6} title="Relation avec les familles" />
+          <TextBlock text={cr.point6} guide="Contacts parents notables, rendez-vous programmés." blank={blank} />
+        </div>
+      ),
+    })
+  } else {
+    const today = todayLocalISO()
+    chunk(rendezVous, RDV_ROWS_PER_BLOCK).forEach((rows, i) => {
+      blocks.push({
+        key: `s6-${i}`,
+        node: (
+          <div>
+            <SectionTitle n={6} title="Relation avec les familles — rendez-vous avec les parents" suite={i > 0} />
+            <table className="w-full border-collapse text-[10px]">
+              <thead>
+                <tr style={{ background: C.headBg }}>
+                  <Th width={185}>Élève</Th>
+                  <Th width={110}>Date et heure</Th>
+                  <Th>Motif</Th>
+                  <Th width={64}>Statut</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((l, j) => {
+                  const statut = statutRdv(l.record, today)
+                  return (
+                    <tr key={`${l.studentId}-${l.record.date}-${l.record.heure}-${j}`}>
+                      <td className={cell} style={{ borderColor: C.rule }}>
+                        {l.studentName} <span style={{ color: C.muted }}>({l.classe})</span>
+                      </td>
+                      <td className={cell} style={{ borderColor: C.rule }}>
+                        {formatDDMMYYYY(l.record.date)} · {l.record.heure.slice(0, 5)}
+                      </td>
+                      <td className={cell} style={{ borderColor: C.rule }}>
+                        {tidy(l.record.motif) || '—'}
+                      </td>
+                      <td className={`${cell} font-bold`} style={{ borderColor: C.rule, color: RDV_STATUT_COLOR[statut] }}>
+                        {STATUT_RDV_LABELS[statut]}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ),
+      })
+    })
+    if (tidy(cr.point6)) blocks.push({ key: 's6-text', node: <TextBlock text={cr.point6} guide="" label="Remarques" /> })
+  }
   blocks.push({
     key: 's7',
     node: (

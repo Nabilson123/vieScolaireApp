@@ -25,6 +25,11 @@ import { minutesToTime, timeToMinutes } from '../../data/classSchedules'
 import SuiviReunionPrintPreviewModal from './SuiviReunionPrintPreviewModal'
 import PrintableCompteRenduReunion from './PrintableCompteRenduReunion'
 import AutoGrowTextarea from '../AutoGrowTextarea'
+import FamillesPanel from './FamillesPanel'
+import { useStudents } from '../../services/studentsService'
+import { useStudentExtras } from '../../services/studentDetailsService'
+import { todayLocalISO } from '../../utils/reclamationsLogic'
+import { collectRendezVous, filtrerRendezVous, periodeDepuis, statutRdv } from '../../utils/suiviClasseRdv'
 
 interface SuiviReunionTabProps {
   initialNiveau?: string
@@ -197,6 +202,8 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const { data: suivis = [] } = useSuiviProfs()
   const { data: actions = [] } = useSuiviClasseActions()
   const { data: alertRules } = useAlertRules()
+  const { data: students = [] } = useStudents()
+  const { data: studentExtras = {} } = useStudentExtras()
   const profile = useCurrentProfile()
   const allTeachers = getTeachersSnapshot()
 
@@ -238,6 +245,13 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   // réclamation qu'on vient de marquer "Traitée" PENDANT cette réunion (donc déjà présente dans
   // cr.point5) doit rester visible — sinon elle disparaît du compte-rendu sans laisser de trace.
   const reclamations = computeAllReclamationsForNiveaux(group.niveauxBruts).filter((r) => r.statut !== 'Résolue' || !!getReclamationNote(cr.point5, r))
+  // Point 6 : rendez-vous avec les parents des élèves du niveau, et période par défaut = depuis la réunion précédente.
+  const today = todayLocalISO()
+  const classeNames = group.divisions.map((d) => d.classe.nom)
+  const rendezVous = collectRendezVous(students, studentExtras, classeNames)
+  const depuisReunion = periodeDepuis(suivis, group.key, suivi, today)
+  // Le compte-rendu imprimé reprend la vue par défaut : à venir et tenus depuis la dernière réunion, sans les annulés.
+  const rendezVousImprimes = filtrerRendezVous(rendezVous, { depuis: depuisReunion, statut: 'tous' }, today).filter((l) => statutRdv(l.record, today) !== 'annule')
   const owners = [...group.teachers.map(teacherName), directionName]
   const participants = [
     ...group.divisions
@@ -494,7 +508,21 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </div>
         )
       case 6:
-        return <AutoGrowTextarea value={cr.point6 ?? ''} onChange={(e) => patch({ point6: e.target.value })} disabled={!isEditable} minRows={6} className={textareaClass} />
+        return (
+          <>
+            <FamillesPanel
+              classeNames={classeNames}
+              rendezVous={rendezVous}
+              riskStudents={riskStudents}
+              reclamations={reclamations}
+              depuisReunion={depuisReunion}
+              today={today}
+              isEditable={isEditable}
+            />
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Remarques sur les familles</p>
+            <AutoGrowTextarea value={cr.point6 ?? ''} onChange={(e) => patch({ point6: e.target.value })} disabled={!isEditable} minRows={6} className={textareaClass} />
+          </>
+        )
       case 7:
         return <AutoGrowTextarea value={cr.point7 ?? ''} onChange={(e) => patch({ point7: e.target.value })} disabled={!isEditable} minRows={6} className={textareaClass} />
       case 8:
@@ -585,7 +613,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </button>
           {/* Une ou plusieurs pages A4 : chacune porte déjà son ombre, on les sépare simplement. */}
           <div className="flex flex-col gap-4">
-            <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} />
+            <PrintableCompteRenduReunion group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} rendezVous={rendezVousImprimes} />
           </div>
         </div>
       ) : (
@@ -765,7 +793,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
       )}
 
       {showPrint && suivi && group && (
-        <SuiviReunionPrintPreviewModal group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} onClose={() => setShowPrint(false)} />
+        <SuiviReunionPrintPreviewModal group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} rendezVous={rendezVousImprimes} onClose={() => setShowPrint(false)} />
       )}
     </>
   )

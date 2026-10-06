@@ -46,6 +46,8 @@ interface PlanifierRdvModalProps {
   initial?: PlanifierRdvPayload
   /** Motif proposé pour un NOUVEAU rendez-vous (ex. depuis une réclamation). */
   prefillMotif?: string
+  /** Limite le choix de la classe à celles-ci (ex. les classes du niveau d'une réunion de suivi). */
+  classes?: string[]
 }
 
 function todayISO() {
@@ -56,8 +58,8 @@ const DUREE_OPTIONS = [15, 30, 45, 60]
 
 const inputClass = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none'
 
-export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, initial, prefillMotif }: PlanifierRdvModalProps) {
-  const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
+export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, initial, prefillMotif, classes }: PlanifierRdvModalProps) {
+  const realClasses = classes?.length ? classes : getClassOptions().filter((c) => c !== 'Toutes les classes')
   const staffNames = getTeachersSnapshot()
     .map((t) => teacherName(t))
     .sort((a, b) => a.localeCompare(b))
