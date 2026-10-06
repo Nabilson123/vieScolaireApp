@@ -1,7 +1,7 @@
 import SchoolLogo from '../print/SchoolLogo'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import type { SuiviProf } from '../../data/suiviProfs'
-import type { SuiviCompteRendu } from '../../data/suiviCompteRendu'
+import { remarquesParClasse, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import type { SuiviClasseAction } from '../../data/suiviClasseActions'
 import type { LogicalGroup } from '../../utils/suiviClasseGroups'
 import { getReclamationNote, reclamationNoteKey, type RiskStudent, type OpenReclamation } from '../../utils/suiviClasseRisqueAggregation'
@@ -64,11 +64,19 @@ function SectionTitle({ n, title, suite }: { n: number; title: string; suite?: b
   )
 }
 
-function TextBlock({ text, guide, blank }: { text?: string; guide: string; blank?: boolean }) {
+function TextBlock({ text, guide, blank, label }: { text?: string; guide: string; blank?: boolean; label?: string }) {
+  const empty = blank || !tidy(text)
   return (
-    <p className="whitespace-pre-line rounded-md px-2.5 py-1 text-[10.5px] leading-[1.4]" style={{ border: `1px solid ${C.rule}`, color: blank || !text ? C.muted : C.ink, fontStyle: blank || !text ? 'italic' : 'normal' }}>
-      {blank ? guide : tidy(text) || '—'}
-    </p>
+    <div className="rounded-md px-2.5 py-1 text-[10.5px] leading-[1.4]" style={{ border: `1px solid ${C.rule}`, color: empty ? C.muted : C.ink }}>
+      {label && !blank && (
+        <div className="mb-0.5 text-[9.5px] font-bold" style={{ color: C.accent }}>
+          {label}
+        </div>
+      )}
+      <p className="whitespace-pre-line" style={{ fontStyle: empty ? 'italic' : 'normal' }}>
+        {blank ? guide : tidy(text) || '—'}
+      </p>
+    </div>
   )
 }
 
@@ -98,20 +106,25 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     ),
   })
 
-  // 2. Avancement pédagogique
-  blocks.push({
-    key: 's2',
-    node: (
+  // Points 2 et 4 : une zone par classe, ou une seule quand les mêmes remarques valent pour toutes les classes
+  // (fusion choisie dans le formulaire). La version vierge garde toujours une zone par classe, à remplir à la main.
+  const classes = group.divisions.map((d) => d.classe.nom)
+  const parClasse = (n: number, title: string, field: PointParClasse, guide: (classe: string) => string) => {
+    const entries = blank ? classes.map((c) => ({ label: c, text: '' })) : remarquesParClasse(cr, field, classes)
+    return (
       <div>
-        <SectionTitle n={2} title="Avancement pédagogique" />
-        <div className="grid grid-cols-2 gap-1.5">
-          {group.divisions.map((d) => (
-            <TextBlock key={d.classe.id} text={cr.point2?.[d.classe.nom]} guide={`${d.classe.nom} — avancement des programmes, difficultés rencontrées.`} blank={blank} />
+        <SectionTitle n={n} title={title} />
+        <div className={`grid gap-1.5 ${entries.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {entries.map((e) => (
+            <TextBlock key={e.label} label={classes.length > 1 ? e.label : undefined} text={e.text} guide={guide(e.label)} blank={blank} />
           ))}
         </div>
       </div>
-    ),
-  })
+    )
+  }
+
+  // 2. Avancement pédagogique
+  blocks.push({ key: 's2', node: parClasse(2, 'Avancement pédagogique', 'point2', (c) => `${c} — avancement des programmes, difficultés rencontrées.`) })
 
   // 3. Élèves à suivre
   if (blank || riskStudents.length === 0) {
@@ -163,19 +176,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
   }
 
   // 4. Assiduité & comportement
-  blocks.push({
-    key: 's4',
-    node: (
-      <div>
-        <SectionTitle n={4} title="Assiduité & comportement" />
-        <div className="grid grid-cols-2 gap-1.5">
-          {group.divisions.map((d) => (
-            <TextBlock key={d.classe.id} text={cr.point4?.[d.classe.nom]} guide={`${d.classe.nom} — absences, retards, incidents à signaler.`} blank={blank} />
-          ))}
-        </div>
-      </div>
-    ),
-  })
+  blocks.push({ key: 's4', node: parClasse(4, 'Assiduité & comportement', 'point4', (c) => `${c} — absences, retards, incidents à signaler.`) })
 
   // 5. Traitement des réclamations
   if (blank || reclamations.length === 0) {

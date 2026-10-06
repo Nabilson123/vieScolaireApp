@@ -5,7 +5,7 @@ import { useClasses } from '../../services/classesService'
 import { getTeachersSnapshot } from '../../services/teachersService'
 import { teacherName } from '../../data/teachers'
 import type { SuiviProf } from '../../data/suiviProfs'
-import type { SuiviCompteRendu } from '../../data/suiviCompteRendu'
+import { estFusionne, fusionner, listeClasses, pointParClasseRempli, separer, type PointParClasse, type SuiviCompteRendu } from '../../data/suiviCompteRendu'
 import { useSuiviProfs, useSaveCompteRendu, useValidateCompteRendu } from '../../services/suiviProfsService'
 import { computeLogicalGroups, type LogicalGroup } from '../../utils/suiviClasseGroups'
 import {
@@ -127,11 +127,11 @@ function pointHasContent(n: number, cr: SuiviCompteRendu, group: LogicalGroup): 
     case 1:
       return !!cr.point1Commentaire?.trim()
     case 2:
-      return group.divisions.some((d) => cr.point2?.[d.classe.nom]?.trim())
+      return pointParClasseRempli(cr, 'point2', group.divisions.map((d) => d.classe.nom))
     case 3:
       return !!cr.point3Extra?.trim() || !!(cr.point3 && Object.values(cr.point3).some((e) => e.constat.trim() || e.mesure.trim()))
     case 4:
-      return group.divisions.some((d) => cr.point4?.[d.classe.nom]?.trim())
+      return pointParClasseRempli(cr, 'point4', group.divisions.map((d) => d.classe.nom))
     case 5:
       return !!(cr.point5 && Object.values(cr.point5).some((e) => e.faits.trim() || e.reponse.trim()))
     case 6:
@@ -317,6 +317,49 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
 
   const point = POINTS[currentPoint - 1]
 
+  // Points 2 et 4 : une zone par classe, ou une seule quand les mêmes remarques valent pour toutes les classes
+  // (mêmes enseignants, mêmes élèves) — case « fusionner ».
+  const renderParClasse = (field: PointParClasse): ReactNode => {
+    const classes = group.divisions.map((d) => d.classe.nom)
+    const fusion = estFusionne(cr, field, classes)
+    const communField = field === 'point2' ? 'point2Commun' : 'point4Commun'
+    return (
+      <div className="flex flex-col gap-2.5">
+        {classes.length > 1 && (
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={fusion}
+              disabled={!isEditable}
+              onChange={(e) => setCr((prev) => (e.target.checked ? fusionner(prev, field, classes) : separer(prev, field, classes)))}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
+            />
+            <span>
+              Mêmes remarques pour {listeClasses(classes)} : <span className="font-semibold">une seule zone</span>
+            </span>
+          </label>
+        )}
+        {fusion ? (
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-500">
+              {listeClasses(classes)} {group.teachers.length > 0 ? `· ${group.teachers.map(teacherName).join(', ')}` : ''}
+            </p>
+            <AutoGrowTextarea value={cr[communField] ?? ''} onChange={(e) => patch({ [communField]: e.target.value })} disabled={!isEditable} minRows={4} className={textareaClass} />
+          </div>
+        ) : (
+          group.divisions.map((d) => (
+            <div key={d.classe.id}>
+              <p className="mb-1 text-xs font-semibold text-slate-500">
+                {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
+              </p>
+              <AutoGrowTextarea value={cr[field]?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord(field, d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
+            </div>
+          ))
+        )}
+      </div>
+    )
+  }
+
   const renderPointBody = (): ReactNode => {
     switch (currentPoint) {
       case 1:
@@ -337,18 +380,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </>
         )
       case 2:
-        return (
-          <div className="flex flex-col gap-2.5">
-            {group.divisions.map((d) => (
-              <div key={d.classe.id}>
-                <p className="mb-1 text-xs font-semibold text-slate-500">
-                  {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
-                </p>
-                <AutoGrowTextarea value={cr.point2?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point2', d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
-              </div>
-            ))}
-          </div>
-        )
+        return renderParClasse('point2')
       case 3:
         return (
           <>
@@ -393,18 +425,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </>
         )
       case 4:
-        return (
-          <div className="flex flex-col gap-2.5">
-            {group.divisions.map((d) => (
-              <div key={d.classe.id}>
-                <p className="mb-1 text-xs font-semibold text-slate-500">
-                  {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
-                </p>
-                <AutoGrowTextarea value={cr.point4?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point4', d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
-              </div>
-            ))}
-          </div>
-        )
+        return renderParClasse('point4')
       case 5:
         return reclamations.length === 0 ? (
           <p className="text-xs text-slate-400">Aucune réclamation ouverte pour ce niveau.</p>
