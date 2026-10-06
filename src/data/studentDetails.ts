@@ -249,6 +249,12 @@ export interface DisciplineEvent {
    * l'activité concernée (ex. "Club de football") et la durée de la privation (ex. "2 semaines"). */
   privationActivite?: string
   privationDuree?: string
+  /** Même fait saisi d'un coup pour plusieurs élèves : identifiant commun à leurs fiches (chacune garde sa
+   * propre sanction, ses points et sa notification). Absent pour une saisie individuelle. */
+  groupeId?: string
+  /** Élèves victimes du fait (ex. l'élève frappé). Rien n'est écrit dans leur dossier : il affiche « victime de … »
+   * en lisant ce champ, donc aucun point ni effet sur leur conduite, et supprimer cette fiche retire la mention. */
+  victimeIds?: string[]
 }
 
 export interface Responsable {

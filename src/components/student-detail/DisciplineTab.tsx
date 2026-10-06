@@ -1,20 +1,30 @@
 import { useState } from 'react'
-import { Shield, ThumbsUp, ThumbsDown, Printer } from 'lucide-react'
+import { Shield, ThumbsUp, ThumbsDown, Printer, HeartCrack } from 'lucide-react'
 import type { DisciplineEvent } from '../../data/studentDetails'
 import DisciplineNoticePreviewModal from '../discipline-print/DisciplineNoticePreviewModal'
+import { getStudentsSnapshot } from '../../services/studentsService'
+import { getStudentExtraSnapshot } from '../../services/studentDetailsService'
+import { coAuteurs, faitsSubis } from '../../utils/disciplineIncident'
 
 export default function DisciplineTab({
+  studentId,
   studentName,
   classe,
   conduite,
   events,
 }: {
+  studentId: string
   studentName: string
   classe: string
   conduite: number
   events: DisciplineEvent[]
 }) {
   const [printEvent, setPrintEvent] = useState<DisciplineEvent | null>(null)
+  const students = getStudentsSnapshot()
+  const disciplineOf = (id: string) => getStudentExtraSnapshot(id).discipline
+  // Les faits dont cet élève est la victime sont lus dans les fiches des autres élèves : rien n'est écrit dans son dossier.
+  const subis = faitsSubis(studentId, students, disciplineOf)
+  const nameOf = (id: string) => students.find((s) => s.id === id)?.name
   const typeCounts = events.reduce<Record<string, number>>((acc, e) => {
     if (e.typeCode) acc[e.typeCode] = (acc[e.typeCode] ?? 0) + 1
     return acc
@@ -38,6 +48,34 @@ export default function DisciplineTab({
           </p>
         </div>
       </div>
+
+      {subis.length > 0 && (
+        <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50/60 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <HeartCrack className="h-4 w-4 text-sky-500" />
+            <h4 className="text-sm font-semibold text-slate-800">{`Faits subis (${subis.length})`}</h4>
+            <span className="text-[11px] text-slate-400">Sans sanction ni effet sur la note de conduite</span>
+          </div>
+          <div className="space-y-2">
+            {subis.map((f) => (
+              <div key={f.key} className="rounded-lg border border-sky-100 bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-800">
+                    {f.typeCode && <span className="mr-1.5 text-xs font-normal text-slate-400">{f.typeCode}</span>}
+                    {f.title}
+                  </p>
+                  <span className="text-xs text-slate-400">{f.date}</span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  {`Victime de : ${f.auteurs.map((a) => `${a.name} (${a.classe})`).join(', ')}`}
+                </p>
+                {f.description && <p className="mt-0.5 text-xs text-slate-500">{f.description}</p>}
+                <p className="mt-0.5 text-[11px] text-slate-400">{`Signalé par ${f.signalePar}`}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {events.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">Aucun événement disciplinaire enregistré.</p>
@@ -79,6 +117,18 @@ export default function DisciplineTab({
                   )}
                 </p>
                 <p className="mb-2 text-sm text-slate-600">{event.description}</p>
+                {(() => {
+                  const avec = coAuteurs(event, studentId, students, disciplineOf)
+                  const victimes = (event.victimeIds ?? []).map(nameOf).filter((n): n is string => !!n)
+                  return (
+                    (avec.length > 0 || victimes.length > 0) && (
+                      <div className="mb-2 space-y-0.5 text-xs">
+                        {avec.length > 0 && <p className="text-slate-500">{`Avec : ${avec.map((a) => a.name).join(', ')}`}</p>}
+                        {victimes.length > 0 && <p className="font-semibold text-rose-600">{`Victime : ${victimes.join(', ')}`}</p>}
+                      </div>
+                    )
+                  )
+                })()}
                 <div className="flex items-center justify-between">
                   <button
                     type="button"

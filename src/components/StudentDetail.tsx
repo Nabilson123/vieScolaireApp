@@ -288,7 +288,7 @@ export default function StudentDetail({ student, onBack, initialTab, onStudentUp
       {activeTab === 'notes' && <NotesTab notes={view.notes} />}
       {activeTab === 'absences' && <AbsencesTab studentId={student.id} events={view.events} />}
       {activeTab === 'discipline' && (
-        <DisciplineTab studentName={student.name} classe={student.classe} conduite={extra.conduite} events={view.discipline} />
+        <DisciplineTab studentId={student.id} studentName={student.name} classe={student.classe} conduite={extra.conduite} events={view.discipline} />
       )}
       {activeTab === 'cantine' && <CantineTab studentId={student.id} studentName={student.name} cantine={extra.cantine} />}
       {activeTab === 'projet' && <ProjetPersonnelTab student={student} projet={extra.projet} />}

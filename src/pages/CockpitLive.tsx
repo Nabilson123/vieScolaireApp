@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { initials as studentInitials } from '../data/students'
 import { useStudents } from '../services/studentsService'
-import { getStudentExtraSnapshot, updateStudentDiscipline, updateStudentConduite, useStudentExtras } from '../services/studentDetailsService'
+import { useStudentExtras } from '../services/studentDetailsService'
 import { useStudentIdentities } from '../services/studentIdentityService'
 import { teacherName } from '../data/teachers'
 import { useTeachers } from '../services/teachersService'
@@ -50,11 +50,12 @@ import {
   type ParentToCall,
 } from '../utils/liveCockpitAggregation'
 import { computeCockpitReclamations } from '../utils/reclamationsAlerts'
-import { computeConduite } from '../data/disciplineTypes'
 import RemplacementDirectModal from '../components/RemplacementDirectModal'
 import TimelineCreneauxModal from '../components/TimelineCreneauxModal'
 import CockpitPrintPreviewModal from '../components/cockpit-print/CockpitPrintPreviewModal'
 import RegisterDisciplineModal from '../components/RegisterDisciplineModal'
+import { saveDisciplineEntries } from '../services/disciplineRegistration'
+import type { DisciplinePayload } from '../utils/disciplineIncident'
 import SignalerAbsenceModal from '../components/SignalerAbsenceModal'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
@@ -286,33 +287,8 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
     updateServicesCapacite.mutate({ id: capacite.id, creneauxFixes: next })
   }
 
-  const handleRegisterIncident = async (payload: {
-    studentId: string
-    title: string
-    description: string
-    points: number
-    author: string
-    date: string
-    typeCode?: string
-    sanction?: string
-    conseilStatut?: string
-  }) => {
-    const extra = getStudentExtraSnapshot(payload.studentId)
-    const nextDiscipline = [
-      {
-        date: payload.date,
-        title: payload.title,
-        description: payload.description,
-        points: payload.points,
-        author: payload.author,
-        typeCode: payload.typeCode,
-        sanction: payload.sanction,
-        conseilStatut: payload.conseilStatut,
-      },
-      ...extra.discipline,
-    ]
-    await updateStudentDiscipline(payload.studentId, nextDiscipline)
-    await updateStudentConduite(payload.studentId, computeConduite(nextDiscipline.map((d) => d.points)))
+  const handleRegisterIncident = async (payloads: DisciplinePayload[]) => {
+    await saveDisciplineEntries(payloads)
     await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
     setShowIncidentModal(false)
     onDataChanged?.()

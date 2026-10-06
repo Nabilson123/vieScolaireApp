@@ -30,6 +30,8 @@ import NoEditAccessBanner from '../components/NoEditAccessBanner'
 import { exportDisciplineJournalExcel } from '../utils/disciplineExport'
 import { SANCTION_LEVELS, CONSEIL_STATUTS, CONSEIL_STATUT_LABELS, computeConduite, type ConseilStatut } from '../data/disciplineTypes'
 import { enqueueNotification } from '../services/notificationQueueService'
+import { saveDisciplineEntries } from '../services/disciplineRegistration'
+import { coAuteurs, type DisciplinePayload } from '../utils/disciplineIncident'
 
 interface FlatEntry {
   id: string
@@ -52,11 +54,17 @@ interface FlatEntry {
   procedureDetailsPrintable?: boolean
   privationActivite?: string
   privationDuree?: string
+  /** Autres élèves de la même saisie collective, et victimes du fait (noms, pour l'affichage). */
+  avec: string[]
+  victimes: string[]
 }
 
 function buildEntries(): FlatEntry[] {
   const entries: FlatEntry[] = []
-  getStudentsSnapshot().forEach((s) => {
+  const allStudents = getStudentsSnapshot()
+  const disciplineOf = (id: string) => getStudentExtraSnapshot(id).discipline
+  const nameOf = (id: string) => allStudents.find((st) => st.id === id)?.name
+  allStudents.forEach((s) => {
     const extra = getStudentExtraSnapshot(s.id)
     extra.discipline.forEach((d, idx) => {
       entries.push({
@@ -80,6 +88,8 @@ function buildEntries(): FlatEntry[] {
         procedureDetailsPrintable: d.procedureDetailsPrintable,
         privationActivite: d.privationActivite,
         privationDuree: d.privationDuree,
+        avec: coAuteurs(d, s.id, allStudents, disciplineOf).map((o) => o.name),
+        victimes: (d.victimeIds ?? []).map(nameOf).filter((n): n is string => !!n),
       })
     })
   })
@@ -186,53 +196,15 @@ export default function DisciplineGlobal({ onDataChanged }: DisciplineGlobalProp
     [entries],
   )
 
-  const handleRegister = async (payload: {
-    studentId: string
-    title: string
-    description: string
-    points: number
-    author: string
-    date: string
-    typeCode?: string
-    sanction?: string
-    conseilStatut?: string
-    procedureStepsDone?: number[]
-    retenueDate?: string
-    retenueDuree?: string
-    procedureStepDetails?: Record<number, string>
-    procedureDetailsPrintable?: boolean
-    privationActivite?: string
-    privationDuree?: string
-  }) => {
-    const student = getStudentsSnapshot().find((s) => s.id === payload.studentId)
-    if (!student) return
-
-    const extra = getStudentExtraSnapshot(payload.studentId)
-    const nextDiscipline = [
-      {
-        date: payload.date,
-        title: payload.title,
-        description: payload.description,
-        points: payload.points,
-        author: payload.author,
-        typeCode: payload.typeCode,
-        sanction: payload.sanction,
-        conseilStatut: payload.conseilStatut,
-        procedureStepsDone: payload.procedureStepsDone,
-        retenueDate: payload.retenueDate,
-        retenueDuree: payload.retenueDuree,
-        procedureStepDetails: payload.procedureStepDetails,
-        procedureDetailsPrintable: payload.procedureDetailsPrintable,
-        privationActivite: payload.privationActivite,
-        privationDuree: payload.privationDuree,
-      },
-      ...extra.discipline,
-    ]
-    await updateStudentDiscipline(payload.studentId, nextDiscipline)
-    await updateStudentConduite(payload.studentId, computeConduite(nextDiscipline.map((d) => d.points)))
+  const handleRegister = async (payloads: DisciplinePayload[]) => {
+    await saveDisciplineEntries(payloads)
     await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
-    // Seuls les vrais incidents (points négatifs) notifient les parents — pas les mérites/récompenses.
-    if (payload.points < 0) {
+    // Seuls les vrais incidents (points négatifs) notifient les parents — pas les mérites/récompenses. Chaque élève imputé
+    // a sa propre notification ; les victimes n'en reçoivent aucune.
+    for (const payload of payloads) {
+      if (payload.points >= 0) continue
+      const student = getStudentsSnapshot().find((s) => s.id === payload.studentId)
+      if (!student) continue
       await enqueueNotification({
         studentId: payload.studentId,
         templateCode: 'incident_disciplinaire',
@@ -500,6 +472,8 @@ export default function DisciplineGlobal({ onDataChanged }: DisciplineGlobalProp
                               {e.sanction}
                             </span>
                           )}
+                          {e.avec.length > 0 && <div className="mt-0.5 text-[11px] font-normal text-slate-500">{`Avec : ${e.avec.join(', ')}`}</div>}
+                          {e.victimes.length > 0 && <div className="mt-0.5 text-[11px] font-semibold text-rose-600">{`Victime : ${e.victimes.join(', ')}`}</div>}
                         </td>
                         <td className="py-3 text-sm text-slate-600">{e.description}</td>
                         <td className="py-3 text-sm text-slate-500">{e.author}</td>

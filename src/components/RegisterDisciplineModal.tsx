@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { X, ShieldCheck, ThumbsUp, ThumbsDown, ClipboardList, AlertTriangle } from 'lucide-react'
-import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
+import StudentMultiPicker from './StudentMultiPicker'
+import { buildDisciplinePayloads, nouveauGroupeId, type DisciplinePayload } from '../utils/disciplineIncident'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
@@ -9,24 +10,8 @@ import { DISCIPLINE_TYPES, SANCTION_LEVELS, SANCTION_POINTS, type SanctionLevel 
 
 interface RegisterDisciplineModalProps {
   onClose: () => void
-  onSubmit: (payload: {
-    studentId: string
-    title: string
-    description: string
-    points: number
-    author: string
-    date: string
-    typeCode?: string
-    sanction?: string
-    conseilStatut?: string
-    procedureStepsDone?: number[]
-    retenueDate?: string
-    retenueDuree?: string
-    procedureStepDetails?: Record<number, string>
-    procedureDetailsPrintable?: boolean
-    privationActivite?: string
-    privationDuree?: string
-  }) => void
+  /** Une fiche par élève imputé (un fait collectif en produit plusieurs, liées par un même groupe). */
+  onSubmit: (payloads: DisciplinePayload[]) => void | Promise<void>
 }
 
 interface Category {
@@ -62,11 +47,14 @@ function todayISO() {
 }
 
 export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterDisciplineModalProps) {
-  const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
   const professeurs = getTeachersSnapshot()
 
-  const [classe, setClasse] = useState(realClasses[0])
-  const [studentId, setStudentId] = useState('')
+  // Plusieurs élèves peuvent avoir fait la même chose (une fiche chacun), et un incident peut viser d'autres élèves
+  // (victimes) : ils sont seulement mentionnés, sans sanction ni point.
+  const [authorIds, setAuthorIds] = useState<string[]>([])
+  const [victimIds, setVictimIds] = useState<string[]>([])
+  const [sanctionByStudent, setSanctionByStudent] = useState<Record<string, SanctionLevel>>({})
+  const [saving, setSaving] = useState(false)
   const [nature, setNature] = useState<'merite' | 'incident'>('incident')
 
   const [meriteCategory, setMeriteCategory] = useState(MERITE_CATEGORIES[0].label)
@@ -89,27 +77,33 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
   const [privationActivite, setPrivationActivite] = useState('')
   const [privationDuree, setPrivationDuree] = useState('')
 
-  const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)
   const isAutreMerite = meriteCategory === 'Autre mérite'
   const selectedMerite = MERITE_CATEGORIES.find((c) => c.label === meriteCategory) ?? MERITE_CATEGORIES[0]
   const isAutreIncident = typeCode === AUTRE_INCIDENT
   const selectedType = DISCIPLINE_TYPES.find((t) => t.code === typeCode)
   const availableSanctions = sortBySeverity(selectedType ? selectedType.sanctions : SANCTION_LEVELS)
-  const priorEntriesForType =
-    studentId && selectedType ? getStudentExtraSnapshot(studentId).discipline.filter((d) => d.typeCode === selectedType.code) : []
-  const recidiveCount = priorEntriesForType.length
+  const allStudents = getStudentsSnapshot()
+  const nameOf = (id: string) => allStudents.find((st) => st.id === id)?.name ?? ''
   // Un engagement parental est un document contractuel où l'élève et les parents s'engagent à ne
   // plus reproduire le fait — le refaire est donc plus grave qu'une simple répétition et mérite un
   // avertissement distinct, plus visible que le bandeau de récidive générique ci-dessous.
-  // extra.discipline est toujours préfixé (nouvelle entrée en tête, cf. handleRegister), donc le
+  // extra.discipline est toujours préfixé (nouvelle entrée en tête, cf. saveDisciplineEntries), donc le
   // premier engagement trouvé est le plus récent.
-  const brokenEngagement = priorEntriesForType.find((d) => d.sanction === 'Engagement parental')
+  const recidives = authorIds.map((id) => {
+    const prior = selectedType ? getStudentExtraSnapshot(id).discipline.filter((d) => d.typeCode === selectedType.code) : []
+    return { id, name: nameOf(id), count: prior.length, brokenEngagement: prior.find((d) => d.sanction === 'Engagement parental') }
+  })
+  const several = authorIds.length > 1
+  const effectiveSanctions = authorIds.map((id) => sanctionByStudent[id] ?? sanction)
+  const anyRetenue = effectiveSanctions.includes('Retenue')
+  const anyPrivation = effectiveSanctions.includes('Privation d’activités périscolaires/sportives')
 
   const handleTypeChange = (code: string) => {
     setTypeCode(code)
     const type = DISCIPLINE_TYPES.find((t) => t.code === code)
     setSanction(type ? sortBySeverity(type.sanctions)[0] : 'Avertissement écrit')
     setStepsDone(type ? type.procedure.map((_, i) => i) : [])
+    setSanctionByStudent({})
     setStepDetails({})
     setDetailsPrintable(false)
   }
@@ -125,45 +119,39 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
   const hasAnyStepDetail = Object.values(stepDetails).some((v) => v.trim())
 
   const canSubmit =
-    !!studentId &&
+    authorIds.length > 0 &&
+    !saving &&
     (nature === 'merite' ? !isAutreMerite || customMerite.trim() !== '' : !isAutreIncident || customIncident.trim() !== '')
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return
-
-    if (nature === 'merite') {
-      onSubmit({
-        studentId,
-        title: isAutreMerite ? customMerite.trim() : meriteCategory,
-        description: description.trim(),
-        points: selectedMerite.points,
-        author,
-        date,
-      })
-      return
+    const common = { authorIds, victimIds: nature === 'incident' ? victimIds : [], description: description.trim(), author, date, groupeId: authorIds.length > 1 ? nouveauGroupeId() : undefined }
+    const payloads =
+      nature === 'merite'
+        ? buildDisciplinePayloads({ ...common, nature, title: isAutreMerite ? customMerite.trim() : meriteCategory, meritePoints: selectedMerite.points })
+        : buildDisciplinePayloads({
+            ...common,
+            nature,
+            title: isAutreIncident ? customIncident.trim() : (selectedType?.label ?? typeCode),
+            incident: {
+              typeCode: isAutreIncident ? undefined : typeCode,
+              sanction,
+              sanctionByStudent,
+              stepsDone,
+              stepDetails,
+              detailsPrintable,
+              retenueDate,
+              retenueDuree,
+              privationActivite,
+              privationDuree,
+            },
+          })
+    setSaving(true)
+    try {
+      await onSubmit(payloads)
+    } finally {
+      setSaving(false)
     }
-
-    onSubmit({
-      studentId,
-      title: isAutreIncident ? customIncident.trim() : (selectedType?.label ?? typeCode),
-      description: description.trim(),
-      points: SANCTION_POINTS[sanction],
-      author,
-      date,
-      typeCode: isAutreIncident ? undefined : typeCode,
-      sanction,
-      conseilStatut: sanction === 'Conseil de discipline' ? 'a_convoquer' : undefined,
-      procedureStepsDone: isAutreIncident ? undefined : stepsDone,
-      retenueDate: sanction === 'Retenue' ? retenueDate.trim() || undefined : undefined,
-      retenueDuree: sanction === 'Retenue' ? retenueDuree.trim() || undefined : undefined,
-      procedureStepDetails: hasAnyStepDetail
-        ? Object.fromEntries(Object.entries(stepDetails).filter(([, v]) => v.trim()))
-        : undefined,
-      procedureDetailsPrintable: hasAnyStepDetail ? detailsPrintable : undefined,
-      privationActivite:
-        sanction === 'Privation d’activités périscolaires/sportives' ? privationActivite.trim() || undefined : undefined,
-      privationDuree: sanction === 'Privation d’activités périscolaires/sportives' ? privationDuree.trim() || undefined : undefined,
-    })
   }
 
   return (
@@ -184,40 +172,17 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Classe</label>
-              <select
-                value={classe}
-                onChange={(e) => {
-                  setClasse(e.target.value)
-                  setStudentId('')
-                }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                {realClasses.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné</label>
-              <select
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                <option value="">Sélectionner...</option>
-                {elevesDeLaClasse.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <StudentMultiPicker
+            label="Élève(s) concerné(s)"
+            selectedIds={authorIds}
+            onChange={(ids) => {
+              setAuthorIds(ids)
+              // Un élève retiré ne garde pas une sanction propre en réserve.
+              setSanctionByStudent((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => ids.includes(id))))
+            }}
+            excludeIds={victimIds}
+            hint={authorIds.length > 1 ? 'Chaque élève aura sa propre fiche dans son dossier (points et conduite calculés pour chacun).' : "Plusieurs élèves ont fait la même chose ? Ajoutez-les ici, même s'ils sont dans des classes différentes."}
+          />
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Nature du fait</label>
@@ -332,6 +297,18 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
                 </div>
               )}
 
+              <div className="rounded-lg border border-rose-100 bg-rose-50/40 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-rose-600">Élève(s) victime(s) — optionnel</p>
+                <StudentMultiPicker
+                  label="Victime"
+                  tone="rose"
+                  selectedIds={victimIds}
+                  onChange={setVictimIds}
+                  excludeIds={authorIds}
+                  hint="Si le fait vise un autre élève (ex. frapper un camarade). La victime est mentionnée dans son dossier, sans sanction ni point ; ses parents ne sont pas notifiés automatiquement."
+                />
+              </div>
+
               {selectedType && (
                 <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
                   <div className="mb-1.5 flex items-center justify-between gap-1.5">
@@ -385,27 +362,29 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
                 </div>
               )}
 
-              {brokenEngagement ? (
-                <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    Récidive après engagement parental : cet élève avait signé un engagement parental le{' '}
-                    {new Date(brokenEngagement.date + 'T00:00:00').toLocaleDateString('fr-FR')} pour ce même type de
-                    fait (« {selectedType!.code} ») et le refait aujourd'hui — la promesse n'a pas été tenue.
-                    Envisager une sanction plus lourde (Exclusion ou Conseil de discipline).
-                  </span>
-                </div>
-              ) : (
-                recidiveCount > 0 && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              {recidives.map((r) =>
+                r.brokenEngagement ? (
+                  <div key={r.id} className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
-                      Récidive : {recidiveCount} fait{recidiveCount > 1 ? 's' : ''} « {selectedType!.code} » déjà
-                      enregistré{recidiveCount > 1 ? 's' : ''} pour cet élève cette année — envisager une sanction plus
-                      lourde.
+                      Récidive après engagement parental{several ? ` — ${r.name}` : ''} : cet élève avait signé un engagement parental le{' '}
+                      {new Date(r.brokenEngagement.date + 'T00:00:00').toLocaleDateString('fr-FR')} pour ce même type de
+                      fait (« {selectedType!.code} ») et le refait aujourd'hui — la promesse n'a pas été tenue.
+                      Envisager une sanction plus lourde (Exclusion ou Conseil de discipline).
                     </span>
                   </div>
-                )
+                ) : (
+                  r.count > 0 && (
+                    <div key={r.id} className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Récidive{several ? ` — ${r.name}` : ''} : {r.count} fait{r.count > 1 ? 's' : ''} « {selectedType!.code} » déjà
+                        enregistré{r.count > 1 ? 's' : ''} pour cet élève cette année — envisager une sanction plus
+                        lourde.
+                      </span>
+                    </div>
+                  )
+                ),
               )}
 
               <div>
@@ -423,10 +402,46 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
                 </select>
                 <p className="mt-1 text-xs text-slate-400">
                   Impact sur la note : {SANCTION_POINTS[sanction]} point(s)
+                  {several ? ' — proposée à tous les élèves, modifiable pour chacun ci-dessous.' : ''}
                 </p>
               </div>
 
-              {sanction === 'Retenue' && (
+              {several && (
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Sanction par élève</p>
+                  <ul className="space-y-1.5">
+                    {authorIds.map((id) => {
+                      const value = sanctionByStudent[id] ?? sanction
+                      return (
+                        <li key={id} className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{nameOf(id)}</span>
+                          <select
+                            value={value}
+                            onChange={(e) => {
+                              const next = e.target.value as SanctionLevel
+                              setSanctionByStudent((prev) => {
+                                const copy = { ...prev }
+                                if (next === sanction) delete copy[id]
+                                else copy[id] = next
+                                return copy
+                              })
+                            }}
+                            className="w-56 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-700 focus:border-indigo-400 focus:outline-none"
+                          >
+                            {availableSanctions.map((sv) => (
+                              <option key={sv} value={sv}>
+                                {sv} ({SANCTION_POINTS[sv]})
+                              </option>
+                            ))}
+                          </select>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {anyRetenue && (
                 <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Date de la retenue</label>
@@ -451,7 +466,7 @@ export default function RegisterDisciplineModal({ onClose, onSubmit }: RegisterD
                 </div>
               )}
 
-              {sanction === 'Privation d’activités périscolaires/sportives' && (
+              {anyPrivation && (
                 <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-slate-700">Activité concernée</label>
