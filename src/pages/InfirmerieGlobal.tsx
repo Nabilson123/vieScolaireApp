@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { HeartPulse, PlusCircle, Search, AlertTriangle, BookOpen, ShieldAlert, Pencil, Clock, Pill } from 'lucide-react'
+import { HeartPulse, PlusCircle, Search, AlertTriangle, BookOpen, ShieldAlert, Pencil, Clock, Pill, Trash2 } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot, useStudents } from '../services/studentsService'
 import type { PAIInfo, InfirmerieVisit } from '../data/studentDetails'
@@ -13,6 +13,8 @@ import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
 
 interface FlatVisit extends InfirmerieVisit {
+  /** Position du passage dans la liste de l'élève : il n'a pas d'identifiant propre. */
+  index: number
   studentId: string
   studentName: string
   classe: string
@@ -64,14 +66,17 @@ export default function InfirmerieGlobal() {
   const [search, setSearch] = useState('')
   const [classe, setClasse] = useState('Toutes les classes')
   const [showVisitModal, setShowVisitModal] = useState(false)
+  const [editingVisit, setEditingVisit] = useState<FlatVisit | null>(null)
+  // Suppression en deux temps : un premier clic demande confirmation sur la ligne.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editingPai, setEditingPai] = useState<{ studentId: string; pai: PAIInfo } | null>(null)
   const [showNewPai, setShowNewPai] = useState(false)
 
   const flatVisits: FlatVisit[] = useMemo(() => {
     const list: FlatVisit[] = []
     getStudentsSnapshot().forEach((s) => {
-      ;(visitsMap[s.id] ?? []).forEach((v) => {
-        list.push({ ...v, studentId: s.id, studentName: s.name, classe: s.classe })
+      ;(visitsMap[s.id] ?? []).forEach((v, index) => {
+        list.push({ ...v, index, studentId: s.id, studentName: s.name, classe: s.classe })
       })
     })
     return list.sort((a, b) => (a.date + a.heure < b.date + b.heure ? 1 : -1))
@@ -113,6 +118,24 @@ export default function InfirmerieGlobal() {
     await updateStudentSante(payload.studentId, { pai: paiMap[payload.studentId], visits: updated })
     await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
     setShowVisitModal(false)
+  }
+
+  const saveVisits = async (studentId: string, visits: InfirmerieVisit[]) => {
+    setVisitsMap((prev) => ({ ...prev, [studentId]: visits }))
+    await updateStudentSante(studentId, { pai: paiMap[studentId], visits })
+    await queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
+  }
+
+  const handleEditVisit = async (target: FlatVisit, payload: { motif: string; action: string; date: string; heure: string }) => {
+    const visits = (visitsMap[target.studentId] ?? []).map((v, i) => (i === target.index ? { ...v, date: payload.date, heure: payload.heure, motif: payload.motif, action: payload.action } : v))
+    await saveVisits(target.studentId, visits)
+    setEditingVisit(null)
+  }
+
+  const handleDeleteVisit = async (target: FlatVisit) => {
+    const visits = (visitsMap[target.studentId] ?? []).filter((_, i) => i !== target.index)
+    setConfirmDelete(null)
+    await saveVisits(target.studentId, visits)
   }
 
   const handleSavePai = async (studentId: string, pai: PAIInfo) => {
@@ -293,14 +316,57 @@ export default function InfirmerieGlobal() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVisits.map((v, idx) => (
-                    <tr key={idx} className="border-b border-slate-50 last:border-0 align-top">
+                  {filteredVisits.map((v) => (
+                    <tr key={`${v.studentId}-${v.index}`} className="border-b border-slate-50 last:border-0 align-top">
                       <td className="py-3 pr-2 text-sm text-slate-700">
                         <span className="flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5 text-slate-400" />
                           {v.heure}
                         </span>
-                        <span className="text-xs text-slate-400">{v.date}</span>
+                        <span className="block text-xs text-slate-400">{v.date}</span>
+                        <div className="mt-1.5">
+                          {confirmDelete === `${v.studentId}-${v.index}` ? (
+                            <div className="flex flex-col items-stretch gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteVisit(v)}
+                                className="rounded-md bg-rose-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-600"
+                              >
+                                Supprimer
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(null)}
+                                className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditingVisit(v)}
+                                disabled={!isEditable}
+                                title="Modifier ce passage"
+                                aria-label="Modifier ce passage"
+                                className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(`${v.studentId}-${v.index}`)}
+                                disabled={!isEditable}
+                                title="Supprimer ce passage"
+                                aria-label="Supprimer ce passage"
+                                className="flex h-6 w-6 items-center justify-center rounded-md bg-rose-50 text-rose-500 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 pr-2">
                         <p className="text-sm font-semibold text-slate-900">{v.studentName}</p>
@@ -330,6 +396,14 @@ export default function InfirmerieGlobal() {
 
       {showVisitModal && (
         <NewInfirmerieVisitModal onClose={() => setShowVisitModal(false)} onSubmit={handleNewVisit} />
+      )}
+
+      {editingVisit && (
+        <NewInfirmerieVisitModal
+          initial={{ studentId: editingVisit.studentId, motif: editingVisit.motif, action: editingVisit.action, date: editingVisit.date, heure: editingVisit.heure }}
+          onClose={() => setEditingVisit(null)}
+          onSubmit={(payload) => handleEditVisit(editingVisit, payload)}
+        />
       )}
 
       {editingPai && (

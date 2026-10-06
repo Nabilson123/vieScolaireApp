@@ -6,6 +6,8 @@ import StudentSearchSelect from './StudentSearchSelect'
 
 interface NewInfirmerieVisitModalProps {
   onClose: () => void
+  /** Passage à modifier : l'élève ne change pas, le reste se corrige. */
+  initial?: { studentId: string; motif: string; action: string; date: string; heure: string }
   onSubmit: (payload: {
     studentId: string
     motif: string
@@ -42,18 +44,21 @@ function nowISO() {
   return { date: now.toISOString().slice(0, 10), heure: now.toTimeString().slice(0, 5) }
 }
 
-export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirmerieVisitModalProps) {
+export default function NewInfirmerieVisitModal({ onClose, onSubmit, initial }: NewInfirmerieVisitModalProps) {
   const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
-  const initial = nowISO()
+  const now = nowISO()
+  const isEdit = !!initial
+  const initialStudent = initial ? getStudentsSnapshot().find((s) => s.id === initial.studentId) : undefined
 
-  const [classe, setClasse] = useState(realClasses[0])
-  const [studentId, setStudentId] = useState('')
-  const [motif, setMotif] = useState(MOTIFS[0])
-  const [motifAutre, setMotifAutre] = useState('')
-  const [action, setAction] = useState(ACTIONS[0])
-  const [actionAutre, setActionAutre] = useState('')
-  const [date, setDate] = useState(initial.date)
-  const [heure, setHeure] = useState(initial.heure)
+  const [classe, setClasse] = useState(initialStudent?.classe ?? realClasses[0])
+  const [studentId, setStudentId] = useState(initial?.studentId ?? '')
+  // Un motif ou une action saisis à la main (hors des listes) reviennent dans la zone « Autre ».
+  const [motif, setMotif] = useState(initial ? (MOTIFS.includes(initial.motif) ? initial.motif : 'Autre motif') : MOTIFS[0])
+  const [motifAutre, setMotifAutre] = useState(initial && !MOTIFS.includes(initial.motif) ? initial.motif : '')
+  const [action, setAction] = useState(initial ? (ACTIONS.includes(initial.action) ? initial.action : 'Autre action') : ACTIONS[0])
+  const [actionAutre, setActionAutre] = useState(initial && !ACTIONS.includes(initial.action) ? initial.action : '')
+  const [date, setDate] = useState(initial?.date ?? now.date)
+  const [heure, setHeure] = useState(initial?.heure ?? now.heure)
 
   const isMotifAutre = motif === 'Autre motif'
   const isActionAutre = action === 'Autre action'
@@ -78,7 +83,7 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
             <HeartPulse className="h-5 w-5 text-indigo-600" />
-            Nouveau Passage à l'Infirmerie
+            {isEdit ? "Modifier le Passage à l'Infirmerie" : "Nouveau Passage à l'Infirmerie"}
           </h2>
           <button
             type="button"
@@ -95,11 +100,12 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Classe</label>
               <select
                 value={classe}
+                disabled={isEdit}
                 onChange={(e) => {
                   setClasse(e.target.value)
                   setStudentId('')
                 }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
               >
                 {realClasses.map((c) => (
                   <option key={c} value={c}>
@@ -114,6 +120,7 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
                 students={getStudentsSnapshot()}
                 value={studentId}
                 classe={classe}
+                disabled={isEdit}
                 placeholder="Rechercher un élève..."
                 onChange={(id) => {
                   setStudentId(id)
@@ -214,7 +221,7 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
             disabled={!studentId || (isMotifAutre && !motifAutre.trim()) || (isActionAutre && !actionAutre.trim())}
             className="rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:from-indigo-500 hover:to-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Valider le passage
+            {isEdit ? 'Enregistrer les modifications' : 'Valider le passage'}
           </button>
         </div>
       </div>
