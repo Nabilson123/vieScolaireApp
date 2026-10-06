@@ -1,9 +1,10 @@
 import type { ReclamationRecord } from '../../data/studentDetails'
 import { getStudentIdentitySnapshot } from '../../services/studentIdentityService'
-import { buildReclamationMessage, type ReclamationMessageKind } from '../../utils/whatsapp'
+import { buildReclamationMessage, type ReclamationMessageKind, type ReclamationMessageLang } from '../../utils/whatsapp'
 import { cleanReclamationText } from '../../utils/reclamationsLogic'
 import { delaiResolutionAutorise } from '../../utils/reclamationsPolicy'
 import MessageWhatsAppModal, { type WhatsAppRecipient } from '../MessageWhatsAppModal'
+import MessageLangSwitch, { useMessageLang } from './MessageLangSwitch'
 
 export const MESSAGE_KIND_LABELS: Record<ReclamationMessageKind, string> = {
   accuse: 'Accusé de réception',
@@ -43,7 +44,8 @@ export function buildReclamationOutbound(
   studentId: string,
   studentName: string,
   classe: string,
-  kind: ReclamationMessageKind
+  kind: ReclamationMessageKind,
+  lang: ReclamationMessageLang = 'fr'
 ): { message: string; recipients: WhatsAppRecipient[] } {
   const identity = getStudentIdentitySnapshot(studentId)
   const parents = [
@@ -56,28 +58,41 @@ export function buildReclamationOutbound(
     phone: p.phone,
   }))
 
-  const message = buildReclamationMessage(kind, {
-    parentNom: reclamation.parentNom,
-    studentName,
-    classe,
-    categorie: reclamation.type,
-    objet: cleanReclamationText(reclamation.objet),
-    date: reclamation.date,
-    responsable: reclamation.responsable,
-    echeance: reclamation.echeance,
-    resolution: reclamation.resolution,
-    delaiJours: delaiResolutionAutorise(reclamation),
-  })
+  const message = buildReclamationMessage(
+    kind,
+    {
+      parentNom: reclamation.parentNom,
+      studentName,
+      classe,
+      categorie: reclamation.type,
+      objet: cleanReclamationText(reclamation.objet),
+      date: reclamation.date,
+      responsable: reclamation.responsable,
+      echeance: reclamation.echeance,
+      resolution: reclamation.resolution,
+      delaiJours: delaiResolutionAutorise(reclamation),
+    },
+    lang
+  )
   return { message, recipients }
 }
 
 /** Message au parent d'une réclamation : texte pré-rédigé selon l'étape, numéros des parents de la fiche
  * élève (le parent réclamant en premier) pour ouvrir WhatsApp directement. */
 export default function ReclamationMessageModal({ reclamation, studentId, studentName, classe, kind, banner, onShared, onClose }: ReclamationMessageModalProps) {
-  const { message, recipients } = buildReclamationOutbound(reclamation, studentId, studentName, classe, kind)
+  const [lang, setLang] = useMessageLang()
+  const { message, recipients } = buildReclamationOutbound(reclamation, studentId, studentName, classe, kind, lang)
 
   return (
     <MessageWhatsAppModal
+      // Changer de langue régénère le message : on remonte la fenêtre pour repartir du nouveau texte.
+      key={lang}
+      toolbar={<MessageLangSwitch lang={lang} onChange={setLang} />}
+      note={
+        lang !== 'fr' && kind === 'resolution' && reclamation.resolution?.trim()
+          ? 'La solution saisie par l\'équipe reste dans sa langue d\'origine : traduisez-la dans le texte ci-dessous avant d\'envoyer.'
+          : undefined
+      }
       message={message}
       onClose={onClose}
       title={MESSAGE_TITLES[kind]}

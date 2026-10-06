@@ -144,6 +144,34 @@ describe('buildReclamationMessage', () => {
     expect(message.endsWith('Direction de la Vie Scolaire — Groupe Scolaire Mondrian')).toBe(true)
   })
 
+  it('version arabe : texte du modèle traduit, objet et nom de l’élève inchangés', () => {
+    const message = buildReclamationMessage('accuse', info, 'ar')
+    expect(message.startsWith('السلام عليكم Meryem EDDGHOUGHI،\n')).toBe(true)
+    expect(message).toContain('لقد توصلنا بشكايتكم بتاريخ 23/09/2026 بخصوص التلميذ(ة) Yazid BARGUIGA (CE4-B) : *Comportement de l’enseignante*')
+    expect(message).toContain('في أجل أقصاه 72 ساعة')
+    expect(message.endsWith('إدارة الحياة المدرسية — مجموعة مدارس موندريان')).toBe(true)
+    expect(message).not.toContain('Bonjour')
+  })
+
+  it('version arabe : délai selon le niveau, prise en charge avec action et échéance, solution telle que saisie', () => {
+    expect(buildReclamationMessage('accuse', { ...info, delaiJours: 1 }, 'ar')).toContain('24 ساعة')
+    expect(buildReclamationMessage('accuse', { ...info, delaiJours: 5 }, 'ar')).toContain('5 أيام')
+    const pec = buildReclamationMessage('prise_en_charge', info, 'ar')
+    expect(pec).toContain('قيد المعالجة من طرف Nabil Lahrache')
+    expect(pec).toContain('نجري التحريات اللازمة لدى الطاقم التربوي.')
+    expect(pec).toContain('سنعود إليكم في أجل أقصاه 08/10/2026.')
+    expect(buildReclamationMessage('resolution', info, 'ar')).toContain(info.resolution as string)
+    expect(buildReclamationMessage('resolution', { ...info, resolution: '' }, 'ar')).toContain('(الجواب قيد الإعداد)')
+    expect(buildReclamationMessage('relance', info, 'ar')).toContain('هل كان جواب المؤسسة مناسبًا لكم؟')
+  })
+
+  it('français + arabe : le français d’abord, puis un filet, puis l’arabe', () => {
+    const message = buildReclamationMessage('accuse', info, 'both')
+    const [fr, ar] = message.split('\n\n──────────\n\n')
+    expect(fr).toBe(buildReclamationMessage('accuse', info, 'fr'))
+    expect(ar).toBe(buildReclamationMessage('accuse', info, 'ar'))
+  })
+
   it('prise en charge : responsable, action selon la catégorie et échéance', () => {
     const message = buildReclamationMessage('prise_en_charge', info)
     expect(message).toContain('est prise en charge par Nabil Lahrache')

@@ -268,7 +268,7 @@ const SIGNATURE = ['', 'Cordialement,', 'Direction de la Vie Scolaire — Groupe
 
 /** Réponse à copier ou ouvrir dans WhatsApp quand une réclamation parent est reçue, prise en charge ou
  * résolue (gras via *…*, sans emoji — même convention que `buildRdvMessage`). */
-export function buildReclamationMessage(kind: ReclamationMessageKind, info: ReclamationWhatsAppInfo): string {
+function buildReclamationMessageFr(kind: ReclamationMessageKind, info: ReclamationWhatsAppInfo): string {
   const eleve = `${info.studentName}${info.classe ? ` (${info.classe})` : ''}`
   const lines = reclamationIntro(info)
   if (kind === 'accuse') {
@@ -304,3 +304,78 @@ export function buildReclamationMessage(kind: ReclamationMessageKind, info: Recl
   lines.push(...SIGNATURE)
   return lines.join('\n')
 }
+
+/** Langue du message à la famille : français, arabe, ou les deux à la suite. */
+export type ReclamationMessageLang = 'fr' | 'ar' | 'both'
+
+/** « 24 ساعة », « 72 ساعة », « 5 أيام » : le délai annoncé à la famille, en arabe. */
+export function delaiLabelAr(jours: number): string {
+  if (jours <= 1) return '24 ساعة'
+  if (jours === 3) return '72 ساعة'
+  if (jours === 2) return 'يومان'
+  return jours >= 11 ? `${jours} يومًا` : `${jours} أيام`
+}
+
+/** Même rôle que ACTION_PAR_CATEGORIE, en arabe. */
+const ACTION_PAR_CATEGORIE_AR: Record<string, string> = {
+  Notes: 'نتواصل مع الأستاذ(ة) المعني(ة).',
+  'Examens / Évaluations': 'نتواصل مع الأستاذ(ة) المعني(ة).',
+  'Pédagogie / Enseignement': 'نتواصل مع الأستاذ(ة) المعني(ة).',
+  'Absence / Assiduité': 'نراجع سجل غياب التلميذ(ة).',
+  Comportement: 'نجري التحريات اللازمة لدى الطاقم التربوي.',
+  'Harcèlement / Intimidation': 'نجري التحريات اللازمة لدى الطاقم التربوي في سرية تامة.',
+  Cantine: 'نتواصل مع مسؤولي المطعم المدرسي.',
+  Transport: 'نتواصل مع مصلحة النقل المدرسي.',
+  'Infirmerie / Santé': 'نتواصل مع مصلحة التمريض بالمؤسسة.',
+  Sécurité: 'ندرس الوضعية مع إدارة المؤسسة.',
+  'Frais de scolarité / Facturation': 'نستشير المصلحة الإدارية والمالية.',
+  'Inscription / Admission': 'نستشير المصلحة الإدارية.',
+  'Hygiène / Locaux': 'نحيل الطلب إلى فريق الصيانة.',
+}
+
+const SIGNATURE_AR = ['', 'مع أطيب التحيات،', 'إدارة الحياة المدرسية — مجموعة مدارس موندريان']
+
+/** Version arabe du message à la famille. L'objet, le nom de l'élève et la solution saisie par l'équipe restent
+ * tels qu'ils ont été écrits : seul le texte du modèle est traduit (aucune traduction automatique). */
+function buildReclamationMessageAr(kind: ReclamationMessageKind, info: ReclamationWhatsAppInfo): string {
+  const eleve = `${info.studentName}${info.classe ? ` (${info.classe})` : ''}`
+  const lines = [info.parentNom.trim() ? `السلام عليكم ${info.parentNom.trim()}،` : 'السلام عليكم،', '']
+  if (kind === 'accuse') {
+    lines.push(
+      `لقد توصلنا بشكايتكم بتاريخ ${dateCourte(info.date)} بخصوص التلميذ(ة) ${eleve} : *${info.objet}*.`,
+      '',
+      `تمت إحالتها إلى إدارة الحياة المدرسية وسيتم معالجتها في أجل أقصاه ${delaiLabelAr(info.delaiJours ?? 3)}.`
+    )
+  } else if (kind === 'prise_en_charge') {
+    lines.push(`شكايتكم بتاريخ ${dateCourte(info.date)} بخصوص التلميذ(ة) ${eleve} (*${info.objet}*) قيد المعالجة${info.responsable ? ` من طرف ${info.responsable}` : ''}.`)
+    const action = ACTION_PAR_CATEGORIE_AR[info.categorie]
+    if (action) lines.push('', action)
+    if (info.echeance) lines.push('', `سنعود إليكم في أجل أقصاه ${dateCourte(info.echeance)}.`)
+  } else if (kind === 'relance') {
+    lines.push(
+      `نعود إليكم بخصوص شكايتكم بتاريخ ${dateCourte(info.date)} بخصوص التلميذ(ة) ${eleve} (*${info.objet}*)، التي سبق أن تلقيتم جوابًا بشأنها.`,
+      '',
+      'هل كان جواب المؤسسة مناسبًا لكم؟ إذا بقيت نقطة تحتاج إلى توضيح، يرجى الرد على هذه الرسالة.',
+      '',
+      'نبقى رهن إشارتكم.'
+    )
+  } else {
+    lines.push(
+      `على إثر شكايتكم بتاريخ ${dateCourte(info.date)} بخصوص التلميذ(ة) ${eleve} (*${info.objet}*)، إليكم جواب المؤسسة :`,
+      '',
+      info.resolution?.trim() || '(الجواب قيد الإعداد)',
+      '',
+      'نبقى رهن إشارتكم لأي توضيح إضافي.'
+    )
+  }
+  lines.push(...SIGNATURE_AR)
+  return lines.join('\n')
+}
+
+/** Message à la famille dans la langue choisie ; « both » met le français puis l'arabe, séparés par un filet. */
+export function buildReclamationMessage(kind: ReclamationMessageKind, info: ReclamationWhatsAppInfo, lang: ReclamationMessageLang = 'fr'): string {
+  if (lang === 'ar') return buildReclamationMessageAr(kind, info)
+  const fr = buildReclamationMessageFr(kind, info)
+  return lang === 'both' ? `${fr}\n\n──────────\n\n${buildReclamationMessageAr(kind, info)}` : fr
+}
+

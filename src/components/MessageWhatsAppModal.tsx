@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { X, MessageCircle, Copy, Check, CheckCircle2, ExternalLink } from 'lucide-react'
 import { buildWhatsAppLink } from '../utils/whatsapp'
 
@@ -19,6 +19,10 @@ interface MessageWhatsAppModalProps {
   recipients?: WhatsAppRecipient[]
   /** Appelé quand le message est copié ou qu'un lien WhatsApp est ouvert (pour le journaliser). */
   onShared?: () => void
+  /** Contrôles affichés au-dessus du texte (ex. choix de la langue). */
+  toolbar?: ReactNode
+  /** Remarque affichée sous le texte. */
+  note?: string
 }
 
 /**
@@ -34,6 +38,8 @@ export default function MessageWhatsAppModal({
   banner,
   recipients = [],
   onShared,
+  toolbar,
+  note,
 }: MessageWhatsAppModalProps) {
   const [message, setMessage] = useState(initialMessage)
   const [copied, setCopied] = useState(false)
@@ -76,6 +82,7 @@ export default function MessageWhatsAppModal({
               {banner}
             </div>
           )}
+          {toolbar}
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</label>
             <textarea
@@ -83,9 +90,11 @@ export default function MessageWhatsAppModal({
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={9}
-              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+              dir="auto"
+              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 [unicode-bidi:plaintext] focus:border-indigo-400 focus:outline-none"
             />
             <p className="mt-1 text-xs text-slate-400">Modifiable avant la copie.</p>
+            {note && <p className="mt-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">{note}</p>}
           </div>
         </div>
 

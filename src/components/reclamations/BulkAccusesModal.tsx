@@ -4,6 +4,7 @@ import { useReclamationActions } from '../../hooks/useReclamationActions'
 import { buildWhatsAppLink } from '../../utils/whatsapp'
 import { cleanReclamationText, isAccuseAEnvoyer } from '../../utils/reclamationsLogic'
 import { buildReclamationOutbound } from './ReclamationMessageModal'
+import MessageLangSwitch, { useMessageLang } from './MessageLangSwitch'
 import type { QueueReclamation } from './ReclamationQueueModal'
 
 interface BulkAccusesModalProps {
@@ -22,6 +23,7 @@ interface BulkAccusesModalProps {
  */
 export default function BulkAccusesModal({ keys, items, isEditable, onClose }: BulkAccusesModalProps) {
   const actions = useReclamationActions()
+  const [lang, setLang] = useMessageLang()
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [copyError, setCopyError] = useState(false)
 
@@ -60,6 +62,7 @@ export default function BulkAccusesModal({ keys, items, isEditable, onClose }: B
               {sentCount} / {rows.length} envoyé{sentCount > 1 ? 's' : ''} · copier ou ouvrir WhatsApp l'enregistre comme envoyé.
             </p>
           </div>
+          <MessageLangSwitch lang={lang} onChange={setLang} />
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">
             <X className="h-4 w-4" />
           </button>
@@ -71,7 +74,7 @@ export default function BulkAccusesModal({ keys, items, isEditable, onClose }: B
           {rows.map((r) => {
             const key = `${r.studentId}-${r.id}`
             const sent = !isAccuseAEnvoyer(r)
-            const { message, recipients } = buildReclamationOutbound(r, r.studentId, r.studentName, r.classe, 'accuse')
+            const { message, recipients } = buildReclamationOutbound(r, r.studentId, r.studentName, r.classe, 'accuse', lang)
             const links = recipients.map((rc) => ({ ...rc, href: buildWhatsAppLink(rc.phone, message) })).filter((rc): rc is typeof rc & { href: string } => !!rc.href)
             return (
               <div key={key} className={`rounded-xl border p-3.5 ${sent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}>
@@ -88,7 +91,7 @@ export default function BulkAccusesModal({ keys, items, isEditable, onClose }: B
                     Envoyé
                   </label>
                 </div>
-                <p className="mt-2 line-clamp-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" title={message}>{message.split('\n').filter((l) => l.trim()).slice(0, 3).join(' ')}</p>
+                <p dir="auto" className="mt-2 line-clamp-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" title={message}>{message.split('\n').filter((l) => l.trim()).slice(0, 3).join(' ')}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
