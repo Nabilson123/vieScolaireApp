@@ -101,6 +101,10 @@ async function patchStudentExtra(id: string, patch: Record<string, unknown>): Pr
   })
   const { error } = await supabase.from('student_extras').upsert({ student_id: id, ...patch }, { onConflict: 'student_id' })
   if (error) throw error
+  // L'instantané suit l'écriture tout de suite : deux écritures rapprochées sur le même élève (deux accusés cochés
+  // à la suite…) ne doivent pas repartir d'un état périmé et s'écraser l'une l'autre.
+  const { rendez_vous: rendezVous, ...rest } = patch
+  cachedExtras = { ...cachedExtras, [id]: { ...getStudentExtraSnapshot(id), ...rest, ...(rendezVous !== undefined ? { rendezVous } : {}) } as StudentExtra }
   void logAudit({ tableName: 'student_extras', recordId: id, action: 'update', oldData, newData: patch })
 }
 
@@ -153,6 +157,15 @@ function reclamationEvent(action: ReclamationAction, detail?: string): Reclamati
 
 export type ReclamationPatch = Partial<Omit<ReclamationRecord, 'id' | 'historique'>>
 
+/** Les écritures de réclamations lisent la liste de l'élève puis la réécrivent en entier : on les fait passer
+ * l'une après l'autre pour qu'aucune ne parte d'une liste que la précédente vient de modifier. */
+let reclamationWrites: Promise<unknown> = Promise.resolve()
+function enFile<T>(task: () => Promise<T>): Promise<T> {
+  const next = reclamationWrites.then(task, task)
+  reclamationWrites = next.catch(() => undefined)
+  return next
+}
+
 type ReclamationEventInput = { action: ReclamationAction; detail?: string }
 
 /** Modifie plusieurs réclamations d'un même élève en **une seule écriture** : retrouvées par leur id (et non
@@ -160,6 +173,15 @@ type ReclamationEventInput = { action: ReclamationAction; detail?: string }
  * chaque enregistrement. Chaque réclamation modifiée reçoit son événement dans la frise chronologique ;
  * l'audit est déjà branché via `updateStudentReclamations`. */
 export async function updateReclamationsBatch(
+  studentId: string,
+  ids: string[],
+  patch: ReclamationPatch | ((r: ReclamationRecord) => ReclamationPatch),
+  event?: ReclamationEventInput | ((r: ReclamationRecord) => ReclamationEventInput)
+): Promise<ReclamationRecord[]> {
+  return enFile(() => appliquerBatch(studentId, ids, patch, event))
+}
+
+async function appliquerBatch(
   studentId: string,
   ids: string[],
   patch: ReclamationPatch | ((r: ReclamationRecord) => ReclamationPatch),
@@ -300,10 +322,12 @@ export function enregistrerSuiviFamille(studentId: string, id: string, issue: Re
   return updateReclamation(studentId, id, { suiviFamille }, { action: 'suivi_famille', detail: issue === 'satisfaite' ? 'Famille satisfaite' : 'Sans réponse de la famille' })
 }
 
-export async function supprimerReclamation(studentId: string, id: string): Promise<ReclamationRecord[]> {
-  const updated = getStudentExtraSnapshot(studentId).reclamations.filter((r) => r.id !== id)
-  await updateStudentReclamations(studentId, updated)
-  return updated
+export function supprimerReclamation(studentId: string, id: string): Promise<ReclamationRecord[]> {
+  return enFile(async () => {
+    const updated = getStudentExtraSnapshot(studentId).reclamations.filter((r) => r.id !== id)
+    await updateStudentReclamations(studentId, updated)
+    return updated
+  })
 }
 
 /** Marque une réclamation précise comme traitée — utilisé par le point "Traitement des
@@ -324,7 +348,11 @@ export interface CreateReclamationsInput {
  * seule implémentation du mapping items → ReclamationRecord[], pour éviter toute divergence. Les textes
  * sont nettoyés à l'écriture (le texte du modèle d'IA ou d'un collage arrive souvent en markdown :
  * « **Objet : … ** »). */
-export async function createReclamations(input: CreateReclamationsInput): Promise<ReclamationRecord[]> {
+export function createReclamations(input: CreateReclamationsInput): Promise<ReclamationRecord[]> {
+  return enFile(() => ajouterReclamations(input))
+}
+
+async function ajouterReclamations(input: CreateReclamationsInput): Promise<ReclamationRecord[]> {
   const newRecords: ReclamationRecord[] = input.items.map((item) => ({
     id: newReclamationId(),
     date: input.date || todayLocalISO(),

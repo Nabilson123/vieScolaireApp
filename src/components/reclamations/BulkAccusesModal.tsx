@@ -88,7 +88,7 @@ export default function BulkAccusesModal({ keys, items, isEditable, onClose }: B
                     Envoyé
                   </label>
                 </div>
-                <p className="mt-2 line-clamp-2 whitespace-pre-line rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{message}</p>
+                <p className="mt-2 line-clamp-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" title={message}>{message.split('\n').filter((l) => l.trim()).slice(0, 3).join(' ')}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
