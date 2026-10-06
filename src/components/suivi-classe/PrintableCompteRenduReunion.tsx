@@ -80,8 +80,13 @@ function SectionTitle({ n, title, ar, suite }: { n: number; title: string; ar: s
         {title}
         {suite ? ' (suite)' : ''}
       </span>
-      <span dir="rtl" className="ml-auto text-[12px] font-extrabold leading-none" style={{ color: C.ink }}>
-        {suite ? `${ar} (تابع)` : ar}
+      <span dir="rtl" className="ml-auto flex items-center gap-2">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: C.accent }}>
+          {n}
+        </span>
+        <span className="text-[12px] font-extrabold leading-none" style={{ color: C.ink }}>
+          {suite ? `${ar} (تابع)` : ar}
+        </span>
       </span>
     </div>
   )
