@@ -57,15 +57,16 @@ function chunk<T>(list: T[], size: number): T[][] {
   return out
 }
 
-/** Traduction arabe à la suite du libellé français (« Libellé · عنوان ») : jamais en capitales ni espacée. */
-function Ar({ children, className = '' }: { children: string; className?: string }) {
+/** Libellé français à gauche, traduction arabe à l'extrémité droite de la zone : l'arabe se lit en partant de la droite.
+ * Jamais en capitales ni espacée côté arabe. */
+function Bi({ fr, ar, className = '' }: { fr: string; ar: string; className?: string }) {
   return (
-    <>
-      <span className="mx-1">·</span>
-      <span dir="rtl" className={`normal-case leading-none ${className}`}>
-        {children}
+    <div className={`flex items-baseline justify-between gap-2 ${className}`}>
+      <span>{fr}</span>
+      <span dir="rtl" className="normal-case leading-none">
+        {ar}
       </span>
-    </>
+    </div>
   )
 }
 
@@ -78,7 +79,9 @@ function SectionTitle({ n, title, ar, suite }: { n: number; title: string; ar: s
       <span className="text-[12px] font-extrabold" style={{ color: C.ink }}>
         {title}
         {suite ? ' (suite)' : ''}
-        <Ar>{suite ? `${ar} (تابع)` : ar}</Ar>
+      </span>
+      <span dir="rtl" className="ml-auto text-[12px] font-extrabold leading-none" style={{ color: C.ink }}>
+        {suite ? `${ar} (تابع)` : ar}
       </span>
     </div>
   )
@@ -399,7 +402,6 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
                 <div className="text-[15px] font-extrabold">Groupe Scolaire Mondrian</div>
                 <div className="text-[10px]" style={{ color: C.muted }}>
                   Direction de la Vie Scolaire
-                  <Ar>إدارة الحياة المدرسية</Ar>
                 </div>
               </div>
             </div>
@@ -421,33 +423,21 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
           {pageIndex === 0 && (
             <div className="grid grid-cols-[0.55fr_0.9fr_1.5fr_2.5fr] gap-2 rounded-md p-2" style={{ background: C.headBg }}>
               <div>
-                <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
-                  Niveau
-                  <Ar>المستوى</Ar>
-                </div>
+                <Bi fr="Niveau" ar="المستوى" className="text-[9px] font-bold uppercase" />
                 <div className="text-[12px] font-bold">{group.label}</div>
               </div>
               <div>
-                <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
-                  Classes
-                  <Ar>الأقسام</Ar>
-                </div>
+                <Bi fr="Classes" ar="الأقسام" className="text-[9px] font-bold uppercase" />
                 <div className="text-[12px] font-bold">{group.divisions.map((d) => d.classe.nom).join(', ')}</div>
               </div>
               <div>
-                <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
-                  Date
-                  <Ar>التاريخ</Ar>
-                </div>
+                <Bi fr="Date" ar="التاريخ" className="text-[9px] font-bold uppercase" />
                 <div className="text-[12px] font-bold">
                   {blank ? '____ / ____ / ______' : `${weekdayLabelFromDate(suivi.date)} ${formatDDMMYYYY(suivi.date)} · ${heure}–${minutesToTime(timeToMinutes(suivi.heure) + suivi.duree)}`}
                 </div>
               </div>
               <div>
-                <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
-                  Présents
-                  <Ar>الحاضرون</Ar>
-                </div>
+                <Bi fr="Présents" ar="الحاضرون" className="text-[9px] font-bold uppercase" />
                 <div className="text-[11px] font-semibold">
                   {participants
                     .map((p) => {
@@ -465,32 +455,23 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
         <div className="flex items-end justify-between border-t pt-2.5 text-[9px]" style={{ borderColor: C.rule, color: C.muted }}>
           {pageIndex === pageCount - 1 ? (
             <>
-              <div>
-                <div className="font-bold uppercase" style={{ color: C.ink }}>
-                  Prochaine réunion
-                  <Ar>الاجتماع المقبل</Ar>
-                </div>
+              <div className="w-[170px]">
+                <Bi fr="Prochaine réunion" ar="الاجتماع المقبل" className="font-bold uppercase" />
                 <div>____ / ____ / ______</div>
               </div>
-              <div className="text-center">
-                <div className="font-bold uppercase" style={{ color: C.ink }}>
-                  Visa Direction
-                  <Ar>تأشيرة الإدارة</Ar>
-                </div>
-                <div className="mt-4 w-[140px] border-t" style={{ borderColor: C.rule }} />
+              <div className="w-[150px]">
+                <Bi fr="Visa Direction" ar="تأشيرة الإدارة" className="font-bold uppercase" />
+                <div className="mt-4 border-t" style={{ borderColor: C.rule }} />
               </div>
             </>
           ) : (
-            <div>
-              Direction de la Vie Scolaire — Groupe Scolaire Mondrian
-              <Ar>إدارة الحياة المدرسية — مجموعة مدارس موندريان</Ar>
-            </div>
+            <>
+              <div>Direction de la Vie Scolaire — Groupe Scolaire Mondrian</div>
+              <div dir="rtl">إدارة الحياة المدرسية — مجموعة مدارس موندريان</div>
+            </>
           )}
           {pageCount > 1 && (
-            <div className="font-semibold">
-              Page {pageIndex + 1}/{pageCount}
-              <Ar>صفحة</Ar>
-            </div>
+            <Bi fr={`Page ${pageIndex + 1}/${pageCount}`} ar="صفحة" className="font-semibold" />
           )}
         </div>
       )}
