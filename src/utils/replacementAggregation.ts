@@ -7,6 +7,7 @@ import { NIVEAUX } from '../data/referentiel'
 import { getClassScheduleSnapshot, findSlotOwner } from '../services/classSchedulesService'
 import { computeTeacherSchedule } from './teacherAggregation'
 import { parseAnyDate } from './period'
+import { creneauDuRemplacement, type CreneauRemplacement, type SlotInfo } from './remplacementCreneau'
 
 const WEEKDAY_NAMES = ['DIMANCHE', 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI']
 
@@ -509,4 +510,15 @@ export function buildDayOccupancy(dateStr: string): DayOccupancy {
   })
 
   return { weekday, periods, rows }
+}
+
+/** Créneau exact d'un remplacement : celui enregistré avec lui, sinon retrouvé dans l'emploi du temps de la classe (voir
+ * `creneauDuRemplacement`). */
+export function getCreneauRemplacement(r: Pick<RemplacementRecord, 'date' | 'classe' | 'matiere' | 'profRemplace' | 'heures' | 'start' | 'end'>): CreneauRemplacement | null {
+  const jour = getWeekdayName(r.date)
+  const nomParId = new Map(getTeachersSnapshot().map((t) => [t.id, teacherName(t)]))
+  const slots: SlotInfo[] = jour
+    ? (getClassScheduleSnapshot(r.classe)[jour] ?? []).map((s) => ({ subject: s.subject, teacherName: nomParId.get(s.teacherId) ?? '', start: s.start, end: s.end, hours: s.hours }))
+    : []
+  return creneauDuRemplacement(r, slots)
 }

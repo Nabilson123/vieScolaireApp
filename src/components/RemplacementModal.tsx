@@ -9,6 +9,7 @@ import { getTeachersSnapshot } from '../services/teachersService'
 import { buildRemplacementMessage, buildWhatsAppLink } from '../utils/whatsapp'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 import TeacherSearchSelect from './TeacherSearchSelect'
+import { heuresEntre } from '../utils/remplacementCreneau'
 
 interface RemplacementModalProps {
   otherTeachers: Teacher[]
@@ -16,13 +17,15 @@ interface RemplacementModalProps {
   onClose: () => void
   onSubmit: (record: RemplacementRecord, remplacantId: string) => void
   initial?: RemplacementRecord
+  /** Créneau retrouvé dans l'emploi du temps pour un remplacement enregistré sans heure : proposé à l'enregistrement. */
+  suggestedCreneau?: { start: string; end: string }
 }
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
 }
 
-export default function RemplacementModal({ otherTeachers, initialRemplacantId, onClose, onSubmit, initial }: RemplacementModalProps) {
+export default function RemplacementModal({ otherTeachers, initialRemplacantId, onClose, onSubmit, initial, suggestedCreneau }: RemplacementModalProps) {
   const isEdit = !!initial
   const isEditable = useIsViewedYearEditable()
   const { data: matieresConfig = [] } = useMatieresConfig()
@@ -34,22 +37,31 @@ export default function RemplacementModal({ otherTeachers, initialRemplacantId, 
   const [remplacantId, setRemplacantId] = useState(initialRemplacantId)
   const [date, setDate] = useState(initial?.date ?? todayISO())
   const [heures, setHeures] = useState(initial?.heures ?? 2)
+  const [start, setStart] = useState(initial?.start ?? suggestedCreneau?.start ?? '')
+  const [end, setEnd] = useState(initial?.end ?? suggestedCreneau?.end ?? '')
+  // Avec une heure de début et de fin valides, la durée s'en déduit ; sinon elle se saisit à la main.
+  const creneauValide = !!start && !!end && end > start
+  const heuresEffectives = creneauValide ? heuresEntre(start, end) : heures
   const [consignes, setConsignes] = useState(initial?.consignes ?? '')
 
   const remplacants = getTeachersSnapshot().filter((t) => teacherName(t) !== profRemplace)
 
-  const canSubmit = isEditable && classe && matiere && profRemplace && remplacantId && date && heures > 0
+  const creneauIncomplet = (!!start || !!end) && !creneauValide
+  const canSubmit = isEditable && classe && matiere && profRemplace && remplacantId && date && heuresEffectives > 0 && !creneauIncomplet
 
   const handleSubmit = () => {
     if (!canSubmit) return
-    onSubmit({ date, classe, matiere, profRemplace, heures, consignes: consignes.trim() || undefined }, remplacantId)
+    onSubmit(
+      { date, classe, matiere, profRemplace, heures: heuresEffectives, start: creneauValide ? start : undefined, end: creneauValide ? end : undefined, consignes: consignes.trim() || undefined },
+      remplacantId,
+    )
 
     const remplacant = remplacants.find((t) => t.id === remplacantId)
     if (remplacant) {
       const message = buildRemplacementMessage({
         teacherName: teacherName(remplacant),
         date,
-        creneau: `${heures}h`,
+        creneau: creneauValide ? `${start} - ${end}` : `${heuresEffectives}h`,
         classe,
         matiere,
         consignes: consignes.trim() || undefined,
@@ -138,11 +150,38 @@ export default function RemplacementModal({ otherTeachers, initialRemplacantId, 
                 type="number"
                 min={0.5}
                 step={0.5}
-                value={heures}
+                value={heuresEffectives}
+                readOnly={creneauValide}
                 onChange={(e) => setHeures(Number(e.target.value))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none read-only:bg-slate-50 read-only:text-slate-500"
+              />
+              {creneauValide && <p className="mt-1 text-[11px] text-slate-400">Calculées d'après le créneau.</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Créneau exact dans l'emploi du temps</label>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                aria-label="Heure de début"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+              />
+              <input
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                aria-label="Heure de fin"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
               />
             </div>
+            {creneauIncomplet ? (
+              <p className="mt-1 text-[11px] text-amber-600">Renseignez un début et une fin (la fin après le début), ou videz les deux champs.</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-400">Début et fin du remplacement, pour que la personne suivante sache quel créneau est couvert.</p>
+            )}
           </div>
 
           <div>

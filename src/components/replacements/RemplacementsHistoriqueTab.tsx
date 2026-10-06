@@ -6,9 +6,11 @@ import {
   computeMatiereBreakdown,
   computeClasseBreakdown,
   computeEquiteStats,
+  getCreneauRemplacement,
   type FlatRemplacement,
   type PendingReplacement,
 } from '../../utils/replacementAggregation'
+import { useClassSchedules } from '../../services/classSchedulesService'
 import { formatHeures } from '../../utils/teacherAggregation'
 import { isWithinPeriod, formatPeriodLabel } from '../../utils/period'
 import ClasseImpactChart from './ClasseImpactChart'
@@ -45,10 +47,21 @@ export default function RemplacementsHistoriqueTab({ historique, ignoredList, on
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
   const [showPrint, setShowPrint] = useState(false)
+  // Les emplois du temps servent à retrouver l'heure des remplacements enregistrés sans elle : on attend qu'ils soient chargés.
+  const { data: schedules } = useClassSchedules()
 
   const filtered = useMemo(
     () => historique.filter((r) => isWithinPeriod(r.date, periodStart, periodEnd)),
     [historique, periodStart, periodEnd]
+  )
+  // Du plus récent au plus ancien ; au sein d'une même journée, par heure de début (ceux dont l'heure est inconnue en dernier).
+  const lignes = useMemo(
+    () =>
+      filtered
+        .map((r) => ({ r, creneau: getCreneauRemplacement(r) }))
+        .sort((a, b) => (a.r.date === b.r.date ? (a.creneau?.start ?? '99:99').localeCompare(b.creneau?.start ?? '99:99') : a.r.date < b.r.date ? 1 : -1)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, schedules]
   )
 
   const stats = computeRemplacementGlobalStats(filtered)
@@ -185,6 +198,7 @@ export default function RemplacementsHistoriqueTab({ historique, ignoredList, on
                 <tr className="border-b border-slate-200 text-left text-slate-500">
                   <th className="py-1.5 pr-3 font-semibold">Date</th>
                   <th className="py-1.5 pr-3 font-semibold">Classe & Cours</th>
+                  <th className="py-1.5 pr-3 font-semibold">Créneau</th>
                   <th className="py-1.5 pr-3 font-semibold">Matière</th>
                   <th className="py-1.5 pr-3 font-semibold">Professeur Absent</th>
                   <th className="py-1.5 pr-3 font-semibold">Professeur Remplaçant</th>
@@ -193,10 +207,25 @@ export default function RemplacementsHistoriqueTab({ historique, ignoredList, on
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r, idx) => (
+                {lignes.map(({ r, creneau }, idx) => (
                   <tr key={idx} className="border-b border-slate-50">
                     <td className="py-2 pr-3 whitespace-nowrap">{r.date}</td>
                     <td className="py-2 pr-3 font-semibold text-slate-700">{r.classe}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {creneau ? (
+                        <span
+                          className="font-semibold tabular-nums text-slate-700"
+                          title={creneau.derived ? "Heure retrouvée dans l'emploi du temps de la classe (elle n'avait pas été enregistrée avec le remplacement)" : undefined}
+                        >
+                          {creneau.start} – {creneau.end}
+                          {creneau.derived && <span className="ml-1 text-[10px] font-normal text-slate-400">d'après l'EDT</span>}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300" title="Heure non enregistrée : modifiez le remplacement pour la renseigner">
+                          —
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3">
                       <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-600">{r.matiere}</span>
                     </td>

@@ -4,7 +4,7 @@ import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import type { RemplacementRecord } from '../data/teacherExtras'
 import { useTeacherExtras, useUpdateTeacherRemplacements, useUpdateTeacherAbsences } from '../services/teacherExtrasService'
-import { getPendingReplacements, getIgnoredGaps, getAllRemplacementsFlat, type PendingReplacement } from '../utils/replacementAggregation'
+import { getPendingReplacements, getIgnoredGaps, getAllRemplacementsFlat, getCreneauRemplacement, type PendingReplacement } from '../utils/replacementAggregation'
 import ReplacementScheduleTab from '../components/replacements/ReplacementScheduleTab'
 import OccupancyGridTab from '../components/replacements/OccupancyGridTab'
 import ReplacementAssistantTab from '../components/replacements/ReplacementAssistantTab'
@@ -158,6 +158,10 @@ export default function RemplacementsGlobal() {
         <RemplacementModal
           otherTeachers={getTeachersSnapshot().filter((t) => t.id !== editingTeacher.id)}
           initial={editingRecord}
+          suggestedCreneau={(() => {
+            const c = getCreneauRemplacement(editingRecord)
+            return c ? { start: c.start, end: c.end } : undefined
+          })()}
           initialRemplacantId={editingTeacher.id}
           onClose={() => setEditingRow(null)}
           onSubmit={async (updated, remplacantId) => {
