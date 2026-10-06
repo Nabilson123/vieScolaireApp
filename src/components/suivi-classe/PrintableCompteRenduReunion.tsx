@@ -38,6 +38,12 @@ function formatDDMMYYYY(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
+/** Texte saisi dans le formulaire : les retours à la ligne sont conservés (un paragraphe par ligne), sans les lignes vides
+ * entre paragraphes qui feraient déborder la page. */
+function tidy(text?: string): string {
+  return (text ?? '').trim().replace(/\n\s*\n+/g, '\n')
+}
+
 function chunk<T>(list: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
@@ -60,8 +66,8 @@ function SectionTitle({ n, title, suite }: { n: number; title: string; suite?: b
 
 function TextBlock({ text, guide, blank }: { text?: string; guide: string; blank?: boolean }) {
   return (
-    <p className="rounded-md px-2.5 py-1 text-[10.5px] leading-[1.4]" style={{ border: `1px solid ${C.rule}`, color: blank || !text ? C.muted : C.ink, fontStyle: blank || !text ? 'italic' : 'normal' }}>
-      {blank ? guide : text || '—'}
+    <p className="whitespace-pre-line rounded-md px-2.5 py-1 text-[10.5px] leading-[1.4]" style={{ border: `1px solid ${C.rule}`, color: blank || !text ? C.muted : C.ink, fontStyle: blank || !text ? 'italic' : 'normal' }}>
+      {blank ? guide : tidy(text) || '—'}
     </p>
   )
 }
@@ -74,7 +80,7 @@ function Th({ children, width }: { children: string; width?: number }) {
   )
 }
 
-const cell = 'border px-1.5 py-[3px]'
+const cell = 'border px-1.5 py-[3px] whitespace-pre-line'
 
 export default function PrintableCompteRenduReunion({ group, suivi, compteRendu: cr, riskStudents, reclamations, actions = [], blank = false }: PrintableCompteRenduReunionProps) {
   const participants = [...group.teachers.map(teacherName), 'Direction de la vie scolaire']
@@ -128,9 +134,9 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr style={{ background: C.headBg }}>
-                  <Th>Élève</Th>
+                  <Th width={185}>Élève</Th>
                   <Th>Constat</Th>
-                  <Th>Mesure décidée</Th>
+                  <Th width={190}>Mesure décidée</Th>
                 </tr>
               </thead>
               <tbody>
@@ -140,10 +146,10 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
                       {r.name} <span style={{ color: C.muted }}>({r.classe})</span>
                     </td>
                     <td className={cell} style={{ borderColor: C.rule }}>
-                      {cr.point3?.[r.id]?.constat || r.reasons.join(' · ')}
+                      {tidy(cr.point3?.[r.id]?.constat) || r.reasons.join(' · ')}
                     </td>
                     <td className={cell} style={{ borderColor: C.rule }}>
-                      {cr.point3?.[r.id]?.mesure || '—'}
+                      {tidy(cr.point3?.[r.id]?.mesure) || '—'}
                     </td>
                   </tr>
                 ))}
@@ -212,10 +218,10 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
                         {r.type} — {r.objet}
                       </td>
                       <td className={cell} style={{ borderColor: C.rule }}>
-                        {note?.faits || '—'}
+                        {tidy(note?.faits) || '—'}
                       </td>
                       <td className={cell} style={{ borderColor: C.rule }}>
-                        {note?.reponse || '—'}
+                        {tidy(note?.reponse) || '—'}
                       </td>
                       <td className={`${cell} font-bold`} style={{ borderColor: C.rule, color: traitee ? '#15803d' : '#b45309' }}>
                         {traitee ? 'Traitée' : 'Ouverte'}
@@ -270,7 +276,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
             {openActions.map((a) => (
               <tr key={a.id}>
                 <td className={cell} style={{ borderColor: C.rule }}>
-                  {a.texte}
+                  {tidy(a.texte)}
                 </td>
                 <td className={cell} style={{ borderColor: C.rule }}>
                   {a.ownerName || '—'}
@@ -329,7 +335,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
           </div>
 
           {pageIndex === 0 && (
-            <div className="grid grid-cols-4 gap-2 rounded-md p-2" style={{ background: C.headBg }}>
+            <div className="grid grid-cols-[0.55fr_0.9fr_1.5fr_2.5fr] gap-2 rounded-md p-2" style={{ background: C.headBg }}>
               <div>
                 <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
                   Niveau
