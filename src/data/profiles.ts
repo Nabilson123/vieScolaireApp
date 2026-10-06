@@ -1,9 +1,15 @@
-export type ProfileRole = 'CPE' | 'Surveillant' | 'Direction' | 'AED' | 'Secrétariat' | 'Autre'
+/** Les six types de profil d'origine : leur clé reste la valeur stockée dans `profiles.role`, et les droits des
+ * notes de service (data/notesService.ts) s'appuient dessus. */
+export type BuiltInRole = 'CPE' | 'Surveillant' | 'Direction' | 'AED' | 'Secrétariat' | 'Autre'
 
-// Libellé affiché pour chaque rôle — distinct de la valeur stockée (`ProfileRole`), qui reste
-// inchangée partout où elle sert à de la logique (canDraftType/canValidateType, filtres,
-// comparaisons) pour ne pas toucher aux données déjà en base ni casser ces comparaisons.
-export const ROLE_LABELS: Record<ProfileRole, string> = {
+export const BUILT_IN_ROLES: BuiltInRole[] = ['CPE', 'Surveillant', 'Direction', 'AED', 'Secrétariat', 'Autre']
+
+/** Un type d'origine, ou un type ajouté dans Référentiel (clé `type-xxxxxxxx`, sans droit particulier). */
+export type ProfileRole = BuiltInRole | (string & {})
+
+// Libellés d'origine : repli quand le Référentiel n'est pas encore chargé. Le libellé affiché vient de la table
+// `profile_types` (voir `roleLabel` dans services/profileTypesService.ts), distinct de la valeur stockée.
+export const DEFAULT_ROLE_LABELS: Record<BuiltInRole, string> = {
   CPE: 'CPE',
   Surveillant: 'Surveillant',
   Direction: 'Direction de la vie scolaire',

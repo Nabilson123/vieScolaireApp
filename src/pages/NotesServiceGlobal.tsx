@@ -16,7 +16,7 @@ import {
   type NoteStatut,
   type CouponType,
 } from '../data/notesService'
-import { ROLE_LABELS } from '../data/profiles'
+import { roleLabel } from '../services/profileTypesService'
 import {
   useNotesService,
   useAddNoteService,
@@ -585,7 +585,7 @@ function NoteEditor({
               <option value="">Sélectionner...</option>
               {signataires.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.nomComplet} — {ROLE_LABELS[s.role]}
+                  {s.nomComplet} — {roleLabel(s.role)}
                 </option>
               ))}
             </select>

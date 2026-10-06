@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { X, UserCog, AlertCircle, MailWarning } from 'lucide-react'
 import { useUpdateProfile, useUpdateUserEmail } from '../services/profilesService'
-import { ROLE_LABELS, type Profile, type ProfileRole } from '../data/profiles'
+import type { Profile, ProfileRole } from '../data/profiles'
+import ProfileTypeOptions from './ProfileTypeOptions'
 import { useReclamationServices } from '../services/reclamationServicesService'
 import ServicesPicker from './ServicesPicker'
 
@@ -9,10 +10,6 @@ interface EditUserModalProps {
   profile: Profile
   onClose: () => void
 }
-
-// Même référentiel que AddUserModal.tsx/EditOwnProfileModal.tsx, non mutualisé — convention déjà
-// établie de petites constantes dupliquées par fichier plutôt qu'un import cross-composant.
-const ROLES: ProfileRole[] = ['CPE', 'Surveillant', 'Direction', 'AED', 'Secrétariat', 'Autre']
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -93,11 +90,7 @@ export default function EditUserModal({ profile, onClose }: EditUserModalProps) 
               onChange={(e) => setRole(e.target.value as ProfileRole)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
+              <ProfileTypeOptions current={role} />
             </select>
           </div>
           <div>

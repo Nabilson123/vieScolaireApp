@@ -2,7 +2,7 @@ import SchoolLogo from '../print/SchoolLogo'
 import type { Incident } from '../../data/helpdesk'
 import { PANNE_CATEGORIES, computeBCTotals } from '../../data/helpdesk'
 import { computeBilanParCategorie, computeBilanParPrestataire } from '../../utils/helpdeskAggregation'
-import { ROLE_LABELS } from '../../data/profiles'
+import { roleLabel } from '../../services/profileTypesService'
 import { useCurrentProfile } from '../../services/permissions'
 import { useSchoolIdentity } from '../../services/schoolIdentityService'
 
@@ -306,7 +306,7 @@ export default function PrintableHelpdeskBilan({ start, end, incidents }: Printa
         <div className="flex flex-col gap-1 rounded-[10px] border bg-white px-3.5 pb-2.5 pt-2" style={{ width: 250, flexShrink: 0, borderColor: 'oklch(0.91 0.005 90)' }}>
           <div className="text-[10.5px] font-bold">Visa de la direction</div>
           <div className="text-[9px]" style={{ color: 'oklch(0.6 0.01 260)' }}>
-            {profile?.signatureImage ? `${profile.nomComplet} — ${ROLE_LABELS[profile.role]}` : 'Direction de la Vie Scolaire'}
+            {profile?.signatureImage ? `${profile.nomComplet} — ${roleLabel(profile.role)}` : 'Direction de la Vie Scolaire'}
           </div>
           <div
             className="flex items-center justify-center gap-2"

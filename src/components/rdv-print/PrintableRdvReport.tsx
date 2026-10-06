@@ -1,7 +1,7 @@
 import SchoolLogo from '../print/SchoolLogo'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import type { RendezVousRecord } from '../../data/studentDetails'
-import { ROLE_LABELS } from '../../data/profiles'
+import { roleLabel } from '../../services/profileTypesService'
 import { useCurrentProfile } from '../../services/permissions'
 import { useSchoolIdentity } from '../../services/schoolIdentityService'
 
@@ -405,7 +405,7 @@ export default function PrintableRdvReport({ records }: PrintableRdvReportProps)
                     <img src={profile.signatureImage} alt="Signature" style={{ maxHeight: 48, maxWidth: 100, objectFit: 'contain' }} />
                   </div>
                   <p className="text-[8px]" style={{ color: 'oklch(0.55 0.01 260)' }}>
-                    {profile.nomComplet} — {ROLE_LABELS[profile.role]}
+                    {profile.nomComplet} — {roleLabel(profile.role)}
                   </p>
                 </>
               ) : (

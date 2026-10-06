@@ -63,6 +63,7 @@ import { useInspections } from './services/inspectionsService'
 import { useExamSessions } from './services/examPlannerService'
 import { useExamPeriods } from './services/examPeriodService'
 import { useProfiles } from './services/profilesService'
+import { useProfileTypes } from './services/profileTypesService'
 import { setCurrentUserId } from './services/currentUser'
 import { useServicesCapacite } from './services/servicesCapaciteService'
 import { useTransportLignes } from './services/transportLignesService'
@@ -116,6 +117,7 @@ function App() {
   useExamSessions(isStaff)
   useExamPeriods(isStaff)
   useProfiles(isStaff)
+  useProfileTypes(isStaff)
   useServicesCapacite(isStaff)
   useTransportLignes(isStaff)
   useChauffeurs(isStaff)

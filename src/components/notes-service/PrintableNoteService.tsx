@@ -3,7 +3,8 @@ import SchoolLogo from '../print/SchoolLogo'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import { useSchoolIdentity } from '../../services/schoolIdentityService'
 import { NOTE_TYPE_CONFIG, type NoteService } from '../../data/notesService'
-import { ROLE_LABELS, type ProfileRole } from '../../data/profiles'
+import type { ProfileRole } from '../../data/profiles'
+import { roleLabel } from '../../services/profileTypesService'
 import { sanitizeNoteHtml } from '../../utils/noteServiceHtml'
 
 const ARCHIVO = "'Archivo', sans-serif"
@@ -196,7 +197,7 @@ export default function PrintableNoteService({ note, signataire }: PrintableNote
         {signataire && (
           <div style={{ marginBottom: 4 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>{signataire.nomComplet}</div>
-            <div style={{ fontSize: 13.5, color: C.textSecondary }}>{ROLE_LABELS[signataire.role]}</div>
+            <div style={{ fontSize: 13.5, color: C.textSecondary }}>{roleLabel(signataire.role)}</div>
           </div>
         )}
         <div style={{ height: 84, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>

@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { X, UserCog, PenTool } from 'lucide-react'
 import { useUpdateProfile } from '../services/profilesService'
 import { useUploadSignature, useRemoveSignature, readImageAsDataUrl } from '../services/signatureService'
-import { ROLE_LABELS, type Profile, type ProfileRole } from '../data/profiles'
+import type { Profile, ProfileRole } from '../data/profiles'
+import ProfileTypeOptions from './ProfileTypeOptions'
 import { useReclamationServices } from '../services/reclamationServicesService'
 import ServicesPicker from './ServicesPicker'
 
@@ -10,11 +11,6 @@ interface EditOwnProfileModalProps {
   profile: Profile
   onClose: () => void
 }
-
-// Même référentiel que AddUserModal.tsx (seul autre endroit où ces 4 profils sont listés), non
-// mutualisé — 4 littéraux, cohérent avec la convention de petites constantes dupliquées par fichier
-// déjà en place ailleurs dans ce codebase.
-const ROLES: ProfileRole[] = ['CPE', 'Surveillant', 'Direction', 'AED', 'Secrétariat', 'Autre']
 
 /**
  * Modale volontairement minimale : le nom affiché, le profil (étiquette CPE/Surveillant/Direction/
@@ -83,11 +79,7 @@ export default function EditOwnProfileModal({ profile, onClose }: EditOwnProfile
               onChange={(e) => setRole(e.target.value as ProfileRole)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
+              <ProfileTypeOptions current={role} />
             </select>
           </div>
           <div>

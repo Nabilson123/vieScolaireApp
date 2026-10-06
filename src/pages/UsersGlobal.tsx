@@ -3,7 +3,8 @@ import { Users, Search, Plus, MoreVertical, UserX, UserCheck2, Trash2, ShieldChe
 import { useProfiles, useSetUserActive, useDeleteUser } from '../services/profilesService'
 import { useReclamationServices } from '../services/reclamationServicesService'
 import { useCurrentUserId } from '../services/currentUser'
-import { initials, ROLE_LABELS, type ProfileRole } from '../data/profiles'
+import { initials } from '../data/profiles'
+import { roleLabel, useProfileTypes } from '../services/profileTypesService'
 import { avatarGradient } from '../utils/avatarColor'
 import AddUserModal from '../components/AddUserModal'
 import EditPermissionsModal from '../components/EditPermissionsModal'
@@ -24,6 +25,8 @@ export default function UsersGlobal() {
   const [roleFilter, setRoleFilter] = useState('Tous les profils')
   const [serviceFilter, setServiceFilter] = useState('')
   const { data: services = [] } = useReclamationServices()
+  // S'abonne aux types de profil : les libellés affichés se mettent à jour dès leur chargement.
+  useProfileTypes()
   const [showAddModal, setShowAddModal] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -90,7 +93,7 @@ export default function UsersGlobal() {
           >
             {availableRoles.map((r) => (
               <option key={r} value={r}>
-                {r === 'Tous les profils' ? r : ROLE_LABELS[r as ProfileRole]}
+                {r === 'Tous les profils' ? r : roleLabel(r)}
               </option>
             ))}
           </select>
@@ -236,7 +239,7 @@ export default function UsersGlobal() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-900">{p.nomComplet || p.email}</p>
-                <p className="text-xs text-slate-500">{ROLE_LABELS[p.role]}</p>
+                <p className="text-xs text-slate-500">{roleLabel(p.role)}</p>
                 {(() => {
                   const mine = services.filter((s) => p.serviceIds.includes(s.id))
                   if (mine.length === 0) return null

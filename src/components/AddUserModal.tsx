@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { X, UserPlus, AlertCircle } from 'lucide-react'
 import { useInviteUser } from '../services/profilesService'
-import { ROLE_LABELS, type ProfileRole } from '../data/profiles'
-
-const ROLES: ProfileRole[] = ['CPE', 'Surveillant', 'Direction', 'AED', 'Secrétariat', 'Autre']
+import type { ProfileRole } from '../data/profiles'
+import ProfileTypeOptions from './ProfileTypeOptions'
 
 interface AddUserModalProps {
   onClose: () => void
@@ -69,11 +68,7 @@ export default function AddUserModal({ onClose }: AddUserModalProps) {
               onChange={(e) => setRole(e.target.value as ProfileRole)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
+              <ProfileTypeOptions current={role} />
             </select>
           </div>
 

@@ -12,7 +12,8 @@ import { useStudents } from '../services/studentsService'
 import { useAnneesScolaires, getActiveYearIdSnapshot, getAnneesScolairesSnapshot } from '../services/anneesScolairesService'
 import { useViewedYearId, setViewedYearId } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
-import { initials, ROLE_LABELS } from '../data/profiles'
+import { initials } from '../data/profiles'
+import { roleLabel } from '../services/profileTypesService'
 import { avatarGradient } from '../utils/avatarColor'
 import GlobalSearchModal from './GlobalSearchModal'
 
@@ -173,7 +174,7 @@ export default function Sidebar({
             {currentProfile?.nomComplet || currentProfile?.email || 'Chargement...'}
           </p>
           <span className="inline-block rounded-full bg-indigo-500/20 px-2 py-[1px] text-[10px] font-semibold tracking-wide text-indigo-300">
-            {ROLE_LABELS[currentProfile?.role ?? 'Autre'].toUpperCase()}
+            {roleLabel(currentProfile?.role).toUpperCase()}
           </span>
         </div>
       </div>

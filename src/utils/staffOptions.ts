@@ -1,5 +1,6 @@
 import { getProfilesSnapshot } from '../services/profilesService'
-import { ROLE_LABELS, type Profile } from '../data/profiles'
+import type { Profile } from '../data/profiles'
+import { roleLabel } from '../services/profileTypesService'
 import type { ReclamationService } from '../data/reclamationServices'
 import { membersOf } from './reclamationsServices'
 
@@ -22,7 +23,7 @@ export function staffOptionsFrom(profiles: Profile[], current?: string, service?
     .filter((p) => p.actif)
     .map((p) => {
       const nom = p.nomComplet || p.email
-      return { value: nom, label: `${nom} — ${ROLE_LABELS[p.role] ?? p.role}`, member: memberIds.has(p.id) }
+      return { value: nom, label: `${nom} — ${roleLabel(p.role)}`, member: memberIds.has(p.id) }
     })
     .sort((a, b) => (a.member === b.member ? a.label.localeCompare(b.label) : a.member ? -1 : 1))
   const result: StaffOption[] = options.map((o) => ({
