@@ -24,6 +24,7 @@ import { weekdayLabelFromDate } from './SuiviClasseTab'
 import { minutesToTime, timeToMinutes } from '../../data/classSchedules'
 import SuiviReunionPrintPreviewModal from './SuiviReunionPrintPreviewModal'
 import PrintableCompteRenduReunion from './PrintableCompteRenduReunion'
+import AutoGrowTextarea from '../AutoGrowTextarea'
 
 interface SuiviReunionTabProps {
   initialNiveau?: string
@@ -325,11 +326,11 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
             <div className="mb-3">
               <ActionsList actions={niveauActions} isEditable={isEditable} onSetStatut={(id, statut) => setStatutMutation.mutate({ id, statut })} />
             </div>
-            <textarea
+            <AutoGrowTextarea
               value={cr.point1Commentaire ?? ''}
               onChange={(e) => patch({ point1Commentaire: e.target.value })}
               disabled={!isEditable}
-              rows={3}
+              minRows={3}
               placeholder="Commentaires sur le suivi des actions…"
               className={textareaClass}
             />
@@ -343,7 +344,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                 <p className="mb-1 text-xs font-semibold text-slate-500">
                   {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
                 </p>
-                <textarea value={cr.point2?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point2', d.classe.nom, e.target.value)} disabled={!isEditable} rows={3} className={textareaClass} />
+                <AutoGrowTextarea value={cr.point2?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point2', d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
               </div>
             ))}
           </div>
@@ -364,15 +365,13 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                     </div>
                     <p className="mb-1.5 pl-3.5 text-xs text-slate-500">{r.reasons.join(' · ')}</p>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      <input
-                        value={cr.point3?.[r.id]?.constat ?? ''}
+                      <AutoGrowTextarea minRows={2} value={cr.point3?.[r.id]?.constat ?? ''}
                         onChange={(e) => patchRisk(r.id, { constat: e.target.value })}
                         disabled={!isEditable}
                         placeholder="Constat"
                         className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
                       />
-                      <input
-                        value={cr.point3?.[r.id]?.mesure ?? ''}
+                      <AutoGrowTextarea minRows={2} value={cr.point3?.[r.id]?.mesure ?? ''}
                         onChange={(e) => patchRisk(r.id, { mesure: e.target.value })}
                         disabled={!isEditable}
                         placeholder="Mesure décidée"
@@ -383,11 +382,11 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                 ))}
               </div>
             )}
-            <textarea
+            <AutoGrowTextarea
               value={cr.point3Extra ?? ''}
               onChange={(e) => patch({ point3Extra: e.target.value })}
               disabled={!isEditable}
-              rows={2}
+              minRows={2}
               placeholder="Autres élèves / élèves en progrès…"
               className={textareaClass}
             />
@@ -401,7 +400,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                 <p className="mb-1 text-xs font-semibold text-slate-500">
                   {d.classe.nom} {d.pp ? `· ${teacherName(d.pp)}` : ''}
                 </p>
-                <textarea value={cr.point4?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point4', d.classe.nom, e.target.value)} disabled={!isEditable} rows={3} className={textareaClass} />
+                <AutoGrowTextarea value={cr.point4?.[d.classe.nom] ?? ''} onChange={(e) => patchRecord('point4', d.classe.nom, e.target.value)} disabled={!isEditable} minRows={3} className={textareaClass} />
               </div>
             ))}
           </div>
@@ -429,15 +428,13 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                     {traitee && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Traitée</span>}
                   </div>
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                    <input
-                      value={note?.faits ?? ''}
+                    <AutoGrowTextarea minRows={2} value={note?.faits ?? ''}
                       onChange={(e) => patchReclamation(r, { faits: e.target.value })}
                       disabled={!isEditable}
                       placeholder="Faits vérifiés"
                       className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
                     />
-                    <input
-                      value={reponse}
+                    <AutoGrowTextarea minRows={2} value={reponse}
                       onChange={(e) => patchReclamation(r, { reponse: e.target.value })}
                       disabled={!isEditable}
                       placeholder="Réponse / suite"
@@ -460,9 +457,9 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </div>
         )
       case 6:
-        return <textarea value={cr.point6 ?? ''} onChange={(e) => patch({ point6: e.target.value })} disabled={!isEditable} rows={6} className={textareaClass} />
+        return <AutoGrowTextarea value={cr.point6 ?? ''} onChange={(e) => patch({ point6: e.target.value })} disabled={!isEditable} minRows={6} className={textareaClass} />
       case 7:
-        return <textarea value={cr.point7 ?? ''} onChange={(e) => patch({ point7: e.target.value })} disabled={!isEditable} rows={6} className={textareaClass} />
+        return <AutoGrowTextarea value={cr.point7 ?? ''} onChange={(e) => patch({ point7: e.target.value })} disabled={!isEditable} minRows={6} className={textareaClass} />
       case 8:
         return (
           <>
@@ -555,7 +552,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_260px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[210px_1fr] 2xl:grid-cols-[220px_1fr_260px]">
           <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm lg:sticky lg:top-4 lg:h-fit">
             <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Feuille de route</p>
             <div className="flex flex-col gap-1">
@@ -655,7 +652,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 lg:sticky lg:top-4 lg:h-fit">
+          <div className="grid grid-cols-1 gap-4 lg:col-span-2 lg:grid-cols-2 2xl:col-span-1 2xl:grid-cols-1 2xl:sticky 2xl:top-4 2xl:h-fit">
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Présence</p>
               <div className="flex flex-col gap-1">
