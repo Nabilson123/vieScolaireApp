@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, HeartPulse } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
+import StudentSearchSelect from './StudentSearchSelect'
 
 interface NewInfirmerieVisitModalProps {
   onClose: () => void
@@ -54,7 +55,6 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
   const [date, setDate] = useState(initial.date)
   const [heure, setHeure] = useState(initial.heure)
 
-  const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)
   const isMotifAutre = motif === 'Autre motif'
   const isActionAutre = action === 'Autre action'
 
@@ -110,18 +110,17 @@ export default function NewInfirmerieVisitModal({ onClose, onSubmit }: NewInfirm
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné</label>
-              <select
+              <StudentSearchSelect
+                students={getStudentsSnapshot()}
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                <option value="">Sélectionner...</option>
-                {elevesDeLaClasse.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                classe={classe}
+                placeholder="Rechercher un élève..."
+                onChange={(id) => {
+                  setStudentId(id)
+                  const st = getStudentsSnapshot().find((s) => s.id === id)
+                  if (st && realClasses.includes(st.classe)) setClasse(st.classe)
+                }}
+              />
             </div>
           </div>
 

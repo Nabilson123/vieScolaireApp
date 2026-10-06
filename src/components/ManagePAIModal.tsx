@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, ShieldAlert } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
+import StudentSearchSelect from './StudentSearchSelect'
 import type { PAIInfo } from '../data/studentDetails'
 
 interface ManagePAIModalProps {
@@ -21,7 +22,6 @@ export default function ManagePAIModal({ onClose, onSubmit, onRemove, initial }:
   const [niveau, setNiveau] = useState<'CRITIQUE' | 'MODÉRÉ'>(initial?.pai.niveau ?? 'MODÉRÉ')
   const [protocole, setProtocole] = useState(initial?.pai.protocole ?? '')
 
-  const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)
 
   const handleSubmit = () => {
     if (!studentId || !condition.trim() || !protocole.trim()) return
@@ -67,19 +67,18 @@ export default function ManagePAIModal({ onClose, onSubmit, onRemove, initial }:
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné</label>
-              <select
+              <StudentSearchSelect
+                students={getStudentsSnapshot()}
                 value={studentId}
+                classe={classe}
                 disabled={!!initial}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                <option value="">Sélectionner...</option>
-                {elevesDeLaClasse.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Rechercher un élève..."
+                onChange={(id) => {
+                  setStudentId(id)
+                  const st = getStudentsSnapshot().find((s) => s.id === id)
+                  if (st && realClasses.includes(st.classe)) setClasse(st.classe)
+                }}
+              />
             </div>
           </div>
 

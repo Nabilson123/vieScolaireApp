@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { X, Users2, Plus, Trash2 } from 'lucide-react'
 import type { Parent, ParentStudentLink } from '../data/parents'
 import { useStudents } from '../services/studentsService'
+import StudentSearchSelect from './StudentSearchSelect'
 import { useLinkParentToStudent, useUnlinkParentFromStudent } from '../services/parentsService'
 
 interface ManageParentChildrenModalProps {
@@ -77,18 +78,7 @@ export default function ManageParentChildrenModal({ parent, links, onClose }: Ma
           <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
             <p className="mb-2 text-xs font-semibold text-slate-600">Lier un enfant</p>
             <div className="grid grid-cols-[1fr_auto] gap-2">
-              <select
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
-              >
-                <option value="">Sélectionner un élève...</option>
-                {availableStudents.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} — {s.classe}
-                  </option>
-                ))}
-              </select>
+              <StudentSearchSelect students={availableStudents} value={studentId} onChange={setStudentId} size="sm" placeholder="Rechercher un élève..." />
               <select
                 value={relation}
                 onChange={(e) => setRelation(e.target.value)}

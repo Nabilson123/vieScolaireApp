@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import { getClassOptions, type Student } from '../data/students'
+import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { teacherName, type Teacher } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
@@ -17,6 +17,7 @@ import {
   type CalendarTarget,
   type CalendarEvent,
 } from '../utils/calendarAggregation'
+import StudentSearchSelect from '../components/StudentSearchSelect'
 import MonthGrid from '../components/calendar/MonthGrid'
 import CalendarLegend from '../components/calendar/CalendarLegend'
 import DayDetailModal from '../components/calendar/DayDetailModal'
@@ -92,16 +93,23 @@ export default function CalendrierMensuel({ onNavigateToStudent, onNavigateToTea
     setPersonId('')
   }
 
-  const handlePersonChange = (id: string) => {
+  const handlePersonChange = (id: string, classeOverride?: string) => {
     setPersonId(id)
     if (id) {
-      const personEvents = computeCalendarEvents(target, { classe: target === 'eleves' ? classe : undefined, personId: id })
+      const personEvents = computeCalendarEvents(target, { classe: target === 'eleves' ? (classeOverride ?? classe) : undefined, personId: id })
       const nearest = findNearestMonthWithEvent(personEvents, viewYear, viewMonth)
       if (nearest) {
         setViewYear(nearest.year)
         setViewMonth(nearest.month)
       }
     }
+  }
+
+  // L'élève trouvé par la recherche peut venir d'une autre classe : le filtre de classe le suit, sinon il serait écarté.
+  const handleStudentSearchChange = (id: string) => {
+    const st = getStudentsSnapshot().find((s) => s.id === id)
+    if (st && st.classe !== classe) setClasse(st.classe)
+    handlePersonChange(id, st?.classe)
   }
 
   const handleToday = () => {
@@ -154,24 +162,30 @@ export default function CalendrierMensuel({ onNavigateToStudent, onNavigateToTea
               ))}
             </select>
           )}
-          <select
-            value={personId}
-            onChange={(e) => handlePersonChange(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none"
-          >
-            <option value="">{target === 'eleves' ? 'Tous les élèves' : 'Tous les enseignants'}</option>
-            {target === 'eleves'
-              ? (personOptions as Student[]).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))
-              : (personOptions as Teacher[]).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {teacherName(t)}
-                  </option>
-                ))}
-          </select>
+          {target === 'eleves' ? (
+            <div className="w-56">
+              <StudentSearchSelect
+                students={getStudentsSnapshot()}
+                value={personId}
+                classe={classe === 'Toutes les classes' ? undefined : classe}
+                onChange={handleStudentSearchChange}
+                placeholder="Tous les élèves"
+              />
+            </div>
+          ) : (
+            <select
+              value={personId}
+              onChange={(e) => handlePersonChange(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none"
+            >
+              <option value="">Tous les enseignants</option>
+              {(personOptions as Teacher[]).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {teacherName(t)}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             onClick={() => setShowPrintPreview(true)}

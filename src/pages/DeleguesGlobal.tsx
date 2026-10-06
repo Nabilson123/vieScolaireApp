@@ -5,6 +5,7 @@ import { useStudents } from '../services/studentsService'
 import type { Student } from '../data/students'
 import type { SchoolClass } from '../data/schoolStructure'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
+import StudentSearchSelect from '../components/StudentSearchSelect'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
@@ -90,38 +91,30 @@ export default function DeleguesGlobal() {
                 <tr key={c.id} className="border-b border-slate-50 last:border-0">
                   <td className="px-4 py-2.5 font-semibold text-slate-800">{c.nom}</td>
                   <td className="px-4 py-2.5">
-                    <select
-                      value={c.delegueTitulaireId ?? ''}
-                      onChange={(e) => updateField(c, 'delegueTitulaireId', e.target.value)}
-                      disabled={!isEditable}
-                      className="w-full min-w-[180px] rounded-lg border border-slate-200 px-2 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="">— Non désigné —</option>
-                      {eleves
-                        .filter((s) => s.id !== c.delegueSuppleantId)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="min-w-[200px]">
+                      <StudentSearchSelect
+                        students={eleves.filter((s) => s.id !== c.delegueSuppleantId)}
+                        value={c.delegueTitulaireId ?? ''}
+                        classe={c.nom}
+                        onChange={(id) => updateField(c, 'delegueTitulaireId', id)}
+                        disabled={!isEditable}
+                        size="sm"
+                        placeholder="— Non désigné —"
+                      />
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
-                    <select
-                      value={c.delegueSuppleantId ?? ''}
-                      onChange={(e) => updateField(c, 'delegueSuppleantId', e.target.value)}
-                      disabled={!isEditable}
-                      className="w-full min-w-[180px] rounded-lg border border-slate-200 px-2 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="">— Non désigné —</option>
-                      {eleves
-                        .filter((s) => s.id !== c.delegueTitulaireId)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="min-w-[200px]">
+                      <StudentSearchSelect
+                        students={eleves.filter((s) => s.id !== c.delegueTitulaireId)}
+                        value={c.delegueSuppleantId ?? ''}
+                        classe={c.nom}
+                        onChange={(id) => updateField(c, 'delegueSuppleantId', id)}
+                        disabled={!isEditable}
+                        size="sm"
+                        placeholder="— Non désigné —"
+                      />
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
                     <input

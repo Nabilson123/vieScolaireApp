@@ -3,6 +3,7 @@ import { Users } from 'lucide-react'
 import type { NoteAudience, NoteCibleType } from '../../data/notesService'
 import { resolveDestinataires } from '../../services/notesServiceService'
 import { getStudentsSnapshot } from '../../services/studentsService'
+import { searchStudents } from '../../utils/studentSearch'
 import { getActiveClassNamesSnapshot } from '../../services/classesService'
 import { ALL_NIVEAUX } from '../../data/teachers'
 import { getTeachersSnapshot } from '../../services/teachersService'
@@ -88,8 +89,7 @@ export default function DestinatairesPicker({ audience, cibleType, cibleNiveau, 
                 className="mb-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
               />
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2.5">
-                {getStudentsSnapshot()
-                  .filter((s) => !search || s.name.toLowerCase().includes(search.toLowerCase()))
+                {searchStudents(getStudentsSnapshot(), search, { limit: Number.MAX_SAFE_INTEGER })
                   .map((s) => (
                     <label key={s.id} className="flex items-center gap-1.5 text-xs text-slate-600">
                       <input type="checkbox" checked={cibleEleveIds.includes(s.id)} onChange={() => toggleEleve(s.id)} className="h-3.5 w-3.5 rounded border-slate-300" />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { getClassOptions } from '../data/students'
 import { getStudentsSnapshot } from '../services/studentsService'
+import StudentSearchSelect from './StudentSearchSelect'
 
 interface StudentMultiPickerProps {
   /** Libellé du sélecteur d'élève (ex. « Élève(s) concerné(s) »). */
@@ -28,7 +29,8 @@ export default function StudentMultiPicker({ label, selectedIds, onChange, exclu
   const realClasses = getClassOptions().filter((c) => c !== 'Toutes les classes')
   const [classe, setClasse] = useState(realClasses[0])
   const students = getStudentsSnapshot()
-  const options = students.filter((s) => s.classe === classe && !selectedIds.includes(s.id) && !excludeIds.includes(s.id))
+  // La recherche couvre toutes les classes ; la classe choisie ne fait que proposer ses élèves d'emblée.
+  const options = students.filter((s) => !selectedIds.includes(s.id) && !excludeIds.includes(s.id))
   const selected = selectedIds.map((id) => students.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s)
 
   return (
@@ -46,20 +48,15 @@ export default function StudentMultiPicker({ label, selectedIds, onChange, exclu
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</label>
-          <select
+          <StudentSearchSelect
+            students={options}
             value=""
-            onChange={(e) => {
-              if (e.target.value) onChange([...selectedIds, e.target.value])
+            classe={classe}
+            placeholder={selected.length === 0 ? 'Rechercher un élève...' : 'Ajouter un autre élève...'}
+            onChange={(id) => {
+              if (id) onChange([...selectedIds, id])
             }}
-            className={selectClass}
-          >
-            <option value="">{selected.length === 0 ? 'Sélectionner...' : 'Ajouter un autre élève...'}</option>
-            {options.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       </div>
       {selected.length > 0 && (

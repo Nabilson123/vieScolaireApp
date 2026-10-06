@@ -6,6 +6,7 @@ import { RECLAMATION_CATEGORIES } from '../data/studentDetails'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
+import StudentSearchSelect from './StudentSearchSelect'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { cleanReclamationText, formatDateFR, todayLocalISO } from '../utils/reclamationsLogic'
 import { findSimilarReclamations, type SimilarReclamation } from '../utils/reclamationsDoublons'
@@ -132,8 +133,6 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
 
   const flagClass = (flag?: boolean) => (flag ? ' border-amber-400 bg-amber-50/60 ring-1 ring-amber-300' : '')
 
-  const elevesDeLaClasse = getStudentsSnapshot().filter((s) => s.classe === classe)
-
   const identity = studentId ? getStudentIdentitySnapshot(studentId) : null
   const parentOptions = identity
     ? [
@@ -250,23 +249,20 @@ export default function NewReclamationModal({ onClose, onSubmit }: NewReclamatio
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné</label>
-              <select
+              <StudentSearchSelect
+                students={getStudentsSnapshot()}
                 value={studentId}
-                onChange={(e) => {
-                  setStudentId(e.target.value)
+                classe={classe}
+                inputClassName={flagClass(lowFlags.student)}
+                onChange={(id) => {
+                  setStudentId(id)
+                  const st = getStudentsSnapshot().find((s) => s.id === id)
+                  if (st && realClasses.includes(st.classe)) setClasse(st.classe)
                   setParentSelect('')
                   setParentAutre('')
                   setLowFlags((prev) => ({ ...prev, student: false }))
                 }}
-                className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none${flagClass(lowFlags.student)}`}
-              >
-                <option value="">Sélectionner...</option>
-                {elevesDeLaClasse.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 

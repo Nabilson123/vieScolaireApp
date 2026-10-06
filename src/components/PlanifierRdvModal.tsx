@@ -5,6 +5,7 @@ import { getStudentsSnapshot } from '../services/studentsService'
 import { teacherName } from '../data/teachers'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
+import StudentSearchSelect from './StudentSearchSelect'
 import { buildStaffOptions } from '../utils/staffOptions'
 import type { RdvDemandeur, RdvDemandeurType, RendezVousRecord } from '../data/studentDetails'
 
@@ -84,7 +85,13 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
   const [motif, setMotif] = useState(initial?.motif ?? prefillMotif ?? '')
   const [notesParents, setNotesParents] = useState(initial?.notesParents ?? '')
 
-  const elevesDeLaClasse = fixedStudent ? [fixedStudent] : getStudentsSnapshot().filter((s) => s.classe === classe)
+  // La recherche couvre les élèves des classes proposées (toutes, ou celles du niveau d'une réunion de suivi).
+  const searchableStudents = getStudentsSnapshot().filter((s) => realClasses.includes(s.classe))
+  const handleStudentChange = (id: string) => {
+    setStudentId(id)
+    const st = searchableStudents.find((s) => s.id === id)
+    if (st) setClasse(st.classe)
+  }
 
   const identity = studentId ? getStudentIdentitySnapshot(studentId) : undefined
   const parent1Nom = identity?.parent1Nom.trim() ?? ''
@@ -175,14 +182,7 @@ export default function PlanifierRdvModal({ onClose, onSubmit, fixedStudentId, i
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Élève concerné*</label>
-                <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className={inputClass}>
-                  <option value="">Sélectionnez un élève...</option>
-                  {elevesDeLaClasse.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <StudentSearchSelect students={searchableStudents} value={studentId} onChange={handleStudentChange} classe={classe} placeholder="Rechercher un élève..." />
               </div>
             </div>
           )}
