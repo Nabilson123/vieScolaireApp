@@ -3,6 +3,7 @@ import type { Student } from '../data/students'
 import type { SuiviProf } from '../data/suiviProfs'
 import type { OpenReclamation, RiskStudent } from './suiviClasseRisqueAggregation'
 import { addDaysISO, cleanReclamationText } from './reclamationsLogic'
+import { reunionPrecedente } from './suiviClasseReunion'
 
 /** Un rendez-vous avec les parents, rattaché à son élève. */
 export interface RdvLigne {
@@ -35,13 +36,7 @@ export function collectRendezVous(students: Student[], extras: Record<string, St
 /** Date (AAAA-MM-JJ) de la réunion précédente du niveau — la plus récente non annulée avant la réunion courante —,
  * à défaut aujourd'hui moins 30 jours. */
 export function periodeDepuis(suivis: SuiviProf[], niveau: string, courant: { id?: string; date: string } | undefined, today: string): string {
-  const limite = courant?.date ?? today
-  const precedente = suivis
-    .filter((s) => s.niveau === niveau && s.statut !== 'Annulé' && s.id !== courant?.id && s.date < limite)
-    .map((s) => s.date)
-    .sort()
-    .pop()
-  return precedente ?? addDaysISO(today, -PERIODE_PAR_DEFAUT_JOURS)
+  return reunionPrecedente(suivis, niveau, courant, today)?.date ?? addDaysISO(today, -PERIODE_PAR_DEFAUT_JOURS)
 }
 
 /** État d'un rendez-vous : à venir, planifié mais dont la date est passée (à clôturer : tenu ou annulé ?), tenu, annulé. */

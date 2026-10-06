@@ -171,7 +171,7 @@ export default function SuiviClasseTab({ isEditable, onGoToReunion }: SuiviClass
       .forEach((c) => {
         const names = c.map((m) => m.group.label).join(', ')
         overlapAlerts.push({
-          title: `${JOUR_LABELS[jour]} ${c[0].suivi.heure} :`,
+          title: `${JOUR_LABELS[jour]} ${c[0].suivi.heure.slice(0, 5)} :`,
           text: `${names} au même créneau.`,
           onOpen: () => setSelectedKey(c[0].group.key),
         })

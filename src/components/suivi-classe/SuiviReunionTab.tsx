@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Megaphone, Printer, Save, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Megaphone, Pause, Play, Printer, RotateCcw, Save, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useClasses } from '../../services/classesService'
 import { getTeachersSnapshot } from '../../services/teachersService'
 import { teacherName } from '../../data/teachers'
@@ -26,6 +26,10 @@ import SuiviReunionPrintPreviewModal from './SuiviReunionPrintPreviewModal'
 import PrintableCompteRenduReunion from './PrintableCompteRenduReunion'
 import AutoGrowTextarea from '../AutoGrowTextarea'
 import FamillesPanel from './FamillesPanel'
+import AssiduitePanel from './AssiduitePanel'
+import { useMeetingTimer } from '../../hooks/useMeetingTimer'
+import { formatClock, statutTemps, type TempsStatut } from '../../utils/meetingTimer'
+import { computeAssiduiteParClasse, elevesPlusSignales, reunionPrecedente, suiviPrecedent } from '../../utils/suiviClasseReunion'
 import { useStudents } from '../../services/studentsService'
 import { useStudentExtras } from '../../services/studentDetailsService'
 import { todayLocalISO } from '../../utils/reclamationsLogic'
@@ -110,6 +114,37 @@ function resolveRelevantSuivi(niveau: string, suivis: SuiviProf[], initialSuiviI
   if (upcoming.length > 0) return upcoming[0]
   const past = forNiveau.filter((sp) => sp.date < todayIso).sort((a, b) => (a.date > b.date ? -1 : 1))
   return past[0]
+}
+
+/** Enregistrement automatique du brouillon après ce délai sans nouvelle saisie. */
+const AUTOSAVE_DELAY_MS = 4000
+
+const TOTAL_PLANNED_MINUTES = POINTS.reduce((sum, p) => sum + p.minutes, 0)
+
+const TEMPS_COLOR: Record<TempsStatut, string> = { ok: 'text-slate-500', proche: 'text-amber-600', depasse: 'text-rose-600' }
+
+function MeetingTimerChip({ running, total, onToggle, onReset }: { running: boolean; total: number; onToggle: () => void; onReset: () => void }) {
+  const statut = statutTemps(total, TOTAL_PLANNED_MINUTES)
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-1 pl-1 pr-2.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        title={running ? 'Mettre le chrono en pause' : total > 0 ? 'Reprendre le chrono' : 'Démarrer la réunion'}
+        className={`flex h-6 w-6 items-center justify-center rounded-md ${running ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+      >
+        {running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+      </button>
+      <span className={`text-xs font-semibold tabular-nums ${TEMPS_COLOR[statut]}`}>
+        {formatClock(total)} / {TOTAL_PLANNED_MINUTES}:00
+      </span>
+      {total > 0 && !running && (
+        <button type="button" onClick={onReset} title="Remettre le chrono à zéro" className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600">
+          <RotateCcw className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  )
 }
 
 function initialsOf(name: string): string {
@@ -223,9 +258,14 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const group = logicalGroups.find((g) => g.key === selectedNiveau) ?? logicalGroups[0]
   const suivi = group ? resolveRelevantSuivi(group.key, suivis, initialSuiviId) : undefined
 
-  const [cr, setCr] = useState<SuiviCompteRendu>(suivi?.compteRendu ?? { redigePar: directionName })
+  const initialCr = (sp?: SuiviProf): SuiviCompteRendu => sp?.compteRendu ?? { redigePar: directionName }
+  const [cr, setCr] = useState<SuiviCompteRendu>(() => initialCr(suivi))
+  // Dernier contenu connu côté serveur : tout ce qui en diffère est « non enregistré ».
+  const [baselineJson, setBaselineJson] = useState(() => JSON.stringify(initialCr(suivi)))
   useEffect(() => {
-    setCr(suivi?.compteRendu ?? { redigePar: directionName })
+    const next = initialCr(suivi)
+    setCr(next)
+    setBaselineJson(JSON.stringify(next))
     setCurrentPoint(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suivi?.id, group?.key])
@@ -233,7 +273,58 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const [currentPoint, setCurrentPoint] = useState(1)
   const [viewMode, setViewMode] = useState<'wizard' | 'recap'>('wizard')
   const [showPrint, setShowPrint] = useState(false)
-  const [savedFeedback, setSavedFeedback] = useState<'draft' | 'validated' | null>(null)
+  const [savedFeedback, setSavedFeedback] = useState<'validated' | null>(null)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+
+  // Chrono de la réunion : une nouvelle réunion repart de zéro.
+  const timer = useMeetingTimer(currentPoint)
+  useEffect(() => {
+    timer.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suivi?.id, group?.key])
+
+  const isDirty = !!suivi && JSON.stringify(cr) !== baselineJson
+  const persistDraft = (value: SuiviCompteRendu) => {
+    if (!suivi) return
+    saveMutation.mutate(
+      { id: suivi.id, compteRendu: value },
+      {
+        onSuccess: () => {
+          setBaselineJson(JSON.stringify(value))
+          setSavedAt(new Date())
+        },
+      },
+    )
+  }
+
+  // Enregistrement automatique du brouillon un court instant après la dernière saisie (jamais le statut « Réalisé »).
+  useEffect(() => {
+    if (!isEditable || !suivi || !isDirty || saveMutation.isPending) return
+    const timeout = setTimeout(() => persistDraft(cr), AUTOSAVE_DELAY_MS)
+    return () => clearTimeout(timeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cr, isDirty, isEditable, suivi?.id, saveMutation.isPending])
+
+  // Rien ne se perd en quittant l'onglet ou en changeant de niveau : le brouillon en attente part avant.
+  const latest = useRef({ cr, suivi, isDirty, isEditable })
+  latest.current = { cr, suivi, isDirty, isEditable }
+  useEffect(
+    () => () => {
+      const l = latest.current
+      if (l.isDirty && l.isEditable && l.suivi) saveMutation.mutate({ id: l.suivi.id, compteRendu: l.cr })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+  useEffect(() => {
+    if (!isDirty) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [isDirty])
 
   if (!group) {
     return <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">Aucune classe active.</div>
@@ -250,6 +341,12 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const classeNames = group.divisions.map((d) => d.classe.nom)
   const rendezVous = collectRendezVous(students, studentExtras, classeNames)
   const depuisReunion = periodeDepuis(suivis, group.key, suivi, today)
+  // Point 3 : ce qui avait été écrit pour chaque élève à la réunion précédente.
+  const precedente = reunionPrecedente(suivis, group.key, suivi, today)
+  const suiviPrev = suiviPrecedent(precedente?.compteRendu)
+  const plusSignales = elevesPlusSignales(suiviPrev, riskStudents)
+  // Sans rien d'écrit pour les élèves à la réunion précédente, « nouveau » ou « déjà suivi » n'aurait aucun sens.
+  const comparerAvecPrecedente = !!precedente && suiviPrev.size > 0
   // Le compte-rendu imprimé reprend la vue par défaut : à venir et tenus depuis la dernière réunion, sans les annulés.
   const rendezVousImprimes = filtrerRendezVous(rendezVous, { depuis: depuisReunion, statut: 'tous' }, today).filter((l) => statutRdv(l.record, today) !== 'annule')
   const owners = [...group.teachers.map(teacherName), directionName]
@@ -269,7 +366,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
   const filledCount = POINTS.filter((p) => pointHasContent(p.n, cr, group)).length
 
   const whenLabel = suivi
-    ? `${weekdayLabelFromDate(suivi.date)} ${formatDDMM(suivi.date)} · ${suivi.heure}–${minutesToTime(timeToMinutes(suivi.heure) + suivi.duree)} · ${suivi.lieu || 'Présentiel'} · ${group.divisions
+    ? `${weekdayLabelFromDate(suivi.date)} ${formatDDMM(suivi.date)} · ${suivi.heure.slice(0, 5)}–${minutesToTime(timeToMinutes(suivi.heure) + suivi.duree)} · ${suivi.lieu || 'Présentiel'} · ${group.divisions
         .map((d) => d.classe.nom)
         .join(' · ')}`
     : 'Aucun suivi planifié ou passé pour ce niveau.'
@@ -315,18 +412,28 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
       const updatedCr: SuiviCompteRendu = { ...cr, point5: { ...cr.point5, [key]: { faits: getReclamationNote(cr.point5, r)?.faits ?? '', reponse } } }
       setCr(updatedCr)
       await saveMutation.mutateAsync({ id: suivi.id, compteRendu: updatedCr })
+      setBaselineJson(JSON.stringify(updatedCr))
+      setSavedAt(new Date())
     } finally {
       setReclamationBusy(null)
     }
   }
 
-  const handleSaveDraft = () => {
-    if (!suivi) return
-    saveMutation.mutate({ id: suivi.id, compteRendu: cr }, { onSuccess: () => { setSavedFeedback('draft'); setTimeout(() => setSavedFeedback(null), 2500) } })
-  }
+  const handleSaveDraft = () => persistDraft(cr)
   const handleValidate = () => {
     if (!suivi) return
-    validateMutation.mutate({ id: suivi.id, compteRendu: cr }, { onSuccess: () => { setSavedFeedback('validated'); setTimeout(() => setSavedFeedback(null), 2500) } })
+    const validated = cr
+    validateMutation.mutate(
+      { id: suivi.id, compteRendu: validated },
+      {
+        onSuccess: () => {
+          setBaselineJson(JSON.stringify(validated))
+          setSavedAt(new Date())
+          setSavedFeedback('validated')
+          setTimeout(() => setSavedFeedback(null), 2500)
+        },
+      },
+    )
   }
 
   const point = POINTS[currentPoint - 1]
@@ -420,12 +527,24 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
               <div className="mb-2 flex flex-col gap-2.5">
                 {riskStudents.map((r) => (
                   <div key={r.id} className="rounded-lg border border-rose-100 bg-rose-50/40 p-2.5">
-                    <div className="mb-1.5 flex items-center gap-2">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-2">
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" />
                       <span className="text-sm font-semibold text-slate-800">{r.name}</span>
                       <span className="text-xs text-slate-500">{r.classe}</span>
+                      {comparerAvecPrecedente && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${suiviPrev.has(r.id) ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
+                          {suiviPrev.has(r.id) ? 'Déjà suivi' : 'Nouveau'}
+                        </span>
+                      )}
                     </div>
                     <p className="mb-1.5 pl-3.5 text-xs text-slate-500">{r.reasons.join(' · ')}</p>
+                    {comparerAvecPrecedente && suiviPrev.has(r.id) && (
+                      <p className="mb-1.5 pl-3.5 text-xs text-amber-800">
+                        {`Réunion du ${formatDDMM(precedente.date)}`}
+                        {suiviPrev.get(r.id)!.constat && ` — constat : ${suiviPrev.get(r.id)!.constat}`}
+                        {suiviPrev.get(r.id)!.mesure && ` · mesure décidée : ${suiviPrev.get(r.id)!.mesure}`}
+                      </p>
+                    )}
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                       <AutoGrowTextarea minRows={2} value={cr.point3?.[r.id]?.constat ?? ''}
                         onChange={(e) => patchRisk(r.id, { constat: e.target.value })}
@@ -444,6 +563,19 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                 ))}
               </div>
             )}
+            {comparerAvecPrecedente && plusSignales.length > 0 && (
+              <div className="mb-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs text-emerald-800">
+                <p className="mb-1 font-semibold">{`Suivis à la réunion du ${formatDDMM(precedente.date)} et plus signalés aujourd'hui (${plusSignales.length})`}</p>
+                <ul className="flex flex-col gap-0.5">
+                  {plusSignales.map((e) => (
+                    <li key={e.studentId}>
+                      <b>{students.find((st) => st.id === e.studentId)?.name ?? 'Élève'}</b>
+                      {e.mesure ? ` — mesure décidée : ${e.mesure}` : e.constat ? ` — constat : ${e.constat}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <AutoGrowTextarea
               value={cr.point3Extra ?? ''}
               onChange={(e) => patch({ point3Extra: e.target.value })}
@@ -455,7 +587,12 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </>
         )
       case 4:
-        return renderParClasse('point4')
+        return (
+          <>
+            <AssiduitePanel classes={computeAssiduiteParClasse(students, studentExtras, classeNames, depuisReunion, today)} depuis={depuisReunion} today={today} />
+            {renderParClasse('point4')}
+          </>
+        )
       case 5:
         return reclamations.length === 0 ? (
           <p className="text-xs text-slate-400">Aucune réclamation ouverte pour ce niveau.</p>
@@ -546,7 +683,10 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
             <div className="mt-1 flex flex-wrap items-center gap-2.5">
               <select
                 value={selectedNiveau}
-                onChange={(e) => setSelectedNiveau(e.target.value)}
+                onChange={(e) => {
+                  if (isDirty && isEditable && suivi) saveMutation.mutate({ id: suivi.id, compteRendu: cr })
+                  setSelectedNiveau(e.target.value)
+                }}
                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700"
               >
                 {logicalGroups.map((g) => (
@@ -562,9 +702,23 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
             {savedFeedback && (
               <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {savedFeedback === 'draft' ? 'Brouillon enregistré.' : 'Compte-rendu validé.'}
+                Compte-rendu validé.
               </span>
             )}
+            {!savedFeedback && suivi && isEditable &&
+              (saveMutation.isPending ? (
+                <span className="text-xs font-semibold text-slate-400">Enregistrement…</span>
+              ) : isDirty ? (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  Modifications non enregistrées
+                </span>
+              ) : savedAt ? (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {`Enregistré à ${savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+                </span>
+              ) : null)}
             {suivi && (
               <button
                 type="button"
@@ -576,7 +730,7 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                 Enregistrer
               </button>
             )}
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-500">0:00 / 30:00</div>
+            <MeetingTimerChip running={timer.running} total={timer.total} onToggle={timer.toggle} onReset={timer.reset} />
             <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
               <button
                 type="button"
@@ -640,7 +794,10 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                     </span>
                     <span className="min-w-0">
                       <p className={`text-xs font-semibold ${active ? 'text-indigo-700' : 'text-slate-700'}`}>{p.title}</p>
-                      <p className="text-[10px] text-slate-400">{p.minutes} min</p>
+                      <p className={`text-[10px] ${timer.perPoint[p.n] ? TEMPS_COLOR[statutTemps(timer.perPoint[p.n], p.minutes)] : 'text-slate-400'}`}>
+                        {p.minutes} min
+                        {timer.perPoint[p.n] ? ` · ${formatClock(timer.perPoint[p.n])}` : ''}
+                      </p>
                     </span>
                   </button>
                 )
@@ -657,7 +814,9 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Point {currentPoint} / 8</span>
-              <span className="text-xs font-semibold text-slate-400">0:00 / {point.minutes}:00</span>
+              <span className={`text-xs font-semibold tabular-nums ${TEMPS_COLOR[statutTemps(timer.perPoint[currentPoint] ?? 0, point.minutes)]}`}>
+                {formatClock(timer.perPoint[currentPoint] ?? 0)} / {point.minutes}:00
+              </span>
             </div>
             <h2 className="mb-3 text-lg font-bold text-slate-900">{point.title}</h2>
             <div className="mb-4 rounded-xl bg-indigo-50/70 p-3">

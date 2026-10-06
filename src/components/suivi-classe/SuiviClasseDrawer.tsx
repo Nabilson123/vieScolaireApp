@@ -90,7 +90,7 @@ export default function SuiviClasseDrawer({
   const status = weekSuivi ? STATUT_STYLE[weekSuivi.statut] : group.allHavePP ? { label: 'À planifier', bg: '#ede9fe', fg: '#7c3aed' } : { label: 'PP incomplet', bg: '#fef3c7', fg: '#d97706' }
 
   const whenLabel = weekSuivi
-    ? `${weekdayLabelFromDate(weekSuivi.date)} ${new Date(weekSuivi.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · ${weekSuivi.heure}–${minutesToTime(
+    ? `${weekdayLabelFromDate(weekSuivi.date)} ${new Date(weekSuivi.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · ${weekSuivi.heure.slice(0, 5)}–${minutesToTime(
         timeToMinutes(weekSuivi.heure) + weekSuivi.duree
       )}`
     : group.suggestion
