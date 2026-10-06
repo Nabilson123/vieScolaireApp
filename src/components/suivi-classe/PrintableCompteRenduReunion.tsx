@@ -57,7 +57,19 @@ function chunk<T>(list: T[], size: number): T[][] {
   return out
 }
 
-function SectionTitle({ n, title, suite }: { n: number; title: string; suite?: boolean }) {
+/** Traduction arabe à la suite du libellé français (« Libellé · عنوان ») : jamais en capitales ni espacée. */
+function Ar({ children, className = '' }: { children: string; className?: string }) {
+  return (
+    <>
+      <span className="mx-1">·</span>
+      <span dir="rtl" className={`normal-case leading-none ${className}`}>
+        {children}
+      </span>
+    </>
+  )
+}
+
+function SectionTitle({ n, title, ar, suite }: { n: number; title: string; ar: string; suite?: boolean }) {
   return (
     <div className="mb-1 flex items-center gap-2">
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: C.accent }}>
@@ -66,6 +78,7 @@ function SectionTitle({ n, title, suite }: { n: number; title: string; suite?: b
       <span className="text-[12px] font-extrabold" style={{ color: C.ink }}>
         {title}
         {suite ? ' (suite)' : ''}
+        <Ar>{suite ? `${ar} (تابع)` : ar}</Ar>
       </span>
     </div>
   )
@@ -87,10 +100,15 @@ function TextBlock({ text, guide, blank, label }: { text?: string; guide: string
   )
 }
 
-function Th({ children, width }: { children: string; width?: number }) {
+function Th({ children, ar, width }: { children: string; ar: string; width?: number }) {
   return (
     <th className="border px-1.5 py-[3px] text-left font-bold" style={{ borderColor: C.rule, width }}>
-      {children}
+      <span className="flex flex-wrap items-baseline justify-between gap-x-1.5">
+        <span>{children}</span>
+        <span dir="rtl" className="text-[9.5px] font-semibold leading-none" style={{ color: C.muted }}>
+          {ar}
+        </span>
+      </span>
     </th>
   )
 }
@@ -107,7 +125,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     key: 's1',
     node: (
       <div>
-        <SectionTitle n={1} title="Retour sur les actions précédentes" />
+        <SectionTitle n={1} title="Retour sur les actions précédentes" ar="مراجعة الإجراءات السابقة" />
         <TextBlock text={cr.point1Commentaire} guide="Actions décidées lors de la dernière réunion — état d'avancement." blank={blank} />
       </div>
     ),
@@ -116,13 +134,13 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
   // Points 2 et 4 : la remarque commune à toutes les classes (pleine largeur), puis ce qui est propre à chaque classe.
   // La version vierge garde une zone par classe, à remplir à la main.
   const classes = group.divisions.map((d) => d.classe.nom)
-  const parClasse = (n: number, title: string, field: PointParClasse, guide: (classe: string) => string) => {
+  const parClasse = (n: number, title: string, ar: string, field: PointParClasse, guide: (classe: string) => string) => {
     const entries = blank ? classes.map((c) => ({ label: c, text: '', commune: false })) : remarquesImprimees(cr, field, classes)
     const commune = entries.find((e) => e.commune)
     const propres = entries.filter((e) => !e.commune)
     return (
       <div>
-        <SectionTitle n={n} title={title} />
+        <SectionTitle n={n} title={title} ar={ar} />
         <div className="flex flex-col gap-1.5">
           {commune && <TextBlock label={commune.label} text={commune.text} guide="" />}
           {propres.length > 0 && (
@@ -138,7 +156,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
   }
 
   // 2. Avancement pédagogique
-  blocks.push({ key: 's2', node: parClasse(2, 'Avancement pédagogique', 'point2', (c) => `${c} — avancement des programmes, difficultés rencontrées.`) })
+  blocks.push({ key: 's2', node: parClasse(2, 'Avancement pédagogique', 'التقدم البيداغوجي', 'point2', (c) => `${c} — avancement des programmes, difficultés rencontrées.`) })
 
   // 3. Élèves à suivre
   if (blank || riskStudents.length === 0) {
@@ -146,7 +164,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
       key: 's3',
       node: (
         <div>
-          <SectionTitle n={3} title="Élèves à suivre" />
+          <SectionTitle n={3} title="Élèves à suivre" ar="التلاميذ الذين يستوجبون المتابعة" />
           <TextBlock guide="Élèves nécessitant un suivi particulier — constat et mesure décidée." blank />
         </div>
       ),
@@ -157,13 +175,13 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
         key: `s3-${i}`,
         node: (
           <div>
-            <SectionTitle n={3} title="Élèves à suivre" suite={i > 0} />
+            <SectionTitle n={3} title="Élèves à suivre" ar="التلاميذ الذين يستوجبون المتابعة" suite={i > 0} />
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr style={{ background: C.headBg }}>
-                  <Th width={185}>Élève</Th>
-                  <Th>Constat</Th>
-                  <Th width={190}>Mesure décidée</Th>
+                  <Th width={185} ar="التلميذ">Élève</Th>
+                  <Th ar="الملاحظة">Constat</Th>
+                  <Th width={190} ar="الإجراء المتخذ">Mesure décidée</Th>
                 </tr>
               </thead>
               <tbody>
@@ -190,7 +208,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
   }
 
   // 4. Assiduité & comportement
-  blocks.push({ key: 's4', node: parClasse(4, 'Assiduité & comportement', 'point4', (c) => `${c} — absences, retards, incidents à signaler.`) })
+  blocks.push({ key: 's4', node: parClasse(4, 'Assiduité & comportement', 'المواظبة والسلوك', 'point4', (c) => `${c} — absences, retards, incidents à signaler.`) })
 
   // 5. Traitement des réclamations
   if (blank || reclamations.length === 0) {
@@ -198,7 +216,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
       key: 's5',
       node: (
         <div>
-          <SectionTitle n={5} title="Traitement des réclamations" />
+          <SectionTitle n={5} title="Traitement des réclamations" ar="معالجة الشكايات" />
           <TextBlock guide="Réclamations parents ouvertes — faits vérifiés et réponse apportée." blank />
         </div>
       ),
@@ -209,15 +227,15 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
         key: `s5-${i}`,
         node: (
           <div>
-            <SectionTitle n={5} title="Traitement des réclamations" suite={i > 0} />
+            <SectionTitle n={5} title="Traitement des réclamations" ar="معالجة الشكايات" suite={i > 0} />
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr style={{ background: C.headBg }}>
-                  <Th>Élève</Th>
-                  <Th>Objet</Th>
-                  <Th>Faits vérifiés</Th>
-                  <Th>Réponse / suite</Th>
-                  <Th width={64}>Statut</Th>
+                  <Th ar="التلميذ">Élève</Th>
+                  <Th ar="الموضوع">Objet</Th>
+                  <Th ar="الوقائع">Faits vérifiés</Th>
+                  <Th ar="الجواب">Réponse / suite</Th>
+                  <Th width={76} ar="الحالة">Statut</Th>
                 </tr>
               </thead>
               <tbody>
@@ -258,7 +276,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
       key: 's6',
       node: (
         <div>
-          <SectionTitle n={6} title="Relation avec les familles" />
+          <SectionTitle n={6} title="Relation avec les familles" ar="العلاقة مع الأسر" />
           <TextBlock text={cr.point6} guide="Contacts parents notables, rendez-vous programmés." blank={blank} />
         </div>
       ),
@@ -270,14 +288,14 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
         key: `s6-${i}`,
         node: (
           <div>
-            <SectionTitle n={6} title="Relation avec les familles — rendez-vous avec les parents" suite={i > 0} />
+            <SectionTitle n={6} title="Relation avec les familles — rendez-vous avec les parents" ar="العلاقة مع الأسر — مواعيد مع الأولياء" suite={i > 0} />
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr style={{ background: C.headBg }}>
-                  <Th width={185}>Élève</Th>
-                  <Th width={110}>Date et heure</Th>
-                  <Th>Motif</Th>
-                  <Th width={64}>Statut</Th>
+                  <Th width={185} ar="التلميذ">Élève</Th>
+                  <Th width={132} ar="التاريخ والساعة">Date et heure</Th>
+                  <Th ar="السبب">Motif</Th>
+                  <Th width={76} ar="الحالة">Statut</Th>
                 </tr>
               </thead>
               <tbody>
@@ -312,7 +330,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     key: 's7',
     node: (
       <div>
-        <SectionTitle n={7} title="Vie de classe & organisation" />
+        <SectionTitle n={7} title="Vie de classe & organisation" ar="الحياة داخل القسم والتنظيم" />
         <TextBlock text={cr.point7} guide="Organisation matérielle, sorties, événements de classe." blank={blank} />
       </div>
     ),
@@ -324,13 +342,13 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
     key: 's8',
     node: (
       <div>
-        <SectionTitle n={8} title="Décisions & actions" />
+        <SectionTitle n={8} title="Décisions & actions" ar="القرارات والإجراءات" />
         <table className="w-full border-collapse text-[10px]">
           <thead>
             <tr style={{ background: C.headBg }}>
-              <Th>Décision / action</Th>
-              <Th width={130}>Responsable</Th>
-              <Th width={90}>Échéance</Th>
+              <Th ar="القرار / الإجراء">Décision / action</Th>
+              <Th width={130} ar="المسؤول">Responsable</Th>
+              <Th width={90} ar="الأجل">Échéance</Th>
             </tr>
           </thead>
           <tbody>
@@ -381,15 +399,20 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
                 <div className="text-[15px] font-extrabold">Groupe Scolaire Mondrian</div>
                 <div className="text-[10px]" style={{ color: C.muted }}>
                   Direction de la Vie Scolaire
+                  <Ar>إدارة الحياة المدرسية</Ar>
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[13px] font-extrabold" style={{ color: C.accent }}>
+              <div className="text-[13px] font-extrabold leading-tight" style={{ color: C.accent }}>
                 {blank ? 'Feuille de route — Suivi de Classe' : 'Compte-rendu — Réunion de suivi de classe'}
                 {pageIndex > 0 ? ' (suite)' : ''}
               </div>
-              <div className="text-[10px]" style={{ color: C.muted }}>
+              <div dir="rtl" className="text-[12px] font-extrabold leading-[1.15]" style={{ color: C.accent }}>
+                {blank ? 'ورقة الطريق — متابعة القسم' : 'محضر اجتماع متابعة القسم'}
+                {pageIndex > 0 ? ' (تابع)' : ''}
+              </div>
+              <div className="text-[10px] leading-tight" style={{ color: C.muted }}>
                 {pageIndex > 0 ? `Niveau ${group.label} · ` : ''}Édité le {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
             </div>
@@ -400,18 +423,21 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
               <div>
                 <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
                   Niveau
+                  <Ar>المستوى</Ar>
                 </div>
                 <div className="text-[12px] font-bold">{group.label}</div>
               </div>
               <div>
                 <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
                   Classes
+                  <Ar>الأقسام</Ar>
                 </div>
                 <div className="text-[12px] font-bold">{group.divisions.map((d) => d.classe.nom).join(', ')}</div>
               </div>
               <div>
                 <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
                   Date
+                  <Ar>التاريخ</Ar>
                 </div>
                 <div className="text-[12px] font-bold">
                   {blank ? '____ / ____ / ______' : `${weekdayLabelFromDate(suivi.date)} ${formatDDMMYYYY(suivi.date)} · ${heure}–${minutesToTime(timeToMinutes(suivi.heure) + suivi.duree)}`}
@@ -420,6 +446,7 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
               <div>
                 <div className="text-[9px] font-bold uppercase" style={{ color: C.muted }}>
                   Présents
+                  <Ar>الحاضرون</Ar>
                 </div>
                 <div className="text-[11px] font-semibold">
                   {participants
@@ -441,22 +468,28 @@ export default function PrintableCompteRenduReunion({ group, suivi, compteRendu:
               <div>
                 <div className="font-bold uppercase" style={{ color: C.ink }}>
                   Prochaine réunion
+                  <Ar>الاجتماع المقبل</Ar>
                 </div>
                 <div>____ / ____ / ______</div>
               </div>
               <div className="text-center">
                 <div className="font-bold uppercase" style={{ color: C.ink }}>
                   Visa Direction
+                  <Ar>تأشيرة الإدارة</Ar>
                 </div>
                 <div className="mt-4 w-[140px] border-t" style={{ borderColor: C.rule }} />
               </div>
             </>
           ) : (
-            <div>Direction de la Vie Scolaire — Groupe Scolaire Mondrian</div>
+            <div>
+              Direction de la Vie Scolaire — Groupe Scolaire Mondrian
+              <Ar>إدارة الحياة المدرسية — مجموعة مدارس موندريان</Ar>
+            </div>
           )}
           {pageCount > 1 && (
             <div className="font-semibold">
               Page {pageIndex + 1}/{pageCount}
+              <Ar>صفحة</Ar>
             </div>
           )}
         </div>
