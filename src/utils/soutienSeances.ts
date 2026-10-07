@@ -175,3 +175,13 @@ export function intervallesSoutienSalle(seances: SoutienSeance[], salleId: strin
   return intervallesSeances(seances, (s) => s.salleId === salleId, jour, dateISO)
 }
 
+
+/** Date du jour (fuseau local, jamais `toISOString` qui décale d'un jour près de minuit) au format AAAA-MM-JJ. */
+export function aujourdhuiLocalISO(now: Date = new Date()): string {
+  return toISO(now)
+}
+
+/** Séances dont la période n'est pas close. */
+export function seancesEnCours(seances: SoutienSeance[], aujourdhuiISO: string): SoutienSeance[] {
+  return seances.filter((s) => !seanceTerminee(s, aujourdhuiISO))
+}

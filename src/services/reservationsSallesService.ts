@@ -6,6 +6,8 @@ import { getAllClassSchedulesSnapshot } from './classSchedulesService'
 import { getWeekdayName } from '../utils/replacementAggregation'
 import { getCurrentUserIdSnapshot } from './currentUser'
 import { getViewedYearIdSnapshot } from './viewedYear'
+import { getSoutienSeancesSnapshot } from './soutienService'
+import { seanceActiveLe } from '../utils/soutienSeances'
 
 interface ReservationSalleRow {
   id: string
@@ -86,6 +88,8 @@ export function useDeleteReservationSalle() {
 export interface SalleConflictResult {
   edtConflict: { classe: string; matiere: string } | null
   reservationConflict: ReservationSalle | null
+  /** Séance de soutien qui a lieu dans la salle à cette date. */
+  soutienConflict: { matiere: string; debut: string; fin: string } | null
 }
 
 /**
@@ -122,5 +126,10 @@ export function detectConflictForSalle(salleId: string, date: string, heureDebut
         startMin < timeToMinutes(r.heureFin)
     ) ?? null
 
-  return { edtConflict, reservationConflict }
+  const soutien = getSoutienSeancesSnapshot().find(
+    (s) => s.salleId === salleId && seanceActiveLe(s, date) && timeToMinutes(s.heureDebut) < endMin && startMin < timeToMinutes(s.heureFin)
+  )
+  const soutienConflict = soutien ? { matiere: soutien.matiere, debut: soutien.heureDebut, fin: soutien.heureFin } : null
+
+  return { edtConflict, reservationConflict, soutienConflict }
 }

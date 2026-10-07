@@ -60,7 +60,7 @@ export default function CourseSlotModal({ className, initialDay, onClose, onSubm
     if (!canSubmit) return
     const conflict = detectConflictForTeacher(teacherId, day, start, end, initial?.slotId)
     if (conflict) {
-      setError('Ce professeur est déjà occupé sur un autre cours à ce créneau.')
+      setError('Ce professeur est déjà occupé (autre cours ou soutien scolaire) à ce créneau.')
       return
     }
     setError('')

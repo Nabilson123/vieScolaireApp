@@ -5,6 +5,8 @@ import { getWeekdayName, subtractCoveredIntervals, type TimeInterval } from './r
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { getSuiviProfsSnapshot } from '../services/suiviProfsService'
+import { getSoutienSeancesSnapshot } from '../services/soutienService'
+import { intervallesSoutienEnseignant } from './soutienSeances'
 
 const JOUR_DEBUT = '07:30'
 const JOUR_FIN = '18:00'
@@ -55,6 +57,9 @@ function getBusyIntervals(teacher: Teacher, date: string, excludeSuiviId?: strin
     if (!sp.teacherIds.includes(teacher.id) || sp.date !== date || sp.statut === 'Annulé') return
     busy.push({ start: sp.heure, end: minutesToTime(timeToMinutes(sp.heure) + sp.duree) })
   })
+
+  // Séances de soutien que l'enseignant anime ce jour-là (période et dates annulées respectées).
+  if (weekday) busy.push(...intervallesSoutienEnseignant(getSoutienSeancesSnapshot(), teacher.id, weekday, date))
 
   return busy
 }

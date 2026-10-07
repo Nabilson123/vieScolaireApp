@@ -8,6 +8,8 @@ import { getClassScheduleSnapshot, findSlotOwner } from '../services/classSchedu
 import { computeTeacherSchedule } from './teacherAggregation'
 import { parseAnyDate } from './period'
 import { creneauDuRemplacement, type CreneauRemplacement, type SlotInfo } from './remplacementCreneau'
+import { getSoutienSeancesSnapshot } from '../services/soutienService'
+import { intervallesSoutienEnseignant } from './soutienSeances'
 
 const WEEKDAY_NAMES = ['DIMANCHE', 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI']
 
@@ -284,6 +286,11 @@ export function suggestSubstitutes(pending: PendingReplacement): SubstituteSugge
       (s) => timeToMinutes(s.start) < timeToMinutes(pending.end) && timeToMinutes(pending.start) < timeToMinutes(s.end)
     )
     if (busy) return
+    // Un soutien animé à ce moment-là rend aussi l'enseignant indisponible.
+    const enSoutien = intervallesSoutienEnseignant(getSoutienSeancesSnapshot(), t.id, pending.weekday, pending.date).some(
+      (s) => timeToMinutes(s.start) < timeToMinutes(pending.end) && timeToMinutes(pending.start) < timeToMinutes(s.end)
+    )
+    if (enSoutien) return
     if (isTeacherAbsentOnDate(t.id, pending.date)) return
 
     const sameSubject = t.matieres.includes(pending.subject)

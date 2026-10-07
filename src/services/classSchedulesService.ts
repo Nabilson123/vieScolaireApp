@@ -5,6 +5,8 @@ import { getTeachersSnapshot, updateTeacherRow } from './teachersService'
 import { getClassesSnapshot } from './classesService'
 import { useViewedYearId, getViewedYearIdSnapshot } from './viewedYear'
 import { useAnneesLoaded } from './anneesScolairesService'
+import { getSoutienSeancesSnapshot } from './soutienService'
+import { aujourdhuiLocalISO, intervallesSoutienEnseignant, seancesEnCours } from '../utils/soutienSeances'
 
 interface ScheduleRow {
   classe: string
@@ -232,7 +234,7 @@ function slotsOverlap(a: CourseSlot, b: CourseSlot): boolean {
 
 export function detectConflictForTeacher(teacherId: string, day: string, start: string, end: string, excludeSlotId?: string): boolean {
   if (!teacherId) return false
-  return Object.values(getAllClassSchedulesSnapshot()).some((week) =>
+  const coursEnConflit = Object.values(getAllClassSchedulesSnapshot()).some((week) =>
     (week[day] ?? []).some(
       (s) =>
         s.teacherId === teacherId &&
@@ -240,6 +242,11 @@ export function detectConflictForTeacher(teacherId: string, day: string, start: 
         timeToMinutes(s.start) < timeToMinutes(end) &&
         timeToMinutes(start) < timeToMinutes(s.end)
     )
+  )
+  if (coursEnConflit) return true
+  // Un soutien en cours rend aussi l'enseignant indisponible (sans compter dans son quota d'heures).
+  return intervallesSoutienEnseignant(seancesEnCours(getSoutienSeancesSnapshot(), aujourdhuiLocalISO()), teacherId, day).some(
+    (s) => timeToMinutes(s.start) < timeToMinutes(end) && timeToMinutes(start) < timeToMinutes(s.end)
   )
 }
 

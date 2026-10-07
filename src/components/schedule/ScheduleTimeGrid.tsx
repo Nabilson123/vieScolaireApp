@@ -9,6 +9,9 @@ export interface TimeGridSlot {
   end: string
   hours: number
   subtitle: string
+  /** `soutien` : séance de soutien scolaire — bloc hachuré, non déplaçable, hors total d'heures du jour. */
+  variant?: 'soutien'
+  onClick?: () => void
 }
 
 const DEFAULT_DAYS = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI']
@@ -42,8 +45,17 @@ function minutesToTime(min: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+function slotsOverlap(a: TimeGridSlot, b: TimeGridSlot): boolean {
+  return timeToMinutes(a.start) < timeToMinutes(b.end) && timeToMinutes(b.start) < timeToMinutes(a.end)
+}
+
+/** Fond hachuré des séances de soutien : se distingue d'un cours à plein pot sans dépendre de la couleur. */
+const SOUTIEN_STYLE = {
+  backgroundImage: 'repeating-linear-gradient(135deg, rgba(139,92,246,0.14) 0px, rgba(139,92,246,0.14) 5px, rgba(255,255,255,0.9) 5px, rgba(255,255,255,0.9) 10px)',
+}
+
 function hasPauseOverlap(slots: TimeGridSlot[]): boolean {
-  return slots.some((s) => timeToMinutes(s.start) < timeToMinutes('13:00') && timeToMinutes('12:00') < timeToMinutes(s.end))
+  return slots.some((s) => s.variant !== 'soutien' && timeToMinutes(s.start) < timeToMinutes('13:00') && timeToMinutes('12:00') < timeToMinutes(s.end))
 }
 
 interface ScheduleTimeGridProps {
@@ -94,7 +106,7 @@ export default function ScheduleTimeGrid({
         <div />
         {days.map((day) => {
           const slots = schedule[day] ?? []
-          const total = slots.reduce((sum, s) => sum + s.hours, 0)
+          const total = slots.reduce((sum, s) => sum + (s.variant === 'soutien' ? 0 : s.hours), 0)
           return (
             <div key={day} className="border-b border-slate-200 pb-1.5 text-center">
               <p className="text-xs font-bold uppercase text-slate-700">{dayLabels[day] ?? day}</p>
@@ -168,22 +180,33 @@ export default function ScheduleTimeGrid({
                 const top = (startMin / totalMin) * 100
                 const height = ((endMin - startMin) / totalMin) * 100
                 const inConflict = conflictSlotIds?.has(slot.id) ?? false
+                const isSoutien = slot.variant === 'soutien'
+                // Un soutien posé sur un cours : les deux se partagent la largeur au lieu de se recouvrir.
+                const sharesWidth = slots.some((o) => o.id !== slot.id && (o.variant === 'soutien') !== isSoutien && slotsOverlap(slot, o))
+                const horizontal = sharesWidth ? (isSoutien ? { left: '50%', right: '4px' } : { left: '4px', right: '50%' }) : {}
+                const draggable = draggableSlots && !isSoutien
                 return (
                   <div
                     key={slot.id}
-                    draggable={draggableSlots}
+                    draggable={draggable}
                     onDragStart={
-                      draggableSlots
+                      draggable
                         ? () => {
                             setDragDurationMin(timeToMinutes(slot.end) - timeToMinutes(slot.start))
                             onDragStartSlot?.(day, slot.id)
                           }
                         : undefined
                     }
+                    onClick={slot.onClick}
+                    title={isSoutien ? 'Soutien scolaire — cliquer pour voir les élèves' : undefined}
                     className={`absolute left-1 right-1 overflow-hidden rounded-lg border-l-4 px-1.5 py-1 text-[10px] ${
-                      inConflict ? 'border-rose-500 bg-white text-rose-700 ring-1 ring-rose-400' : colorForSubject(slot.subject)
-                    } ${draggableSlots ? 'cursor-move' : ''}`}
-                    style={{ top: `${top}%`, height: `${height}%` }}
+                      isSoutien
+                        ? `border-violet-500 text-violet-800 ring-1 ring-violet-200 ${slot.onClick ? 'cursor-pointer hover:ring-violet-400' : ''}`
+                        : inConflict
+                          ? 'border-rose-500 bg-white text-rose-700 ring-1 ring-rose-400'
+                          : colorForSubject(slot.subject)
+                    } ${draggable ? 'cursor-move' : ''}`}
+                    style={{ top: `${top}%`, height: `${height}%`, ...horizontal, ...(isSoutien ? SOUTIEN_STYLE : {}) }}
                   >
                     <div className="mb-0.5 flex items-start justify-between gap-1">
                       <p className="flex items-center gap-1 truncate font-bold">
