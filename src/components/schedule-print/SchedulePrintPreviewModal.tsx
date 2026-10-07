@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { RectangleHorizontal, RectangleVertical } from 'lucide-react'
-import PrintableScheduleLudique, { type ScheduleOrientation } from './PrintableScheduleLudique'
+import PrintableScheduleLudique, { type PrintScheduleSlot, type ScheduleOrientation } from './PrintableScheduleLudique'
 import type { ClassScheduleSlot } from '../../utils/classAggregation'
 import type { TeacherScheduleSlot } from '../../utils/teacherAggregation'
 import PrintPreviewShell from '../print/PrintPreviewShell'
@@ -11,6 +11,8 @@ type SchedulePrintPreviewModalProps = {
   title: string
   weekStart: Date
   weekEnd: Date
+  /** Séances de soutien à poser en blocs hachurés (déjà au format d'impression). */
+  soutien?: Record<string, PrintScheduleSlot[]>
   onClose: () => void
 } & (
   | { variant: 'classe'; classe: string; schedule: Record<string, ClassScheduleSlot[]> }
@@ -25,6 +27,10 @@ export default function SchedulePrintPreviewModal(props: SchedulePrintPreviewMod
     props.variant === 'classe'
       ? toPrintSchedule(props.schedule, (s: ClassScheduleSlot) => (s.teacherName === 'Inconnu' ? 'Prof. Inconnu' : `Prof. ${s.teacherName}`))
       : toPrintSchedule(props.schedule, (s: TeacherScheduleSlot) => `Cl ${s.classe}`)
+
+  const avecSoutien: Record<string, PrintScheduleSlot[]> = Object.fromEntries(
+    Object.entries(printSchedule).map(([day, slots]) => [day, [...slots, ...(props.soutien?.[day] ?? [])]])
+  )
 
   const metaLabel = props.variant === 'classe' ? `Classe : ${props.classe}` : `Prof. ${props.teacherName}`
   const footerMessage =
@@ -65,7 +71,7 @@ export default function SchedulePrintPreviewModal(props: SchedulePrintPreviewMod
         metaLabel={metaLabel}
         weekStart={weekStart}
         weekEnd={weekEnd}
-        schedule={printSchedule}
+        schedule={avecSoutien}
         orientation={orientation}
         footerMessage={footerMessage}
       />

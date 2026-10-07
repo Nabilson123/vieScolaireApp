@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { DoorOpen, GraduationCap, MessageCircle } from 'lucide-react'
+import { DoorOpen, FileText, GraduationCap, MessageCircle } from 'lucide-react'
 import { useSoutienInscriptions, useSoutienSeances } from '../../services/soutienService'
 import { aujourdhuiLocalISO, seanceTerminee } from '../../utils/soutienSeances'
 import ConfirmationsPanel from './ConfirmationsPanel'
+import PdfClassesPanel from './PdfClassesPanel'
 import SeancesPanel from './SeancesPanel'
 import SortiesSeulPanel from './SortiesSeulPanel'
 
-type Volet = 'seances' | 'confirmations' | 'sorties'
+type Volet = 'seances' | 'confirmations' | 'sorties' | 'pdf'
 
 /** Onglet « Soutien & Sorties » d'Emplois du Temps : séances de soutien, confirmations des parents, sorties seul(e) et PDF par classe. */
 export default function SoutienSortiesTab({ isEditable }: { isEditable: boolean }) {
@@ -21,6 +22,7 @@ export default function SoutienSortiesTab({ isEditable }: { isEditable: boolean 
     { key: 'seances', label: 'Séances', icon: GraduationCap },
     { key: 'confirmations', label: 'Confirmations', icon: MessageCircle, badge: aConfirmer },
     { key: 'sorties', label: 'Sorties seul(e)', icon: DoorOpen },
+    { key: 'pdf', label: 'PDF par classe', icon: FileText },
   ]
 
   return (
@@ -45,6 +47,7 @@ export default function SoutienSortiesTab({ isEditable }: { isEditable: boolean 
       {volet === 'seances' && <SeancesPanel isEditable={isEditable} />}
       {volet === 'confirmations' && <ConfirmationsPanel isEditable={isEditable} />}
       {volet === 'sorties' && <SortiesSeulPanel />}
+      {volet === 'pdf' && <PdfClassesPanel />}
     </div>
   )
 }

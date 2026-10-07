@@ -1,4 +1,6 @@
 import { minutesToTime, timeToMinutes } from '../data/classSchedules'
+import { fullLabel } from '../data/salles'
+import type { SoutienSeance } from '../data/soutien'
 import { teacherName } from '../data/teachers'
 import { getClassScheduleSnapshot, getAllClassSchedulesSnapshot } from '../services/classSchedulesService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
@@ -6,10 +8,11 @@ import { getStudentsSnapshot } from '../services/studentsService'
 import { getSuiviProfsSnapshot } from '../services/suiviProfsService'
 import { getReservationsSallesSnapshot } from '../services/reservationsSallesService'
 import { getSoutienInscriptionsSnapshot, getSoutienSeancesSnapshot } from '../services/soutienService'
+import { getSallesSnapshot } from '../services/sallesService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getServicesCapaciteSnapshot } from '../services/servicesCapaciteService'
-import { infoTransportEleve, rapportParClasse, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee, type RapportClasse } from './soutien'
+import { infoTransportEleve, rapportParClasse, soutienDuJour, sortieSeule, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee, type RapportClasse, type SoutienDuJourLigne } from './soutien'
 import { aujourdhuiLocalISO } from './soutienSeances'
 
 /**
@@ -78,5 +81,59 @@ export function rapportDeLEcole(classes?: string[]): RapportClasse[] {
     inscriptions: getSoutienInscriptionsSnapshot(),
     aPartirDe: aujourdhuiLocalISO(),
     classes,
+  })
+}
+
+export interface FeuilleSeance {
+  seance: SoutienSeance
+  enseignant: string
+  salle: string
+  /** Élèves dont les parents ont confirmé, avec la façon dont ils quittent l'école après la séance. */
+  confirmes: { studentId: string; name: string; classe: string; sortie: string }[]
+  /** Élèves dont la réponse est attendue. */
+  enAttente: { name: string; classe: string }[]
+  nePasRestent: number
+}
+
+/** Données de la feuille imprimable d'une séance : qui reste, et comment chacun repart. */
+export function feuilleDeSeance(seance: SoutienSeance): FeuilleSeance {
+  const students = new Map(getStudentsSnapshot().map((s) => [s.id, s]))
+  const prof = seance.teacherId ? getTeachersSnapshot().find((t) => t.id === seance.teacherId) : undefined
+  const salle = seance.salleId ? getSallesSnapshot().find((s) => s.id === seance.salleId) : undefined
+  const inscrits = getSoutienInscriptionsSnapshot().filter((i) => i.seanceId === seance.id)
+  const tri = (a: { classe: string; name: string }, b: { classe: string; name: string }) => a.classe.localeCompare(b.classe, 'fr') || a.name.localeCompare(b.name, 'fr')
+
+  const confirmes: FeuilleSeance['confirmes'] = []
+  const enAttente: FeuilleSeance['enAttente'] = []
+  inscrits.forEach((i) => {
+    const s = students.get(i.studentId)
+    if (!s) return
+    if (i.statut === 'reste') {
+      const seul = sortieSeule(getStudentExtraSnapshot(s.id).cantine).seul
+      const car = transportInfoOf(s.id).aTransportSoir
+      confirmes.push({ studentId: s.id, name: s.name, classe: s.classe, sortie: seul ? 'Sort seul(e)' : car ? 'Habituellement au car : non assuré ce jour' : 'Récupéré par les parents' })
+    } else if (i.statut === 'a_confirmer') enAttente.push({ name: s.name, classe: s.classe })
+  })
+  return {
+    seance,
+    enseignant: prof ? teacherName(prof) : '',
+    salle: salle ? fullLabel(salle) : '',
+    confirmes: confirmes.sort(tri),
+    enAttente: enAttente.sort(tri),
+    nePasRestent: inscrits.filter((i) => i.statut === 'ne_reste_pas').length,
+  }
+}
+
+/** Séances de soutien du jour pour le Cockpit, avec le nom de l'enseignant. */
+export function soutienDuJourDeLEcole(dateISO: string, nowMinutes: number): (SoutienDuJourLigne & { enseignant: string })[] {
+  const students = new Map(getStudentsSnapshot().map((s) => [s.id, s]))
+  const teachers = new Map(getTeachersSnapshot().map((t) => [t.id, teacherName(t)]))
+  const seances = getSoutienSeancesSnapshot()
+  return soutienDuJour(seances, getSoutienInscriptionsSnapshot(), dateISO, nowMinutes, {
+    nom: (id) => students.get(id)?.name ?? '',
+    aTransportSoir: (id) => transportInfoOf(id).aTransportSoir,
+  }).map((l) => {
+    const teacherId = seances.find((s) => s.id === l.seanceId)?.teacherId
+    return { ...l, enseignant: (teacherId && teachers.get(teacherId)) || '' }
   })
 }

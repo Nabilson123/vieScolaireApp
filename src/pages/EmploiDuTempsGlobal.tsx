@@ -42,6 +42,7 @@ import CourseSlotModal, { type CourseSlotFormData } from '../components/CourseSl
 import RemplacementDirectModal from '../components/RemplacementDirectModal'
 import ScheduleTimeGrid from '../components/schedule/ScheduleTimeGrid'
 import SchedulePrintPreviewModal from '../components/schedule-print/SchedulePrintPreviewModal'
+import type { PrintScheduleSlot } from '../components/schedule-print/PrintableScheduleLudique'
 import SchedulesExportModal from '../components/schedule-print/SchedulesExportModal'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { useIsViewedYearEditable } from '../services/viewedYear'
@@ -300,6 +301,14 @@ export default function EmploiDuTempsGlobal() {
       ],
     ])
   )
+  // Mêmes blocs pour l'impression de la grille affichée (classe ou enseignant).
+  const soutienImpression = (blocs: typeof blocsClasse, classe: string | undefined): Record<string, PrintScheduleSlot[]> =>
+    Object.fromEntries(
+      SCHEDULE_DAYS.map((day) => [
+        day,
+        soutienSlots(blocs, day, classe).map((s) => ({ id: s.id, subject: s.subject, start: s.start, end: s.end, hours: s.hours, secondaryLabel: s.subtitle, hatched: true })),
+      ])
+    )
   // La grille s'arrête à 17 h, sauf si un soutien se termine plus tard.
   const finSoutienMax = Math.max(0, ...Object.values(blocsClasse ?? blocsEnseignant ?? {}).flat().map((b) => timeToMinutes(b.end)))
   const gridEndHour = Math.max(17, Math.ceil(finSoutienMax / 60))
@@ -579,6 +588,7 @@ export default function EmploiDuTempsGlobal() {
             weekStart={monday}
             weekEnd={weekEnd}
             schedule={schedule}
+            soutien={soutienImpression(blocsClasse, selectedClasse)}
             onClose={() => setShowPrintPreview(false)}
           />
         ) : (
@@ -590,6 +600,7 @@ export default function EmploiDuTempsGlobal() {
               weekStart={monday}
               weekEnd={weekEnd}
               schedule={teacherSchedule}
+              soutien={soutienImpression(blocsEnseignant, undefined)}
               onClose={() => setShowPrintPreview(false)}
             />
           )

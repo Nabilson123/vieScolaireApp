@@ -12,6 +12,7 @@ import {
   normaliserHeure,
   rapportParClasse,
   sortieSeule,
+  soutienDuJour,
   suggestionsPourMatiere,
   type BrouillonSeance,
   type ConflitsContext,
@@ -310,5 +311,46 @@ describe('suggestionsPourMatiere', () => {
 
   it('aucune classe visée : aucune suggestion', () => {
     expect(suggestionsPourMatiere('Mathématiques', [], eleves, rules)).toEqual([])
+  })
+})
+
+describe('soutienDuJour', () => {
+  // 2026-10-13 est un mardi.
+  const mardi = seance({ id: 's1', jour: 'MARDI', heureDebut: '16:00', heureFin: '17:30', dateDebut: '2026-10-13', dateFin: '2026-11-03' })
+  const lundi = seance({ id: 's2', jour: 'LUNDI' })
+  const inscriptions = [
+    insc({ id: 'i1', seanceId: 's1', studentId: 'e1', statut: 'reste' }),
+    insc({ id: 'i2', seanceId: 's1', studentId: 'e2', statut: 'reste' }),
+    insc({ id: 'i3', seanceId: 's1', studentId: 'e3' }),
+    insc({ id: 'i4', seanceId: 's1', studentId: 'e4', statut: 'ne_reste_pas' }),
+  ]
+  const eleve = { nom: (id: string) => id.toUpperCase(), aTransportSoir: (id: string) => id === 'e1' }
+  const minutes = (h: number, m = 0) => h * 60 + m
+
+  it('ne garde que les séances qui ont lieu ce jour-là', () => {
+    expect(soutienDuJour([mardi, lundi], inscriptions, '2026-10-13', minutes(10), eleve).map((l) => l.seanceId)).toEqual(['s1'])
+    expect(soutienDuJour([mardi], inscriptions, '2026-10-14', minutes(10), eleve)).toEqual([])
+  })
+
+  it('une date annulée n’y figure pas', () => {
+    expect(soutienDuJour([{ ...mardi, datesAnnulees: ['2026-10-13'] }], inscriptions, '2026-10-13', minutes(10), eleve)).toEqual([])
+  })
+
+  it('compte les réponses et signale les élèves confirmés qui ont normalement le car', () => {
+    const [l] = soutienDuJour([mardi], inscriptions, '2026-10-13', minutes(10), eleve)
+    expect(l).toMatchObject({ confirmes: 2, aConfirmer: 1, nePasRestent: 1, confirmesAuCar: ['E1'] })
+  })
+
+  it('moment : à venir, en cours, terminée', () => {
+    const moment = (h: number, m = 0) => soutienDuJour([mardi], inscriptions, '2026-10-13', minutes(h, m), eleve)[0].moment
+    expect(moment(15, 59)).toBe('a_venir')
+    expect(moment(16)).toBe('en_cours')
+    expect(moment(17, 29)).toBe('en_cours')
+    expect(moment(17, 30)).toBe('terminee')
+  })
+
+  it('classées par heure de début', () => {
+    const tot = seance({ id: 's3', jour: 'MARDI', heureDebut: '15:00', heureFin: '16:00', dateDebut: '2026-10-13' })
+    expect(soutienDuJour([mardi, tot], [], '2026-10-13', minutes(10), eleve).map((l) => l.seanceId)).toEqual(['s3', 's1'])
   })
 })

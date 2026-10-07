@@ -15,6 +15,7 @@ import {
   Settings2,
   CalendarClock,
   MessageSquareWarning,
+  GraduationCap,
   PhoneCall,
 } from 'lucide-react'
 import { initials as studentInitials } from '../data/students'
@@ -50,6 +51,8 @@ import {
   type ParentToCall,
 } from '../utils/liveCockpitAggregation'
 import { computeCockpitReclamations } from '../utils/reclamationsAlerts'
+import { soutienDuJourDeLEcole } from '../utils/soutienContexte'
+import { useSoutienInscriptions, useSoutienSeances } from '../services/soutienService'
 import RemplacementDirectModal from '../components/RemplacementDirectModal'
 import TimelineCreneauxModal from '../components/TimelineCreneauxModal'
 import CockpitPrintPreviewModal from '../components/cockpit-print/CockpitPrintPreviewModal'
@@ -123,6 +126,8 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
       queryClient.invalidateQueries({ queryKey: ['teacherExtras'] })
       queryClient.invalidateQueries({ queryKey: ['studentExtras'] })
       queryClient.invalidateQueries({ queryKey: ['appels'] })
+      queryClient.invalidateQueries({ queryKey: ['soutienSeances'] })
+      queryClient.invalidateQueries({ queryKey: ['soutienInscriptions'] })
       setLastRefreshedAt(new Date())
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, 45_000)
@@ -167,6 +172,15 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
   const parentsToCall = useMemo(() => getParentsToCallToday(today), [today, students, studentExtras, appelsParentsToday])
   const recentEvents = useMemo(() => buildRecentEvents(today, 20), [today, students, studentExtras])
   const reclamationsCockpit = useMemo(() => computeCockpitReclamations(), [today, students, studentExtras])
+  // Abonnement aux séances de soutien : la carte « Soutien du jour » lit leurs instantanés.
+  const { data: soutienSeances } = useSoutienSeances()
+  const { data: soutienInscriptions } = useSoutienInscriptions()
+  const soutienDuJour = useMemo(() => {
+    const d = new Date()
+    return soutienDuJourDeLEcole(today, d.getHours() * 60 + d.getMinutes())
+    // nowTick : la séance passe de « à venir » à « en cours » puis « terminée » sans rechargement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, Math.floor(nowTick / 30), soutienSeances, soutienInscriptions, students])
 
   const nowMin = useMemo(() => {
     void nowTick
@@ -751,6 +765,52 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                     {reclamationsCockpit.signaux.length} signal{reclamationsCockpit.signaux.length > 1 ? 'aux' : ''} de récurrence — voir Réclamations Parents.
                   </p>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Soutien scolaire du jour */}
+          <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-violet-500" />
+                <h3 className="text-sm font-bold text-slate-800">Soutien du jour</h3>
+              </div>
+              <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                {soutienDuJour.length === 0 ? 'Aucune séance' : `${soutienDuJour.length} séance${soutienDuJour.length > 1 ? 's' : ''}`}
+              </span>
+            </div>
+            {soutienDuJour.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">Pas de soutien scolaire aujourd'hui.</p>
+            ) : (
+              <div className="space-y-2">
+                {soutienDuJour.map((s) => (
+                  <div key={s.seanceId} className="rounded-xl bg-white p-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {s.matiere} <span className="font-normal text-slate-400">{s.heureDebut} – {s.heureFin}</span>
+                      </p>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                          s.moment === 'en_cours' ? 'bg-emerald-100 text-emerald-700' : s.moment === 'a_venir' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {s.moment === 'en_cours' ? 'En cours' : s.moment === 'a_venir' ? 'À venir' : 'Terminée'}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{s.enseignant || "Pas d'enseignant"}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      <span className="font-semibold text-emerald-700">{s.confirmes} confirmé{s.confirmes > 1 ? 's' : ''}</span>
+                      {s.aConfirmer > 0 && <span className="font-semibold text-amber-700"> · {s.aConfirmer} à confirmer</span>}
+                      {s.nePasRestent > 0 && <span className="text-slate-400"> · {s.nePasRestent} ne restent pas</span>}
+                    </p>
+                    {s.confirmesAuCar.length > 0 && (
+                      <p className="mt-1 text-xs font-medium text-amber-700">
+                        Normalement au car (non assuré ce soir) : {s.confirmesAuCar.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

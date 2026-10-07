@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Bus, CalendarX, CheckCircle2, Clock, DoorOpen, GraduationCap, Pencil, PlusCircle, Trash2, User, X } from 'lucide-react'
+import { Bus, CalendarX, CheckCircle2, Clock, DoorOpen, GraduationCap, Pencil, PlusCircle, Printer, Trash2, User, X } from 'lucide-react'
 import { JOURS_SOUTIEN, JOUR_LABELS, type SoutienSeance } from '../../data/soutien'
 import { fullLabel } from '../../data/salles'
 import { teacherName } from '../../data/teachers'
@@ -7,8 +7,9 @@ import { useSalles } from '../../services/sallesService'
 import { useTeachers } from '../../services/teachersService'
 import { useDeleteSoutienSeance, useSetSoutienDateAnnulee, useSoutienInscriptions, useSoutienSeances } from '../../services/soutienService'
 import { alerteCar } from '../../utils/soutien'
-import { transportInfoOf } from '../../utils/soutienContexte'
+import { feuilleDeSeance, transportInfoOf, type FeuilleSeance } from '../../utils/soutienContexte'
 import { aujourdhuiLocalISO, compterStatuts, inscritsDeLaSeance, jourDeDate, occurrencesAnnulees, occurrencesSeance, seanceTerminee } from '../../utils/soutienSeances'
+import SoutienSeancePrintPreviewModal from '../soutien-print/SoutienSeancePrintPreviewModal'
 import SoutienSeanceModal from './SoutienSeanceModal'
 
 function dateCourte(iso: string): string {
@@ -40,6 +41,7 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [datePicker, setDatePicker] = useState<{ id: string; date: string } | null>(null)
   const [voirTerminees, setVoirTerminees] = useState(false)
+  const [feuille, setFeuille] = useState<FeuilleSeance | null>(null)
 
   const aujourdhui = aujourdhuiLocalISO()
   const nomProf = useMemo(() => new Map(teachers.map((t) => [t.id, teacherName(t)])), [teachers])
@@ -118,26 +120,31 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
                               {close && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Terminée</span>}
                             </p>
                           </div>
-                          {isEditable && (
-                            <div className="flex shrink-0 items-center gap-1">
-                              <button type="button" title="Modifier" aria-label="Modifier la séance" onClick={() => setModal({ seance: s })} className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Annuler une date"
-                                aria-label="Annuler une date"
-                                disabled={prochaines.length === 0}
-                                onClick={() => setDatePicker(datePicker?.id === s.id ? null : { id: s.id, date: prochaines[0] ?? '' })}
-                                className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-40"
-                              >
-                                <CalendarX className="h-3.5 w-3.5" />
-                              </button>
-                              <button type="button" title="Supprimer" aria-label="Supprimer la séance" onClick={() => setConfirmDelete(s.id)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button type="button" title="Imprimer la feuille de la séance" aria-label="Imprimer la feuille de la séance" onClick={() => setFeuille(feuilleDeSeance(s))} className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200">
+                              <Printer className="h-3.5 w-3.5" />
+                            </button>
+                            {isEditable && (
+                              <>
+                                <button type="button" title="Modifier" aria-label="Modifier la séance" onClick={() => setModal({ seance: s })} className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Annuler une date"
+                                  aria-label="Annuler une date"
+                                  disabled={prochaines.length === 0}
+                                  onClick={() => setDatePicker(datePicker?.id === s.id ? null : { id: s.id, date: prochaines[0] ?? '' })}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-40"
+                                >
+                                  <CalendarX className="h-3.5 w-3.5" />
+                                </button>
+                                <button type="button" title="Supprimer" aria-label="Supprimer la séance" onClick={() => setConfirmDelete(s.id)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         <div className="space-y-1 text-xs text-slate-600">
@@ -252,6 +259,7 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
         </div>
       )}
 
+      {feuille && <SoutienSeancePrintPreviewModal feuille={feuille} onClose={() => setFeuille(null)} />}
       {modal && <SoutienSeanceModal seance={modal.seance} onClose={() => setModal(null)} onSaved={setNotice} />}
     </div>
   )

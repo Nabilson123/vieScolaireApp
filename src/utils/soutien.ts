@@ -15,7 +15,7 @@ import {
 import type { ServicesCapacite } from '../services/servicesCapaciteService'
 import { cycleOfClasse, moyenneScaleForClasse, niveauFromClasse } from './alertEngine'
 import { computeSubjectMoyenne } from './studentAggregation'
-import { FIN_DES_TEMPS, inscritsDeLaSeance, occurrencesSeance, seanceTerminee } from './soutienSeances'
+import { FIN_DES_TEMPS, inscritsDeLaSeance, occurrencesSeance, seanceActiveLe, seanceTerminee } from './soutienSeances'
 import { normalizeText } from './textMatch'
 import { resolveStudentTransport } from './transportStudentResolver'
 
@@ -411,4 +411,54 @@ export function suggestionsPourMatiere(matiere: string, classes: string[], eleve
     out.push({ studentId: student.id, name: student.name, classe: student.classe, moyenne, scale, seuil })
   })
   return out.sort((a, b) => a.moyenne - b.moyenne || a.name.localeCompare(b.name, 'fr'))
+}
+
+// ───────────────────────── Soutien du jour (Cockpit) ─────────────────────────
+
+export type MomentSeance = 'a_venir' | 'en_cours' | 'terminee'
+
+export interface SoutienDuJourLigne {
+  seanceId: string
+  matiere: string
+  heureDebut: string
+  heureFin: string
+  moment: MomentSeance
+  confirmes: number
+  aConfirmer: number
+  nePasRestent: number
+  /** Élèves confirmés qui prennent normalement le car du soir : il n'est pas assuré pour eux aujourd'hui. */
+  confirmesAuCar: string[]
+}
+
+/**
+ * Séances de soutien qui ont lieu ce jour-là (date annulée écartée), dans l'ordre des heures, avec où en sont les
+ * réponses des parents et les élèves normalement au car qui restent.
+ */
+export function soutienDuJour(
+  seances: SoutienSeance[],
+  inscriptions: SoutienInscription[],
+  dateISO: string,
+  nowMinutes: number,
+  eleve: { nom: (studentId: string) => string; aTransportSoir: (studentId: string) => boolean },
+): SoutienDuJourLigne[] {
+  return seances
+    .filter((s) => seanceActiveLe(s, dateISO))
+    .map((s) => {
+      const inscrits = inscritsDeLaSeance(inscriptions, s.id)
+      const confirmes = inscrits.filter((i) => i.statut === 'reste')
+      const debut = timeToMinutes(s.heureDebut)
+      const fin = timeToMinutes(s.heureFin)
+      return {
+        seanceId: s.id,
+        matiere: s.matiere,
+        heureDebut: s.heureDebut,
+        heureFin: s.heureFin,
+        moment: nowMinutes >= fin ? ('terminee' as const) : nowMinutes >= debut ? ('en_cours' as const) : ('a_venir' as const),
+        confirmes: confirmes.length,
+        aConfirmer: inscrits.filter((i) => i.statut === 'a_confirmer').length,
+        nePasRestent: inscrits.filter((i) => i.statut === 'ne_reste_pas').length,
+        confirmesAuCar: confirmes.filter((i) => eleve.aTransportSoir(i.studentId)).map((i) => eleve.nom(i.studentId)),
+      }
+    })
+    .sort((a, b) => timeToMinutes(a.heureDebut) - timeToMinutes(b.heureDebut))
 }
