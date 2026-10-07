@@ -1,19 +1,32 @@
 import { useState } from 'react'
-import { GraduationCap } from 'lucide-react'
+import { DoorOpen, GraduationCap, MessageCircle } from 'lucide-react'
+import { useSoutienInscriptions, useSoutienSeances } from '../../services/soutienService'
+import { aujourdhuiLocalISO, seanceTerminee } from '../../utils/soutienSeances'
+import ConfirmationsPanel from './ConfirmationsPanel'
 import SeancesPanel from './SeancesPanel'
+import SortiesSeulPanel from './SortiesSeulPanel'
 
-type Volet = 'seances'
-
-const VOLETS: { key: Volet; label: string; icon: typeof GraduationCap }[] = [{ key: 'seances', label: 'Séances', icon: GraduationCap }]
+type Volet = 'seances' | 'confirmations' | 'sorties'
 
 /** Onglet « Soutien & Sorties » d'Emplois du Temps : séances de soutien, confirmations des parents, sorties seul(e) et PDF par classe. */
 export default function SoutienSortiesTab({ isEditable }: { isEditable: boolean }) {
   const [volet, setVolet] = useState<Volet>('seances')
+  const { data: seances = [] } = useSoutienSeances()
+  const { data: inscriptions = [] } = useSoutienInscriptions()
+
+  const enCours = new Set(seances.filter((s) => !seanceTerminee(s, aujourdhuiLocalISO())).map((s) => s.id))
+  const aConfirmer = inscriptions.filter((i) => enCours.has(i.seanceId) && i.statut === 'a_confirmer').length
+
+  const volets: { key: Volet; label: string; icon: typeof GraduationCap; badge?: number }[] = [
+    { key: 'seances', label: 'Séances', icon: GraduationCap },
+    { key: 'confirmations', label: 'Confirmations', icon: MessageCircle, badge: aConfirmer },
+    { key: 'sorties', label: 'Sorties seul(e)', icon: DoorOpen },
+  ]
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1 sm:inline-flex">
-        {VOLETS.map(({ key, label, icon: Icon }) => (
+        {volets.map(({ key, label, icon: Icon, badge }) => (
           <button
             key={key}
             type="button"
@@ -24,11 +37,14 @@ export default function SoutienSortiesTab({ isEditable }: { isEditable: boolean 
           >
             <Icon className="h-4 w-4" />
             {label}
+            {!!badge && <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">{badge}</span>}
           </button>
         ))}
       </div>
 
       {volet === 'seances' && <SeancesPanel isEditable={isEditable} />}
+      {volet === 'confirmations' && <ConfirmationsPanel isEditable={isEditable} />}
+      {volet === 'sorties' && <SortiesSeulPanel />}
     </div>
   )
 }

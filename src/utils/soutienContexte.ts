@@ -9,7 +9,8 @@ import { getSoutienInscriptionsSnapshot, getSoutienSeancesSnapshot } from '../se
 import { getTeachersSnapshot } from '../services/teachersService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getServicesCapaciteSnapshot } from '../services/servicesCapaciteService'
-import { infoTransportEleve, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee } from './soutien'
+import { infoTransportEleve, rapportParClasse, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee, type RapportClasse } from './soutien'
+import { aujourdhuiLocalISO } from './soutienSeances'
 
 /**
  * Données réelles de l'application pour `conflitsSeance` : emplois du temps des classes, réservations de salles,
@@ -62,4 +63,20 @@ export function transportInfoOf(studentId: string): InfoTransportSoutien {
   const student = getStudentsSnapshot().find((s) => s.id === studentId)
   if (!student) return { aTransportSoir: false, ligneSoir: null, depart: null, heureDepart: '' }
   return infoTransportEleve(student, getStudentIdentitySnapshot(studentId), getServicesCapaciteSnapshot() ?? undefined)
+}
+
+/** Rapport par classe (transport, sortie seul(e), soutien) d'après les données de l'application, séances non closes. */
+export function rapportDeLEcole(classes?: string[]): RapportClasse[] {
+  return rapportParClasse({
+    eleves: getStudentsSnapshot().map((student) => ({
+      student,
+      identity: getStudentIdentitySnapshot(student.id),
+      cantine: getStudentExtraSnapshot(student.id).cantine,
+    })),
+    capacite: getServicesCapaciteSnapshot() ?? undefined,
+    seances: getSoutienSeancesSnapshot(),
+    inscriptions: getSoutienInscriptionsSnapshot(),
+    aPartirDe: aujourdhuiLocalISO(),
+    classes,
+  })
 }
