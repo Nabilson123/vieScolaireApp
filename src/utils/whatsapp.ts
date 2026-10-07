@@ -1,4 +1,5 @@
 import { demandeurLabel, type RendezVousRecord } from '../data/studentDetails'
+import { JOUR_LABELS, JOUR_LABELS_AR, type JourSoutien } from '../data/soutien'
 
 const MOROCCO_COUNTRY_CODE = '212'
 
@@ -377,5 +378,116 @@ export function buildReclamationMessage(kind: ReclamationMessageKind, info: Recl
   if (lang === 'ar') return buildReclamationMessageAr(kind, info)
   const fr = buildReclamationMessageFr(kind, info)
   return lang === 'both' ? `${fr}\n\n──────────\n\n${buildReclamationMessageAr(kind, info)}` : fr
+}
+
+/** `confirmation` : première annonce du soutien aux parents ; `changement` : le jour ou l'heure a changé, ils doivent confirmer à nouveau. */
+export type SoutienMessageKind = 'confirmation' | 'changement'
+
+export interface SoutienWhatsAppInfo {
+  /** Nom du parent destinataire ; vide → « Bonjour, ». */
+  parentNom: string
+  studentName: string
+  /** Nom de l'élève en arabe ; à défaut le nom français est repris dans la version arabe. */
+  studentNameAr?: string
+  classe: string
+  matiere: string
+  matiereAr?: string
+  jour: JourSoutien
+  heureDebut: string
+  heureFin: string
+  /** AAAA-MM-JJ : prochaine date où la séance a lieu. */
+  aPartirDu: string
+  /** AAAA-MM-JJ : dernière semaine, absente quand la période est ouverte. */
+  jusquAu?: string | null
+  enseignant?: string
+  salle?: string
+  /** L'élève prend normalement le car du soir. */
+  aTransportSoir: boolean
+  ligneSoir?: string | null
+  /** HH:MM : départ du car du soir. */
+  heureDepart?: string
+}
+
+function minutesDe(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + (m || 0)
+}
+
+/** Vrai si la séance se termine après le départ du car (l'élève qui reste le manque). */
+function finApresLeCar(info: SoutienWhatsAppInfo): boolean {
+  return !!info.heureDepart && minutesDe(info.heureFin) > minutesDe(info.heureDepart)
+}
+
+function buildSoutienMessageFr(kind: SoutienMessageKind, info: SoutienWhatsAppInfo): string {
+  const eleve = `*${info.studentName}*${info.classe ? ` (${info.classe})` : ''}`
+  const lines = [info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,', '']
+  if (kind === 'confirmation') {
+    lines.push(`Votre enfant ${eleve} est inscrit(e) au soutien scolaire en *${info.matiere}*.`)
+  } else {
+    lines.push(`Le créneau du soutien scolaire de ${eleve} en *${info.matiere}* a été modifié.`)
+  }
+  lines.push('', `*${kind === 'changement' ? 'Nouveau créneau' : 'Séance'} :* chaque ${JOUR_LABELS[info.jour].toLowerCase()} de ${info.heureDebut} à ${info.heureFin}`)
+  lines.push(`*À partir du :* ${dateCourte(info.aPartirDu)}${info.jusquAu ? ` jusqu'au ${dateCourte(info.jusquAu)}` : ''}`)
+  if (info.enseignant) lines.push(`*Enseignant :* ${info.enseignant}`)
+  if (info.salle) lines.push(`*Salle :* ${info.salle}`)
+  if (info.aTransportSoir) {
+    lines.push(
+      '',
+      `Votre enfant prend le car du soir${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.` +
+        `${finApresLeCar(info) ? ` Le soutien se termine à ${info.heureFin}, après le départ du car.` : ''}` +
+        ' *S\'il reste au soutien, le transport du soir ne sera pas assuré par le service transport.*'
+    )
+  }
+  if (kind === 'changement') lines.push('', 'Ce changement annule votre réponse précédente : merci de nous confirmer à nouveau.')
+  lines.push(
+    '',
+    info.aTransportSoir
+      ? 'Merci de nous répondre à ce message : *RESTE* si votre enfant reste au soutien, ou *TRANSPORT* s\'il prend le car comme d\'habitude.'
+      : 'Merci de nous répondre à ce message : *OUI* si votre enfant reste au soutien, ou *NON* dans le cas contraire.'
+  )
+  lines.push(...SIGNATURE)
+  return lines.join('\n')
+}
+
+/** Version arabe du message de soutien. Le nom de l'élève, de l'enseignant et la matière gardent leur écriture saisie
+ * (l'arabe est repris des fiches quand il existe) ; seul le texte du modèle est traduit. */
+function buildSoutienMessageAr(kind: SoutienMessageKind, info: SoutienWhatsAppInfo): string {
+  const nom = info.studentNameAr?.trim() || info.studentName
+  const eleve = `*${nom}*${info.classe ? ` (${info.classe})` : ''}`
+  const matiere = info.matiereAr?.trim() || info.matiere
+  const lines = [info.parentNom.trim() ? `السلام عليكم ${info.parentNom.trim()}،` : 'السلام عليكم،', '']
+  if (kind === 'confirmation') {
+    lines.push(`تم تسجيل التلميذ(ة) ${eleve} في حصص الدعم المدرسي في مادة *${matiere}*.`)
+  } else {
+    lines.push(`تم تغيير موعد حصة الدعم المدرسي للتلميذ(ة) ${eleve} في مادة *${matiere}*.`)
+  }
+  lines.push('', `*${kind === 'changement' ? 'الموعد الجديد' : 'الحصة'} :* كل ${JOUR_LABELS_AR[info.jour]} من ${info.heureDebut} إلى ${info.heureFin}`)
+  lines.push(`*ابتداءً من :* ${dateCourte(info.aPartirDu)}${info.jusquAu ? ` إلى غاية ${dateCourte(info.jusquAu)}` : ''}`)
+  if (info.enseignant) lines.push(`*الأستاذ(ة) :* ${info.enseignant}`)
+  if (info.salle) lines.push(`*القاعة :* ${info.salle}`)
+  if (info.aTransportSoir) {
+    lines.push(
+      '',
+      `التلميذ(ة) يستفيد من حافلة النقل المدرسي مساءً${info.ligneSoir ? ` (الخط ${info.ligneSoir}${info.heureDepart ? `، الانطلاق على الساعة ${info.heureDepart}` : ''})` : ''}.` +
+        `${finApresLeCar(info) ? ` تنتهي الحصة على الساعة ${info.heureFin}، أي بعد انطلاق الحافلة.` : ''}` +
+        ' *في حال بقائه في حصة الدعم، لن تتكفل مصلحة النقل المدرسي بنقله مساءً.*'
+    )
+  }
+  if (kind === 'changement') lines.push('', 'هذا التغيير يلغي جوابكم السابق، لذا يرجى تأكيد قراركم من جديد.')
+  lines.push(
+    '',
+    info.aTransportSoir
+      ? 'يرجى الرد على هذه الرسالة : *يبقى* إذا كان سيبقى في حصة الدعم، أو *النقل* إذا كان سيستقل الحافلة كالمعتاد.'
+      : 'يرجى الرد على هذه الرسالة : *نعم* إذا كان سيبقى في حصة الدعم، أو *لا* في الحالة المعاكسة.'
+  )
+  lines.push(...SIGNATURE_AR)
+  return lines.join('\n')
+}
+
+/** Message aux parents sur le soutien scolaire, dans la langue choisie ; « both » met le français puis l'arabe, séparés par un filet. */
+export function buildSoutienMessage(kind: SoutienMessageKind, info: SoutienWhatsAppInfo, lang: ReclamationMessageLang = 'fr'): string {
+  if (lang === 'ar') return buildSoutienMessageAr(kind, info)
+  const fr = buildSoutienMessageFr(kind, info)
+  return lang === 'both' ? `${fr}\n\n──────────\n\n${buildSoutienMessageAr(kind, info)}` : fr
 }
 

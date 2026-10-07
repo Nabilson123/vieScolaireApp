@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage } from './whatsapp'
+import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage, buildSoutienMessage } from './whatsapp'
 
 describe('toWhatsAppPhone', () => {
   it('converts a local Moroccan number (leading 0) to international format', () => {
@@ -193,5 +193,95 @@ describe('buildReclamationMessage', () => {
 
   it('salue sans nom quand le parent est inconnu', () => {
     expect(buildReclamationMessage('accuse', { ...info, parentNom: '  ' }).startsWith('Bonjour,\n')).toBe(true)
+  })
+})
+
+describe('buildSoutienMessage', () => {
+  const info = {
+    parentNom: 'Mme SAIDI',
+    studentName: 'Baker SAIDI',
+    studentNameAr: 'بكر السعيدي',
+    classe: 'CE1-A',
+    matiere: 'Mathématiques',
+    matiereAr: 'الرياضيات',
+    jour: 'LUNDI' as const,
+    heureDebut: '16:30',
+    heureFin: '17:30',
+    aPartirDu: '2026-10-12',
+    jusquAu: '2026-11-02',
+    enseignant: 'Sara ERRAIDI',
+    salle: 'Salle 4',
+    aTransportSoir: false,
+  }
+  const avecCar = { ...info, aTransportSoir: true, ligneSoir: 'A', heureDepart: '16:00' }
+
+  it('confirmation : créneau, période, enseignant et salle', () => {
+    const m = buildSoutienMessage('confirmation', info)
+    expect(m).toContain('Bonjour Mme SAIDI,')
+    expect(m).toContain('*Baker SAIDI* (CE1-A) est inscrit(e) au soutien scolaire en *Mathématiques*')
+    expect(m).toContain('chaque lundi de 16:30 à 17:30')
+    expect(m).toContain('*À partir du :* 12/10/2026 jusqu\'au 02/11/2026')
+    expect(m).toContain('*Enseignant :* Sara ERRAIDI')
+    expect(m).toContain('*Salle :* Salle 4')
+  })
+
+  it('sans transport : réponse OUI / NON et aucune mention du car', () => {
+    const m = buildSoutienMessage('confirmation', info)
+    expect(m).toContain('*OUI*')
+    expect(m).not.toContain('car')
+    expect(m).not.toContain('transport')
+  })
+
+  it('avec le car du soir : précise que le transport n’est plus assuré s’il reste, et demande RESTE / TRANSPORT', () => {
+    const m = buildSoutienMessage('confirmation', avecCar)
+    expect(m).toContain('(ligne A, départ à 16:00)')
+    expect(m).toContain('après le départ du car')
+    expect(m).toContain("le transport du soir ne sera pas assuré par le service transport")
+    expect(m).toContain('*RESTE*')
+    expect(m).toContain('*TRANSPORT*')
+    expect(m).not.toContain('*OUI*')
+  })
+
+  it('séance qui finit avant le car : pas de mention « après le départ du car »', () => {
+    const m = buildSoutienMessage('confirmation', { ...avecCar, heureFin: '15:30', heureDebut: '14:30' })
+    expect(m).not.toContain('après le départ du car')
+    expect(m).toContain('ne sera pas assuré')
+  })
+
+  it('changement : annonce le nouveau créneau et annule la réponse précédente', () => {
+    const m = buildSoutienMessage('changement', info)
+    expect(m).toContain('a été modifié')
+    expect(m).toContain('*Nouveau créneau :*')
+    expect(m).toContain('annule votre réponse précédente')
+  })
+
+  it('période ouverte : pas de « jusqu\'au » ; parent inconnu : « Bonjour, »', () => {
+    const m = buildSoutienMessage('confirmation', { ...info, jusquAu: null, parentNom: ' ' })
+    expect(m).not.toContain("jusqu'au")
+    expect(m.startsWith('Bonjour,\n')).toBe(true)
+  })
+
+  it('arabe : nom et matière en arabe, jour en arabe, jamais de français du modèle', () => {
+    const m = buildSoutienMessage('confirmation', avecCar, 'ar')
+    expect(m).toContain('*بكر السعيدي*')
+    expect(m).toContain('*الرياضيات*')
+    expect(m).toContain('كل الاثنين من 16:30 إلى 17:30')
+    expect(m).toContain('*يبقى*')
+    expect(m).toContain('*النقل*')
+    expect(m).not.toContain('Bonjour')
+  })
+
+  it('arabe : repli sur le nom et la matière français quand l’arabe manque', () => {
+    const m = buildSoutienMessage('confirmation', { ...info, studentNameAr: '', matiereAr: undefined }, 'ar')
+    expect(m).toContain('*Baker SAIDI*')
+    expect(m).toContain('*Mathématiques*')
+    expect(m).toContain('*نعم*')
+  })
+
+  it('les deux langues : français, filet, arabe', () => {
+    const m = buildSoutienMessage('confirmation', info, 'both')
+    const [fr, ar] = m.split('\n\n──────────\n\n')
+    expect(fr).toContain('Bonjour Mme SAIDI,')
+    expect(ar).toContain('السلام عليكم')
   })
 })

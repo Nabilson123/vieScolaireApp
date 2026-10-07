@@ -71,6 +71,7 @@ import { useChauffeurs } from './services/chauffeursService'
 import { useAidesMaitresses } from './services/aidesMaitressesService'
 import { useAccountType } from './services/accountType'
 import { useParents } from './services/parentsService'
+import { useSoutienInscriptions, useSoutienSeances } from './services/soutienService'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -123,6 +124,8 @@ function App() {
   useChauffeurs(isStaff)
   useAidesMaitresses(isStaff)
   useParents(isStaff)
+  useSoutienSeances(isStaff)
+  useSoutienInscriptions(isStaff)
   const [active, setActive] = useState('dashboard')
   const [navTarget, setNavTarget] = useState<{ studentId?: string; teacherId?: string; tab?: string; classe?: string } | null>(null)
   const [, setGlobalRefresh] = useState(0)
