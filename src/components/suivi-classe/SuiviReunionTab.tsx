@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Megaphone, Pause, Play, Printer, RotateCcw, Save, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { GraduationCap, Megaphone, Pause, Play, Printer, RotateCcw, Save, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useClasses } from '../../services/classesService'
 import { getTeachersSnapshot } from '../../services/teachersService'
 import { teacherName } from '../../data/teachers'
@@ -27,6 +27,9 @@ import PrintableCompteRenduReunion from './PrintableCompteRenduReunion'
 import AutoGrowTextarea from '../AutoGrowTextarea'
 import FamillesPanel from './FamillesPanel'
 import AssiduitePanel from './AssiduitePanel'
+import InscrireSoutienModal from '../soutien/InscrireSoutienModal'
+import { useSoutienInscriptions, useSoutienSeances } from '../../services/soutienService'
+import { libelleCreneau } from '../../utils/soutienSeances'
 import { useMeetingTimer } from '../../hooks/useMeetingTimer'
 import { formatClock, statutTemps, type TempsStatut } from '../../utils/meetingTimer'
 import { computeAssiduiteParClasse, elevesPlusSignales, reunionPrecedente, suiviPrecedent } from '../../utils/suiviClasseReunion'
@@ -332,6 +335,10 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
 
   const niveauActions = actions.filter((a) => a.niveau === group.key)
   const riskStudents = alertRules ? computeAtRiskStudentsForNiveaux(group.niveauxBruts, alertRules) : []
+  // Soutien : séances et inscriptions, pour afficher à qui il est déjà proposé et ouvrir l'inscription depuis le point 3.
+  const { data: soutienSeances = [] } = useSoutienSeances()
+  const { data: soutienInscriptions = [] } = useSoutienInscriptions()
+  const [soutienPour, setSoutienPour] = useState<{ id: string; name: string; classe: string } | null>(null)
   // Une réclamation résolue ailleurs (hors de cette réunion) ne doit pas s'inviter ici, mais une
   // réclamation qu'on vient de marquer "Traitée" PENDANT cette réunion (donc déjà présente dans
   // cr.point5) doit rester visible — sinon elle disparaît du compte-rendu sans laisser de trace.
@@ -535,6 +542,26 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${suiviPrev.has(r.id) ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
                           {suiviPrev.has(r.id) ? 'Déjà suivi' : 'Nouveau'}
                         </span>
+                      )}
+                      {soutienInscriptions
+                        .filter((i) => i.studentId === r.id)
+                        .map((i) => soutienSeances.find((s) => s.id === i.seanceId))
+                        .flatMap((s) => (s ? [s] : []))
+                        .map((s) => (
+                          <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                            <GraduationCap className="h-3 w-3" />
+                            Soutien {s.matiere} · {libelleCreneau(s)}
+                          </span>
+                        ))}
+                      {isEditable && (
+                        <button
+                          type="button"
+                          onClick={() => setSoutienPour({ id: r.id, name: r.name, classe: r.classe })}
+                          className="ml-auto inline-flex items-center gap-1 rounded-md border border-violet-200 bg-white px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"
+                        >
+                          <GraduationCap className="h-3 w-3" />
+                          Proposer le soutien
+                        </button>
                       )}
                     </div>
                     <p className="mb-1.5 pl-3.5 text-xs text-slate-500">{r.reasons.join(' · ')}</p>
@@ -950,6 +977,8 @@ export default function SuiviReunionTab({ initialNiveau, initialSuiviId, isEdita
           </div>
         </div>
       )}
+
+      {soutienPour && <InscrireSoutienModal studentId={soutienPour.id} studentName={soutienPour.name} classe={soutienPour.classe} onClose={() => setSoutienPour(null)} />}
 
       {showPrint && suivi && group && (
         <SuiviReunionPrintPreviewModal group={group} suivi={suivi} compteRendu={cr} riskStudents={riskStudents} reclamations={reclamations} actions={niveauActions} rendezVous={rendezVousImprimes} onClose={() => setShowPrint(false)} />

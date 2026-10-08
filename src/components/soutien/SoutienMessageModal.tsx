@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { SoutienInscription, SoutienSeance } from '../../data/soutien'
 import { useMarkSoutienMessageEnvoye } from '../../services/soutienService'
-import { buildSoutienOutbound, type ParentEleve } from '../../utils/soutienMessage'
+import { buildSoutienOutbound, datesAnnuleesAVenir, type ParentEleve } from '../../utils/soutienMessage'
 import type { SoutienMessageKind } from '../../utils/whatsapp'
 import MessageWhatsAppModal from '../MessageWhatsAppModal'
 import MessageLangSwitch, { useMessageLang } from '../reclamations/MessageLangSwitch'
@@ -9,13 +9,18 @@ import MessageLangSwitch, { useMessageLang } from '../reclamations/MessageLangSw
 export const KIND_LABELS: Record<SoutienMessageKind, string> = {
   confirmation: 'Première annonce',
   changement: 'Créneau modifié',
+  annulation: 'Séance annulée',
 }
 
-/** Choix « première annonce » / « créneau modifié » : le second annule la réponse précédente des parents. */
-export function MessageKindSwitch({ kind, onChange }: { kind: SoutienMessageKind; onChange: (kind: SoutienMessageKind) => void }) {
+/**
+ * Choix « première annonce » / « créneau modifié » (qui annule la réponse précédente des parents) / « séance annulée »
+ * (proposé seulement s'il y a une date annulée à annoncer).
+ */
+export function MessageKindSwitch({ kind, onChange, avecAnnulation = true }: { kind: SoutienMessageKind; onChange: (kind: SoutienMessageKind) => void; avecAnnulation?: boolean }) {
+  const kinds = (Object.keys(KIND_LABELS) as SoutienMessageKind[]).filter((k) => avecAnnulation || k !== 'annulation')
   return (
     <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Type de message">
-      {(Object.keys(KIND_LABELS) as SoutienMessageKind[]).map((k) => (
+      {kinds.map((k) => (
         <button
           key={k}
           type="button"
@@ -47,7 +52,8 @@ export default function SoutienMessageModal({ inscription, seance, studentName, 
   const [kind, setKind] = useState<SoutienMessageKind>(initialKind)
   const [parentKey, setParentKey] = useState<ParentEleve['key'] | undefined>(undefined)
   const marquerEnvoye = useMarkSoutienMessageEnvoye()
-  const { message, parents, parent, recipients } = buildSoutienOutbound(seance, inscription.studentId, kind, lang, parentKey)
+  const annulees = datesAnnuleesAVenir(seance)
+  const { message, parents, parent, recipients } = buildSoutienOutbound(seance, inscription.studentId, kind, lang, parentKey, annulees)
 
   return (
     <MessageWhatsAppModal
@@ -59,7 +65,7 @@ export default function SoutienMessageModal({ inscription, seance, studentName, 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <MessageLangSwitch lang={lang} onChange={setLang} />
-            <MessageKindSwitch kind={kind} onChange={setKind} />
+            <MessageKindSwitch kind={kind} onChange={setKind} avecAnnulation={annulees.length > 0} />
           </div>
           {parents.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -83,7 +89,8 @@ export default function SoutienMessageModal({ inscription, seance, studentName, 
       }
       message={message}
       recipients={recipients}
-      onShared={() => marquerEnvoye.mutate([inscription.id])}
+      // L'annonce d'une annulation ne change pas l'état « prévenu du créneau » : seule l'annonce du créneau est suivie.
+      onShared={kind === 'annulation' ? undefined : () => marquerEnvoye.mutate([inscription.id])}
       onClose={onClose}
     />
   )

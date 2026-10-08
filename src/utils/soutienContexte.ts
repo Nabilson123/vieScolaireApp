@@ -9,11 +9,14 @@ import { getSuiviProfsSnapshot } from '../services/suiviProfsService'
 import { getReservationsSallesSnapshot } from '../services/reservationsSallesService'
 import { getSoutienInscriptionsSnapshot, getSoutienSeancesSnapshot } from '../services/soutienService'
 import { getSallesSnapshot } from '../services/sallesService'
+import { getAidesMaitressesSnapshot } from '../services/aidesMaitressesService'
+import { getChauffeursSnapshot } from '../services/chauffeursService'
 import { getTeachersSnapshot } from '../services/teachersService'
+import { getTransportLignesSnapshot } from '../services/transportLignesService'
 import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getServicesCapaciteSnapshot } from '../services/servicesCapaciteService'
-import { infoTransportEleve, rapportParClasse, soutienDuJour, sortieSeule, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee, type RapportClasse, type SoutienDuJourLigne } from './soutien'
-import { aujourdhuiLocalISO } from './soutienSeances'
+import { alerteCar, incoherencesSortie, infoTransportEleve, modeDepartSoutien, parClasseNom, rapportParClasse, soutienDuJour, sortieSeule, sortiesDuJour, type ConflitsContext, type InfoTransportSoutien, type PlageOccupee, type EleveRapportSource, type IncoherenceSortie, type RapportClasse, type SoutienDuJourLigne, type SortiesDuJour } from './soutien'
+import { aujourdhuiLocalISO, prochaineOccurrence } from './soutienSeances'
 
 /**
  * Données réelles de l'application pour `conflitsSeance` : emplois du temps des classes, réservations de salles,
@@ -68,19 +71,41 @@ export function transportInfoOf(studentId: string): InfoTransportSoutien {
   return infoTransportEleve(student, getStudentIdentitySnapshot(studentId), getServicesCapaciteSnapshot() ?? undefined)
 }
 
+function elevesDeLEcole(): EleveRapportSource[] {
+  return getStudentsSnapshot().map((student) => ({
+    student,
+    identity: getStudentIdentitySnapshot(student.id),
+    cantine: getStudentExtraSnapshot(student.id).cantine,
+  }))
+}
+
 /** Rapport par classe (transport, sortie seul(e), soutien) d'après les données de l'application, séances non closes. */
 export function rapportDeLEcole(classes?: string[]): RapportClasse[] {
   return rapportParClasse({
-    eleves: getStudentsSnapshot().map((student) => ({
-      student,
-      identity: getStudentIdentitySnapshot(student.id),
-      cantine: getStudentExtraSnapshot(student.id).cantine,
-    })),
+    eleves: elevesDeLEcole(),
     capacite: getServicesCapaciteSnapshot() ?? undefined,
     seances: getSoutienSeancesSnapshot(),
     inscriptions: getSoutienInscriptionsSnapshot(),
     aPartirDe: aujourdhuiLocalISO(),
     classes,
+  })
+}
+
+/** Fiches dont le mode de sortie se contredit (voir `incoherencesSortie`). */
+export function incoherencesDeLEcole(): IncoherenceSortie[] {
+  return incoherencesSortie(elevesDeLEcole(), getServicesCapaciteSnapshot() ?? undefined)
+}
+
+/** Sorties du jour : cars du soir, séances de soutien et élèves qui sortent seul(e). */
+export function sortiesDuJourDeLEcole(dateISO: string): SortiesDuJour {
+  const teachers = new Map(getTeachersSnapshot().map((t) => [t.id, teacherName(t)]))
+  return sortiesDuJour({
+    dateISO,
+    eleves: elevesDeLEcole(),
+    capacite: getServicesCapaciteSnapshot() ?? undefined,
+    seances: getSoutienSeancesSnapshot(),
+    inscriptions: getSoutienInscriptionsSnapshot(),
+    nomEnseignant: (id) => (id && teachers.get(id)) || '',
   })
 }
 
@@ -101,7 +126,6 @@ export function feuilleDeSeance(seance: SoutienSeance): FeuilleSeance {
   const prof = seance.teacherId ? getTeachersSnapshot().find((t) => t.id === seance.teacherId) : undefined
   const salle = seance.salleId ? getSallesSnapshot().find((s) => s.id === seance.salleId) : undefined
   const inscrits = getSoutienInscriptionsSnapshot().filter((i) => i.seanceId === seance.id)
-  const tri = (a: { classe: string; name: string }, b: { classe: string; name: string }) => a.classe.localeCompare(b.classe, 'fr') || a.name.localeCompare(b.name, 'fr')
 
   const confirmes: FeuilleSeance['confirmes'] = []
   const enAttente: FeuilleSeance['enAttente'] = []
@@ -109,17 +133,15 @@ export function feuilleDeSeance(seance: SoutienSeance): FeuilleSeance {
     const s = students.get(i.studentId)
     if (!s) return
     if (i.statut === 'reste') {
-      const seul = sortieSeule(getStudentExtraSnapshot(s.id).cantine).seul
-      const car = transportInfoOf(s.id).aTransportSoir
-      confirmes.push({ studentId: s.id, name: s.name, classe: s.classe, sortie: seul ? 'Sort seul(e)' : car ? 'Habituellement au car : non assuré ce jour' : 'Récupéré par les parents' })
+      confirmes.push({ studentId: s.id, name: s.name, classe: s.classe, sortie: modeDepartSoutien(seance, sortieSeule(getStudentExtraSnapshot(s.id).cantine).seul, transportInfoOf(s.id)) })
     } else if (i.statut === 'a_confirmer') enAttente.push({ name: s.name, classe: s.classe })
   })
   return {
     seance,
     enseignant: prof ? teacherName(prof) : '',
     salle: salle ? fullLabel(salle) : '',
-    confirmes: confirmes.sort(tri),
-    enAttente: enAttente.sort(tri),
+    confirmes: confirmes.sort(parClasseNom),
+    enAttente: enAttente.sort(parClasseNom),
     nePasRestent: inscrits.filter((i) => i.statut === 'ne_reste_pas').length,
   }
 }
@@ -131,9 +153,67 @@ export function soutienDuJourDeLEcole(dateISO: string, nowMinutes: number): (Sou
   const seances = getSoutienSeancesSnapshot()
   return soutienDuJour(seances, getSoutienInscriptionsSnapshot(), dateISO, nowMinutes, {
     nom: (id) => students.get(id)?.name ?? '',
-    aTransportSoir: (id) => transportInfoOf(id).aTransportSoir,
+    manqueLeCar: (id, heureFin) => !!alerteCar({ heureFin }, transportInfoOf(id)),
   }).map((l) => {
     const teacherId = seances.find((s) => s.id === l.seanceId)?.teacherId
     return { ...l, enseignant: (teacherId && teachers.get(teacherId)) || '' }
   })
+}
+
+export interface ContactTransport {
+  nom: string
+  tel: string
+}
+
+export interface TransportDuSoutien {
+  date: string
+  /** Lignes dont au moins un élève reste au soutien et manque son car ce soir-là. */
+  lignes: {
+    ligne: string
+    chauffeur: ContactTransport | null
+    aide: ContactTransport | null
+    eleves: { name: string; classe: string; matiere: string; heureFin: string }[]
+  }[]
+  /** Élèves du car qui n'ont pas encore répondu au soutien : on ne sait pas s'ils le prendront. */
+  enAttente: number
+  groupeUrl: string
+}
+
+/** Élèves à signaler à l'équipe transport pour un jour de soutien : ceux qui restent et manquent leur car, ligne par ligne, avec les contacts de la ligne. */
+export function transportDuSoutien(dateISO: string): TransportDuSoutien {
+  const { cars } = sortiesDuJourDeLEcole(dateISO)
+  const lignesTransport = getTransportLignesSnapshot()
+  const chauffeurs = getChauffeursSnapshot()
+  const aides = getAidesMaitressesSnapshot()
+  const parLigne = new Map<string, TransportDuSoutien['lignes'][number]['eleves']>()
+  cars.forEach((c) => {
+    if (c.restants.length === 0) return
+    parLigne.set(c.ligne, [...(parLigne.get(c.ligne) ?? []), ...c.restants.map((r) => ({ name: r.name, classe: r.classe, matiere: r.matiere, heureFin: r.heureFin }))])
+  })
+  const contact = (c: { nom: string; telephone: string } | undefined): ContactTransport | null => (c ? { nom: c.nom, tel: c.telephone } : null)
+  return {
+    date: dateISO,
+    lignes: [...parLigne.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'fr'))
+      .map(([ligne, eleves]) => {
+        const l = lignesTransport.find((x) => x.nom === ligne)
+        return {
+          ligne,
+          chauffeur: contact(chauffeurs.find((c) => c.id === l?.chauffeurId)),
+          aide: contact(aides.find((a) => a.id === l?.aideId)),
+          eleves: [...eleves].sort(parClasseNom),
+        }
+      }),
+    enAttente: cars.reduce((n, c) => n + c.enAttente.length, 0),
+    groupeUrl: getServicesCapaciteSnapshot()?.transportWhatsappGroupeUrl ?? '',
+  }
+}
+
+/** Prochaine date (à partir de `depuisISO`, incluse) où une séance de soutien a lieu. */
+export function prochaineDateDeSoutien(depuisISO: string): string | null {
+  const dates = getSoutienSeancesSnapshot().flatMap((s) => {
+    const d = prochaineOccurrence(s, depuisISO)
+    return d ? [d] : []
+  })
+  return dates.sort()[0] ?? null
 }

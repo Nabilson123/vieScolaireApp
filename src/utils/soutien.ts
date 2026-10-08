@@ -299,6 +299,11 @@ function rangClasse(classe: string): number {
   return i < 0 ? NIVEAUX.length : i
 }
 
+/** Tri des élèves par niveau (PS… 3APIC), puis classe, puis nom. */
+export function parClasseNom(a: { classe: string; name: string }, b: { classe: string; name: string }): number {
+  return rangClasse(a.classe) - rangClasse(b.classe) || a.classe.localeCompare(b.classe, 'fr') || a.name.localeCompare(b.name, 'fr')
+}
+
 function parNom<T extends { name: string }>(a: T, b: T): number {
   return a.name.localeCompare(b.name, 'fr')
 }
@@ -426,7 +431,7 @@ export interface SoutienDuJourLigne {
   confirmes: number
   aConfirmer: number
   nePasRestent: number
-  /** Élèves confirmés qui prennent normalement le car du soir : il n'est pas assuré pour eux aujourd'hui. */
+  /** Élèves confirmés qui prennent normalement le car du soir et le manquent (la séance finit après son départ). */
   confirmesAuCar: string[]
 }
 
@@ -439,7 +444,7 @@ export function soutienDuJour(
   inscriptions: SoutienInscription[],
   dateISO: string,
   nowMinutes: number,
-  eleve: { nom: (studentId: string) => string; aTransportSoir: (studentId: string) => boolean },
+  eleve: { nom: (studentId: string) => string; /** L'élève manque son car du soir s'il reste jusqu'à `heureFin`. */ manqueLeCar: (studentId: string, heureFin: string) => boolean },
 ): SoutienDuJourLigne[] {
   return seances
     .filter((s) => seanceActiveLe(s, dateISO))
@@ -457,8 +462,182 @@ export function soutienDuJour(
         confirmes: confirmes.length,
         aConfirmer: inscrits.filter((i) => i.statut === 'a_confirmer').length,
         nePasRestent: inscrits.filter((i) => i.statut === 'ne_reste_pas').length,
-        confirmesAuCar: confirmes.filter((i) => eleve.aTransportSoir(i.studentId)).map((i) => eleve.nom(i.studentId)),
+        confirmesAuCar: confirmes.filter((i) => eleve.manqueLeCar(i.studentId, s.heureFin)).map((i) => eleve.nom(i.studentId)),
       }
     })
     .sort((a, b) => timeToMinutes(a.heureDebut) - timeToMinutes(b.heureDebut))
+}
+
+// ───────────────────────── Départ après la séance ─────────────────────────
+
+/** Comment un élève confirmé quitte l'école à la fin de la séance. */
+export function modeDepartSoutien(seance: Pick<SoutienSeance, 'heureFin'>, seul: boolean, transport: InfoTransportSoutien): string {
+  if (seul) return 'Sort seul(e)'
+  if (transport.aTransportSoir) return alerteCar(seance, transport) ? 'Habituellement au car : non assuré ce jour' : `Car de ${transport.heureDepart}`
+  return 'Récupéré par les parents'
+}
+
+// ───────────────────────── Sorties du jour (feuille du portail) ─────────────────────────
+
+export interface CarDuSoir {
+  ligne: string
+  /** HH:MM */
+  depart: string
+  habituels: number
+  /** Élèves qui restent au soutien et manquent ce car. */
+  restent: number
+  attendus: number
+  restants: { studentId: string; name: string; classe: string; matiere: string; heureFin: string }[]
+  /** Élèves du car dont la réponse au soutien est attendue : on ne sait pas encore s'ils le prendront. */
+  enAttente: { studentId: string; name: string; classe: string; matiere: string }[]
+}
+
+export interface SoutienDuJourSortie {
+  seanceId: string
+  matiere: string
+  heureDebut: string
+  heureFin: string
+  enseignant: string
+  confirmes: { studentId: string; name: string; classe: string; sortie: string }[]
+  enAttente: { name: string; classe: string }[]
+  nePasRestent: number
+}
+
+export interface SortieSeuleDuJour extends SortieSeule {
+  studentId: string
+  name: string
+  classe: string
+  /** Heure de fin du soutien auquel l'élève reste ce jour-là : il sort seul(e) à ce moment-là. */
+  resteJusqua: string | null
+}
+
+export interface SortiesDuJour {
+  date: string
+  cars: CarDuSoir[]
+  soutien: SoutienDuJourSortie[]
+  sortieSeul: SortieSeuleDuJour[]
+}
+
+/**
+ * Qui part comment à la fin de la journée du `dateISO` : les cars du soir (combien d'élèves attendus, qui reste au soutien
+ * et manque le car), les séances de soutien (élèves confirmés et leur mode de départ) et les élèves qui sortent seul(e).
+ */
+export function sortiesDuJour(p: {
+  dateISO: string
+  eleves: EleveRapportSource[]
+  capacite: ServicesCapacite | undefined
+  seances: SoutienSeance[]
+  inscriptions: SoutienInscription[]
+  nomEnseignant: (teacherId: string | null) => string
+}): SortiesDuJour {
+  const { dateISO, capacite } = p
+  const actives = p.seances.filter((s) => seanceActiveLe(s, dateISO))
+  const seanceParId = new Map(actives.map((s) => [s.id, s]))
+  const inscritsActifs = p.inscriptions.filter((i) => seanceParId.has(i.seanceId))
+  const parEleve = new Map(p.eleves.map((e) => [e.student.id, e]))
+
+  const cars = new Map<string, CarDuSoir>()
+  const sortieSeul: SortieSeuleDuJour[] = []
+
+  p.eleves.forEach(({ student, identity, cantine }) => {
+    if (student.classe === CLASSE_DOSSIER_INCOMPLET) return
+    const transport = infoTransportEleve(student, identity, capacite)
+    const sortie = sortieSeule(cantine)
+    const siens = inscritsActifs.filter((i) => i.studentId === student.id)
+    const confirmes = siens.filter((i) => i.statut === 'reste')
+
+    if (transport.aTransportSoir && transport.ligneSoir) {
+      const cle = `${transport.heureDepart}|${transport.ligneSoir}`
+      let car = cars.get(cle)
+      if (!car) {
+        car = { ligne: transport.ligneSoir, depart: transport.heureDepart, habituels: 0, restent: 0, attendus: 0, restants: [], enAttente: [] }
+        cars.set(cle, car)
+      }
+      car.habituels += 1
+      const manque = confirmes.map((i) => seanceParId.get(i.seanceId)!).find((s) => alerteCar(s, transport))
+      if (manque) {
+        car.restent += 1
+        car.restants.push({ studentId: student.id, name: student.name, classe: student.classe, matiere: manque.matiere, heureFin: manque.heureFin })
+      } else {
+        const attente = siens.filter((i) => i.statut === 'a_confirmer').map((i) => seanceParId.get(i.seanceId)!).find((s) => alerteCar(s, transport))
+        if (attente) car.enAttente.push({ studentId: student.id, name: student.name, classe: student.classe, matiere: attente.matiere })
+      }
+    }
+
+    if (sortie.seul) {
+      const fins = confirmes.map((i) => seanceParId.get(i.seanceId)!.heureFin).sort()
+      sortieSeul.push({ studentId: student.id, name: student.name, classe: student.classe, ...sortie, resteJusqua: fins.length > 0 ? fins[fins.length - 1] : null })
+    }
+  })
+
+  cars.forEach((c) => {
+    c.attendus = c.habituels - c.restent
+    c.restants.sort(parClasseNom)
+    c.enAttente.sort(parClasseNom)
+  })
+
+  const soutien: SoutienDuJourSortie[] = actives
+    .map((s) => {
+      const inscrits = inscritsDeLaSeance(inscritsActifs, s.id)
+      const lignes = (statut: StatutSoutien) => inscrits.filter((i) => i.statut === statut).flatMap((i) => (parEleve.get(i.studentId) ? [{ i, e: parEleve.get(i.studentId)! }] : []))
+      return {
+        seanceId: s.id,
+        matiere: s.matiere,
+        heureDebut: s.heureDebut,
+        heureFin: s.heureFin,
+        enseignant: p.nomEnseignant(s.teacherId),
+        confirmes: lignes('reste')
+          .map(({ e }) => ({
+            studentId: e.student.id,
+            name: e.student.name,
+            classe: e.student.classe,
+            sortie: modeDepartSoutien(s, sortieSeule(e.cantine).seul, infoTransportEleve(e.student, e.identity, capacite)),
+          }))
+          .sort(parClasseNom),
+        enAttente: lignes('a_confirmer')
+          .map(({ e }) => ({ name: e.student.name, classe: e.student.classe }))
+          .sort(parClasseNom),
+        nePasRestent: inscrits.filter((i) => i.statut === 'ne_reste_pas').length,
+      }
+    })
+    .sort((a, b) => timeToMinutes(a.heureFin) - timeToMinutes(b.heureFin))
+
+  return {
+    date: dateISO,
+    cars: [...cars.values()].sort((a, b) => timeToMinutes(a.depart) - timeToMinutes(b.depart) || a.ligne.localeCompare(b.ligne, 'fr')),
+    soutien,
+    sortieSeul: sortieSeul.sort((a, b) => rangClasse(a.classe) - rangClasse(b.classe) || a.classe.localeCompare(b.classe, 'fr') || a.name.localeCompare(b.name, 'fr')),
+  }
+}
+
+// ───────────────────────── Contrôle de cohérence des sorties ─────────────────────────
+
+export interface IncoherenceSortie {
+  studentId: string
+  name: string
+  classe: string
+  problemes: string[]
+}
+
+/**
+ * Fiches dont le mode de sortie se contredit : « sortie seul(e) » avec une interdiction de sortie active, sortie seul(e) alors
+ * que l'élève est affecté au car du soir, ou sortie seul(e) en maternelle. Seules les fiches qui ont (ou prétendent avoir) le
+ * mode « sortie seul(e) » sont examinées.
+ */
+export function incoherencesSortie(eleves: EleveRapportSource[], capacite: ServicesCapacite | undefined): IncoherenceSortie[] {
+  const out: IncoherenceSortie[] = []
+  eleves.forEach(({ student, identity, cantine }) => {
+    if (!cantine || student.classe === CLASSE_DOSSIER_INCOMPLET) return
+    const modeSeul = cantine.modaliteSortie === MODALITE_SEUL || cantine.modaliteSortie === MODALITE_SEUL_ANCIENNE
+    if (!modeSeul) return
+    const problemes: string[] = []
+    if (cantine.interdictionSortie) problemes.push('Le mode est « sortie seul(e) » mais une interdiction de sortie est active : la fiche se contredit.')
+    else {
+      const transport = infoTransportEleve(student, identity, capacite)
+      if (transport.aTransportSoir) problemes.push(`Sort seul(e) mais est affecté(e) au car du soir (ligne ${transport.ligneSoir}).`)
+      if (cycleOfClasse(student.classe) === 'maternelle') problemes.push('Élève de maternelle : sortie seul(e) à vérifier.')
+    }
+    if (problemes.length > 0) out.push({ studentId: student.id, name: student.name, classe: student.classe, problemes })
+  })
+  return out.sort((a, b) => rangClasse(a.classe) - rangClasse(b.classe) || a.name.localeCompare(b.name, 'fr'))
 }

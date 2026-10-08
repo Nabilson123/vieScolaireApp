@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Bus, CalendarX, CheckCircle2, Clock, DoorOpen, GraduationCap, Pencil, PlusCircle, Printer, Trash2, User, X } from 'lucide-react'
+import { Bus, CalendarX, CheckCircle2, Clock, DoorOpen, GraduationCap, MessageCircle, Pencil, PlusCircle, Printer, Trash2, User, X } from 'lucide-react'
 import { JOURS_SOUTIEN, JOUR_LABELS, type SoutienSeance } from '../../data/soutien'
 import { fullLabel } from '../../data/salles'
 import { teacherName } from '../../data/teachers'
@@ -9,7 +9,9 @@ import { useDeleteSoutienSeance, useSetSoutienDateAnnulee, useSoutienInscription
 import { alerteCar } from '../../utils/soutien'
 import { feuilleDeSeance, transportInfoOf, type FeuilleSeance } from '../../utils/soutienContexte'
 import { aujourdhuiLocalISO, compterStatuts, inscritsDeLaSeance, jourDeDate, occurrencesAnnulees, occurrencesSeance, seanceTerminee } from '../../utils/soutienSeances'
+import { datesAnnuleesAVenir } from '../../utils/soutienMessage'
 import SoutienSeancePrintPreviewModal from '../soutien-print/SoutienSeancePrintPreviewModal'
+import BulkSoutienMessagesModal from './BulkSoutienMessagesModal'
 import SoutienSeanceModal from './SoutienSeanceModal'
 
 function dateCourte(iso: string): string {
@@ -39,7 +41,11 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
   const [modal, setModal] = useState<{ seance?: SoutienSeance } | null>(null)
   const [notice, setNotice] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
-  const [datePicker, setDatePicker] = useState<{ id: string; date: string } | null>(null)
+  // Annulation : une date, ou une période (vacances) dont on annule toutes les séances d'un coup.
+  const [datePicker, setDatePicker] = useState<{ id: string; mode: 'une' | 'periode'; date: string; du: string; au: string } | null>(null)
+  // Après une annulation, proposition de prévenir les familles ; `prevenir` ouvre les messages en série.
+  const [apresAnnulation, setApresAnnulation] = useState<{ seanceId: string; dates: string[] } | null>(null)
+  const [prevenir, setPrevenir] = useState<{ ids: string[]; dates?: string[] } | null>(null)
   const [voirTerminees, setVoirTerminees] = useState(false)
   const [feuille, setFeuille] = useState<FeuilleSeance | null>(null)
 
@@ -90,6 +96,38 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
         </div>
       )}
 
+      {apresAnnulation &&
+        (() => {
+          const seance = seances.find((x) => x.id === apresAnnulation.seanceId)
+          const ids = seance ? inscritsDeLaSeance(inscriptions, seance.id).filter((i) => i.statut !== 'ne_reste_pas').map((i) => i.id) : []
+          return (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+              <span>
+                {apresAnnulation.dates.length > 1 ? `${apresAnnulation.dates.length} séances annulées` : `Séance du ${jourDate(apresAnnulation.dates[0])} annulée`}
+                {seance ? ` (${seance.matiere}).` : '.'} {ids.length > 0 ? 'Les familles sont-elles prévenues ?' : ''}
+              </span>
+              <span className="flex items-center gap-2">
+                {ids.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrevenir({ ids, dates: apresAnnulation.dates })
+                      setApresAnnulation(null)
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Prévenir les familles ({ids.length})
+                  </button>
+                )}
+                <button type="button" onClick={() => setApresAnnulation(null)} className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100">
+                  Plus tard
+                </button>
+              </span>
+            </div>
+          )
+        })()}
+
       {visibles.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
           Aucune séance de soutien{seances.length > 0 ? ' en cours' : ''}. {isEditable ? 'Créez-en une avec « Nouvelle séance ».' : ''}
@@ -106,6 +144,7 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
                   {duJour.map((s) => {
                     const inscrits = inscritsDeLaSeance(inscriptions, s.id)
                     const comptes = compterStatuts(inscrits)
+                    const familles = inscrits.filter((i) => i.statut !== 'ne_reste_pas')
                     const manquentLeCar = inscrits.filter((i) => alerteCar(s, transportInfoOf(i.studentId))).length
                     const close = seanceTerminee(s, aujourdhui)
                     const prochaines = occurrencesSeance(s, { depuis: aujourdhui, max: 30 })
@@ -134,7 +173,7 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
                                   title="Annuler une date"
                                   aria-label="Annuler une date"
                                   disabled={prochaines.length === 0}
-                                  onClick={() => setDatePicker(datePicker?.id === s.id ? null : { id: s.id, date: prochaines[0] ?? '' })}
+                                  onClick={() => setDatePicker(datePicker?.id === s.id ? null : { id: s.id, mode: 'une', date: prochaines[0] ?? '', du: prochaines[0] ?? '', au: prochaines[0] ?? '' })}
                                   className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-40"
                                 >
                                   <CalendarX className="h-3.5 w-3.5" />
@@ -191,39 +230,79 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
                               <span key={d} className="inline-flex items-center gap-1 rounded-full bg-rose-50 py-0.5 pl-2 pr-1 text-rose-600">
                                 <span className="line-through">{jourDate(d)}</span>
                                 {isEditable && (
-                                  <button type="button" title="Rétablir cette date" aria-label={`Rétablir le ${dateCourte(d)}`} onClick={() => annulerDate.mutate({ id: s.id, date: d, annulee: false })} className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-rose-100">
+                                  <button type="button" title="Rétablir cette date" aria-label={`Rétablir le ${dateCourte(d)}`} onClick={() => annulerDate.mutate({ id: s.id, dates: [d], annulee: false })} className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-rose-100">
                                     <X className="h-3 w-3" />
                                   </button>
                                 )}
                               </span>
                             ))}
+                            {datesAnnuleesAVenir(s).length > 0 && familles.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setPrevenir({ ids: familles.map((i) => i.id) })}
+                                className="ml-1 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 hover:bg-emerald-100"
+                              >
+                                <MessageCircle className="h-3 w-3" />
+                                Prévenir les familles
+                              </button>
+                            )}
                           </div>
                         )}
 
                         {s.note && <p className="mt-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">{s.note}</p>}
 
                         {datePicker?.id === s.id && (
-                          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                            <select value={datePicker.date} onChange={(e) => setDatePicker({ id: s.id, date: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700">
-                              {prochaines.map((d) => (
-                                <option key={d} value={d}>
-                                  {jourDate(d)}/{d.slice(0, 4)}
-                                </option>
+                          <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="Portée de l'annulation">
+                              {(['une', 'periode'] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setDatePicker({ ...datePicker, mode: m })}
+                                  className={`rounded-md px-3 py-1 text-xs font-semibold ${datePicker.mode === m ? 'bg-rose-50 text-rose-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                  {m === 'une' ? 'Une date' : 'Une période (vacances)'}
+                                </button>
                               ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                annulerDate.mutate({ id: s.id, date: datePicker.date, annulee: true })
-                                setDatePicker(null)
-                              }}
-                              className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600"
-                            >
-                              Annuler cette date
-                            </button>
-                            <button type="button" onClick={() => setDatePicker(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                              Fermer
-                            </button>
+                            </div>
+                            {(() => {
+                              const dates = datePicker.mode === 'une' ? (datePicker.date ? [datePicker.date] : []) : prochaines.filter((d) => d >= datePicker.du && d <= datePicker.au)
+                              return (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {datePicker.mode === 'une' ? (
+                                    <select value={datePicker.date} onChange={(e) => setDatePicker({ ...datePicker, date: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700">
+                                      {prochaines.map((d) => (
+                                        <option key={d} value={d}>
+                                          {jourDate(d)}/{d.slice(0, 4)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <>
+                                      <label className="text-xs font-medium text-slate-600">Du</label>
+                                      <input type="date" value={datePicker.du} onChange={(e) => setDatePicker({ ...datePicker, du: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700" />
+                                      <label className="text-xs font-medium text-slate-600">au</label>
+                                      <input type="date" value={datePicker.au} min={datePicker.du} onChange={(e) => setDatePicker({ ...datePicker, au: e.target.value })} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700" />
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={dates.length === 0}
+                                    onClick={() => {
+                                      annulerDate.mutate({ id: s.id, dates, annulee: true }, { onSuccess: () => setApresAnnulation({ seanceId: s.id, dates }) })
+                                      setDatePicker(null)
+                                    }}
+                                    className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {dates.length > 1 ? `Annuler ces ${dates.length} séances` : 'Annuler cette date'}
+                                  </button>
+                                  <button type="button" onClick={() => setDatePicker(null)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                                    Fermer
+                                  </button>
+                                  {datePicker.mode === 'periode' && dates.length === 0 && <span className="text-[11px] text-slate-400">Aucune séance à venir sur cette période.</span>}
+                                </div>
+                              )
+                            })()}
                           </div>
                         )}
 
@@ -259,6 +338,7 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
         </div>
       )}
 
+      {prevenir && <BulkSoutienMessagesModal ids={prevenir.ids} isEditable={isEditable} initialKind="annulation" datesAnnulees={prevenir.dates} onClose={() => setPrevenir(null)} />}
       {feuille && <SoutienSeancePrintPreviewModal feuille={feuille} onClose={() => setFeuille(null)} />}
       {modal && <SoutienSeanceModal seance={modal.seance} onClose={() => setModal(null)} onSaved={setNotice} />}
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage, buildSoutienMessage } from './whatsapp'
+import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage, buildSoutienMessage, buildSoutienTransportMessage } from './whatsapp'
 
 describe('toWhatsAppPhone', () => {
   it('converts a local Moroccan number (leading 0) to international format', () => {
@@ -283,5 +283,79 @@ describe('buildSoutienMessage', () => {
     const [fr, ar] = m.split('\n\n──────────\n\n')
     expect(fr).toContain('Bonjour Mme SAIDI,')
     expect(ar).toContain('السلام عليكم')
+  })
+})
+
+describe('buildSoutienMessage — annulation', () => {
+  const info = {
+    parentNom: 'Mme SAIDI',
+    studentName: 'Baker SAIDI',
+    studentNameAr: 'بكر السعيدي',
+    classe: 'CE1-A',
+    matiere: 'Mathématiques',
+    matiereAr: 'الرياضيات',
+    jour: 'LUNDI' as const,
+    heureDebut: '16:30',
+    heureFin: '17:30',
+    aPartirDu: '2026-10-12',
+    aTransportSoir: false,
+    datesAnnulees: ['2026-10-12'],
+    prochaine: '2026-10-19',
+  }
+
+  it('une séance annulée : date, pas de réponse demandée, prochaine séance annoncée', () => {
+    const m = buildSoutienMessage('annulation', info)
+    expect(m).toContain('La séance de soutien scolaire en *Mathématiques* de *Baker SAIDI* (CE1-A) prévue le *lundi 12/10* (de 16:30 à 17:30) est annulée.')
+    expect(m).toContain('Il n\'y a donc pas de soutien ce jour-là.')
+    expect(m).toContain('La prochaine séance a lieu le 19/10/2026.')
+    expect(m).not.toContain('*OUI*')
+    expect(m).not.toContain('*RESTE*')
+  })
+
+  it('plusieurs séances annulées (vacances) : pluriel', () => {
+    const m = buildSoutienMessage('annulation', { ...info, datesAnnulees: ['2026-10-26', '2026-11-02'], prochaine: null })
+    expect(m).toContain('Les séances de soutien scolaire en *Mathématiques*')
+    expect(m).toContain('*lundi 26/10*, *lundi 02/11*')
+    expect(m).toContain('sont annulées.')
+    expect(m).not.toContain('prochaine séance')
+  })
+
+  it('élève au car du soir : il le prend comme d’habitude', () => {
+    const m = buildSoutienMessage('annulation', { ...info, aTransportSoir: true, ligneSoir: 'A', heureDepart: '16:00' })
+    expect(m).toContain('prendra donc le car du soir comme d\'habitude (ligne A, départ à 16:00)')
+    expect(m).not.toContain('pas de soutien')
+  })
+
+  it('arabe : jour et matière en arabe', () => {
+    const m = buildSoutienMessage('annulation', { ...info, aTransportSoir: true, ligneSoir: 'A', heureDepart: '16:00' }, 'ar')
+    expect(m).toContain('*الرياضيات*')
+    expect(m).toContain('*الاثنين 12/10*')
+    expect(m).toContain('ملغاة')
+    expect(m).toContain('الخط A')
+    expect(m).not.toContain('Bonjour')
+  })
+
+  it('les deux langues : français puis arabe', () => {
+    const m = buildSoutienMessage('annulation', info, 'both')
+    const [fr, ar] = m.split('\n\n──────────\n\n')
+    expect(fr).toContain('est annulée')
+    expect(ar).toContain('ملغاة')
+  })
+})
+
+describe('buildSoutienTransportMessage', () => {
+  it('liste les élèves par ligne avec le jour et la date en arabe', () => {
+    const m = buildSoutienTransportMessage({
+      date: '2026-10-14',
+      lignes: [
+        { ligne: 'A', eleves: [{ name: 'Baker SAIDI', classe: 'PS-A' }] },
+        { ligne: 'C', eleves: [{ name: 'Adam BELGRAINI', classe: '1APIC-A' }, { name: 'Omar AKIL', classe: '1APIC-A' }] },
+      ],
+    })
+    expect(m).toContain('يوم الأربعاء 14/10/2026')
+    expect(m).toContain('خط A :\n- Baker SAIDI (PS-A)')
+    expect(m).toContain('خط C :\n- Adam BELGRAINI (1APIC-A)\n- Omar AKIL (1APIC-A)')
+    expect(m).toContain('ولن يستقلوا حافلة النقل هذا المساء')
+    expect(m.startsWith('السلام عليكم')).toBe(true)
   })
 })

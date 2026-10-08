@@ -53,6 +53,8 @@ import {
 import { computeCockpitReclamations } from '../utils/reclamationsAlerts'
 import { soutienDuJourDeLEcole } from '../utils/soutienContexte'
 import { useSoutienInscriptions, useSoutienSeances } from '../services/soutienService'
+import SoutienTransportModal from '../components/soutien/SoutienTransportModal'
+import SortiesDuJourPrintPreviewModal from '../components/soutien-print/SortiesDuJourPrintPreviewModal'
 import RemplacementDirectModal from '../components/RemplacementDirectModal'
 import TimelineCreneauxModal from '../components/TimelineCreneauxModal'
 import CockpitPrintPreviewModal from '../components/cockpit-print/CockpitPrintPreviewModal'
@@ -113,6 +115,8 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
   const [showIncidentModal, setShowIncidentModal] = useState(false)
   const [showAbsenceProfModal, setShowAbsenceProfModal] = useState(false)
   const [showCreneauxModal, setShowCreneauxModal] = useState(false)
+  const [showSortiesDuJour, setShowSortiesDuJour] = useState(false)
+  const [showTransportSoutien, setShowTransportSoutien] = useState(false)
   const [callingStudent, setCallingStudent] = useState<ParentToCall | null>(null)
   const [lastRefreshedAt, setLastRefreshedAt] = useState(() => new Date())
   const [nowTick, setNowTick] = useState(0)
@@ -813,6 +817,16 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                 ))}
               </div>
             )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => setShowSortiesDuJour(true)} className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50">
+                Feuille des sorties du soir
+              </button>
+              {soutienDuJour.some((s) => s.confirmesAuCar.length > 0) && (
+                <button type="button" onClick={() => setShowTransportSoutien(true)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600">
+                  Prévenir le transport
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Événements récents */}
@@ -870,6 +884,9 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
           isSaving={markAppelParentDone.isPending}
         />
       )}
+
+      {showSortiesDuJour && <SortiesDuJourPrintPreviewModal initialDate={today} onClose={() => setShowSortiesDuJour(false)} />}
+      {showTransportSoutien && <SoutienTransportModal initialDate={today} onClose={() => setShowTransportSoutien(false)} />}
 
       {remplacementDirect && (
         <RemplacementDirectModal

@@ -380,8 +380,9 @@ export function buildReclamationMessage(kind: ReclamationMessageKind, info: Recl
   return lang === 'both' ? `${fr}\n\n──────────\n\n${buildReclamationMessageAr(kind, info)}` : fr
 }
 
-/** `confirmation` : première annonce du soutien aux parents ; `changement` : le jour ou l'heure a changé, ils doivent confirmer à nouveau. */
-export type SoutienMessageKind = 'confirmation' | 'changement'
+/** `confirmation` : première annonce du soutien aux parents ; `changement` : le jour ou l'heure a changé, ils doivent confirmer à nouveau ;
+ * `annulation` : une ou plusieurs séances n'ont pas lieu (aucune réponse à donner). */
+export type SoutienMessageKind = 'confirmation' | 'changement' | 'annulation'
 
 export interface SoutienWhatsAppInfo {
   /** Nom du parent destinataire ; vide → « Bonjour, ». */
@@ -406,6 +407,10 @@ export interface SoutienWhatsAppInfo {
   ligneSoir?: string | null
   /** HH:MM : départ du car du soir. */
   heureDepart?: string
+  /** AAAA-MM-JJ : séances annulées (message d'annulation). */
+  datesAnnulees?: string[]
+  /** AAAA-MM-JJ : prochaine séance qui a bien lieu, annoncée dans le message d'annulation. */
+  prochaine?: string | null
 }
 
 function minutesDe(t: string): number {
@@ -418,7 +423,56 @@ function finApresLeCar(info: SoutienWhatsAppInfo): boolean {
   return !!info.heureDepart && minutesDe(info.heureFin) > minutesDe(info.heureDepart)
 }
 
+/** « lundi 12/10 » : un jour de séance et sa date, sans l'année. */
+function jourEtDate(jour: JourSoutien, iso: string, ar = false): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return `${ar ? JOUR_LABELS_AR[jour] : JOUR_LABELS[jour].toLowerCase()} ${m ? `${m[3]}/${m[2]}` : iso}`
+}
+
+function buildAnnulationFr(info: SoutienWhatsAppInfo): string {
+  const eleve = `*${info.studentName}*${info.classe ? ` (${info.classe})` : ''}`
+  const dates = (info.datesAnnulees ?? []).map((d) => `*${jourEtDate(info.jour, d)}*`)
+  const lines = [info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,', '']
+  lines.push(
+    dates.length > 1
+      ? `Les séances de soutien scolaire en *${info.matiere}* de ${eleve} prévues les ${dates.join(', ')} (de ${info.heureDebut} à ${info.heureFin}) sont annulées.`
+      : `La séance de soutien scolaire en *${info.matiere}* de ${eleve} prévue le ${dates[0] ?? ''} (de ${info.heureDebut} à ${info.heureFin}) est annulée.`
+  )
+  lines.push(
+    '',
+    info.aTransportSoir
+      ? `Votre enfant prendra donc le car du soir comme d'habitude${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.`
+      : 'Il n\'y a donc pas de soutien ce jour-là.'
+  )
+  if (info.prochaine) lines.push('', `La prochaine séance a lieu le ${dateCourte(info.prochaine)}.`)
+  lines.push(...SIGNATURE)
+  return lines.join('\n')
+}
+
+function buildAnnulationAr(info: SoutienWhatsAppInfo): string {
+  const nom = info.studentNameAr?.trim() || info.studentName
+  const eleve = `*${nom}*${info.classe ? ` (${info.classe})` : ''}`
+  const matiere = info.matiereAr?.trim() || info.matiere
+  const dates = (info.datesAnnulees ?? []).map((d) => `*${jourEtDate(info.jour, d, true)}*`)
+  const lines = [info.parentNom.trim() ? `السلام عليكم ${info.parentNom.trim()}،` : 'السلام عليكم،', '']
+  lines.push(
+    dates.length > 1
+      ? `نحيطكم علما بأن حصص الدعم المدرسي في مادة *${matiere}* للتلميذ(ة) ${eleve} المبرمجة أيام ${dates.join('، ')} (من ${info.heureDebut} إلى ${info.heureFin}) ملغاة.`
+      : `نحيطكم علما بأن حصة الدعم المدرسي في مادة *${matiere}* للتلميذ(ة) ${eleve} المبرمجة يوم ${dates[0] ?? ''} (من ${info.heureDebut} إلى ${info.heureFin}) ملغاة.`
+  )
+  lines.push(
+    '',
+    info.aTransportSoir
+      ? `وبالتالي سيستقل التلميذ(ة) حافلة النقل المدرسي مساءً كالمعتاد${info.ligneSoir ? ` (الخط ${info.ligneSoir}${info.heureDepart ? `، الانطلاق على الساعة ${info.heureDepart}` : ''})` : ''}.`
+      : 'وبالتالي لا يوجد دعم مدرسي في هذا اليوم.'
+  )
+  if (info.prochaine) lines.push('', `الحصة المقبلة بتاريخ ${dateCourte(info.prochaine)}.`)
+  lines.push(...SIGNATURE_AR)
+  return lines.join('\n')
+}
+
 function buildSoutienMessageFr(kind: SoutienMessageKind, info: SoutienWhatsAppInfo): string {
+  if (kind === 'annulation') return buildAnnulationFr(info)
   const eleve = `*${info.studentName}*${info.classe ? ` (${info.classe})` : ''}`
   const lines = [info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,', '']
   if (kind === 'confirmation') {
@@ -452,6 +506,7 @@ function buildSoutienMessageFr(kind: SoutienMessageKind, info: SoutienWhatsAppIn
 /** Version arabe du message de soutien. Le nom de l'élève, de l'enseignant et la matière gardent leur écriture saisie
  * (l'arabe est repris des fiches quand il existe) ; seul le texte du modèle est traduit. */
 function buildSoutienMessageAr(kind: SoutienMessageKind, info: SoutienWhatsAppInfo): string {
+  if (kind === 'annulation') return buildAnnulationAr(info)
   const nom = info.studentNameAr?.trim() || info.studentName
   const eleve = `*${nom}*${info.classe ? ` (${info.classe})` : ''}`
   const matiere = info.matiereAr?.trim() || info.matiere
@@ -491,3 +546,39 @@ export function buildSoutienMessage(kind: SoutienMessageKind, info: SoutienWhats
   return lang === 'both' ? `${fr}\n\n──────────\n\n${buildSoutienMessageAr(kind, info)}` : fr
 }
 
+
+export interface SoutienTransportLigne {
+  ligne: string
+  eleves: { name: string; classe: string }[]
+}
+
+/**
+ * Message en arabe pour l'équipe transport (chauffeur, aide-maîtresse ou groupe) : élèves qui restent au soutien ce soir
+ * et ne prendront donc pas le car, ligne par ligne — pour que le car n'attende pas un élève qui ne viendra pas.
+ */
+export function buildSoutienTransportMessage(info: { date: string; lignes: SoutienTransportLigne[] }): string {
+  const jour = jourDeSemaineAr(info.date)
+  const lignes: string[] = []
+  info.lignes.forEach((l) => {
+    lignes.push(`خط ${l.ligne} :`)
+    l.eleves.forEach((e) => lignes.push(`- ${e.name} (${e.classe})`))
+    lignes.push('')
+  })
+  return [
+    'السلام عليكم،',
+    '',
+    `نحيطكم علما بأن التلاميذ التالية أسماؤهم سيبقون بالمؤسسة يوم ${jour ? `${jour} ` : ''}${formatDateDDMMYYYY(info.date)} لحضور حصة الدعم المدرسي، ولن يستقلوا حافلة النقل هذا المساء :`,
+    '',
+    ...lignes,
+    'شكرا لتفهمكم.',
+    'مجموعة مدارس موندريان',
+  ].join('\n')
+}
+
+function jourDeSemaineAr(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  const jours: (JourSoutien | null)[] = [null, 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', null]
+  const j = jours[d.getDay()]
+  return j ? JOUR_LABELS_AR[j] : ''
+}

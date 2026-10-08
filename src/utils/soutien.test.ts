@@ -8,11 +8,14 @@ import type { ServicesCapacite } from '../services/servicesCapaciteService'
 import {
   alerteCar,
   conflitsSeance,
+  incoherencesSortie,
   infoTransportEleve,
+  modeDepartSoutien,
   normaliserHeure,
   rapportParClasse,
   sortieSeule,
   soutienDuJour,
+  sortiesDuJour,
   suggestionsPourMatiere,
   type BrouillonSeance,
   type ConflitsContext,
@@ -324,7 +327,7 @@ describe('soutienDuJour', () => {
     insc({ id: 'i3', seanceId: 's1', studentId: 'e3' }),
     insc({ id: 'i4', seanceId: 's1', studentId: 'e4', statut: 'ne_reste_pas' }),
   ]
-  const eleve = { nom: (id: string) => id.toUpperCase(), aTransportSoir: (id: string) => id === 'e1' }
+  const eleve = { nom: (id: string) => id.toUpperCase(), manqueLeCar: (id: string, heureFin: string) => id === 'e1' && heureFin > '16:00' }
   const minutes = (h: number, m = 0) => h * 60 + m
 
   it('ne garde que les séances qui ont lieu ce jour-là', () => {
@@ -352,5 +355,117 @@ describe('soutienDuJour', () => {
   it('classées par heure de début', () => {
     const tot = seance({ id: 's3', jour: 'MARDI', heureDebut: '15:00', heureFin: '16:00', dateDebut: '2026-10-13' })
     expect(soutienDuJour([mardi, tot], [], '2026-10-13', minutes(10), eleve).map((l) => l.seanceId)).toEqual(['s3', 's1'])
+  })
+})
+
+describe('modeDepartSoutien', () => {
+  const car = { aTransportSoir: true, ligneSoir: 'A', depart: '16h' as const, heureDepart: '16:00' }
+  const sansCar = { aTransportSoir: false, ligneSoir: null, depart: null, heureDepart: '' }
+
+  it('seul(e), car manqué, car encore pris, parents', () => {
+    expect(modeDepartSoutien({ heureFin: '17:30' }, true, car)).toBe('Sort seul(e)')
+    expect(modeDepartSoutien({ heureFin: '17:30' }, false, car)).toBe('Habituellement au car : non assuré ce jour')
+    expect(modeDepartSoutien({ heureFin: '15:30' }, false, car)).toBe('Car de 16:00')
+    expect(modeDepartSoutien({ heureFin: '17:30' }, false, sansCar)).toBe('Récupéré par les parents')
+  })
+})
+
+describe('sortiesDuJour', () => {
+  // 2026-10-14 est un mercredi.
+  const mercredi = (over: Partial<SoutienSeance> = {}) => seance({ id: 's1', jour: 'MERCREDI', heureDebut: '16:30', heureFin: '17:30', dateDebut: '2026-10-07', dateFin: null, teacherId: 't1', ...over })
+  const seulSigne = cantine({ interdictionSortie: false, modaliteSortie: 'Sortie seul(e) (Accord signé)', dechargeSignee: true, dechargeDate: '08/09/2026' })
+  const eleves: EleveRapportSource[] = [
+    { student: student('e1', 'CE1-A', 'Adam'), identity: identity({ transport: true, transportLigne: 'A' }), cantine: cantine() },
+    { student: student('e2', 'CE1-A', 'Basma'), identity: identity({ transport: true, transportLigne: 'A' }), cantine: cantine() },
+    { student: student('e3', '2APIC-A', 'Chadi'), identity: identity({ transport: true, transportLigne: 'C' }), cantine: cantine() },
+    { student: student('e4', 'CE2-A', 'Dina'), identity: identity(), cantine: seulSigne },
+    { student: student('e5', 'Dossier incomplet', 'Inconnu'), identity: identity({ transport: true, transportLigne: 'A' }), cantine: cantine() },
+  ]
+  const inscriptions = [
+    insc({ id: 'i1', studentId: 'e1', statut: 'reste' }),
+    insc({ id: 'i2', studentId: 'e2', statut: 'a_confirmer' }),
+    insc({ id: 'i3', studentId: 'e3', statut: 'reste' }),
+    insc({ id: 'i4', studentId: 'e4', statut: 'reste' }),
+  ]
+  const calcul = (seances: SoutienSeance[], dateISO = '2026-10-14') => sortiesDuJour({ dateISO, eleves, capacite, seances, inscriptions, nomEnseignant: (id) => (id ? `Prof ${id}` : '') })
+
+  it('cars du soir : qui reste au soutien manque son car, les réponses attendues sont signalées', () => {
+    const { cars } = calcul([mercredi()])
+    expect(cars.map((c) => `${c.depart}-${c.ligne}`)).toEqual(['16:00-A', '17:00-C'])
+    expect(cars[0]).toMatchObject({ habituels: 2, restent: 1, attendus: 1 })
+    expect(cars[0].restants.map((r) => r.name)).toEqual(['Adam'])
+    expect(cars[0].enAttente.map((r) => r.name)).toEqual(['Basma'])
+    expect(cars[1]).toMatchObject({ habituels: 1, restent: 1, attendus: 0 })
+  })
+
+  it('« Dossier incomplet » n’entre dans aucun car', () => {
+    expect(calcul([mercredi()]).cars[0].habituels).toBe(2)
+  })
+
+  it('séance qui finit avant le car : l’élève le prend encore', () => {
+    const { cars, soutien } = calcul([mercredi({ heureDebut: '14:30', heureFin: '15:30' })])
+    expect(cars[0]).toMatchObject({ habituels: 2, restent: 0, attendus: 2, enAttente: [] })
+    expect(soutien[0].confirmes.find((c) => c.name === 'Adam')?.sortie).toBe('Car de 16:00')
+  })
+
+  it('séances du jour : élèves confirmés avec leur mode de départ, réponses en attente', () => {
+    const { soutien } = calcul([mercredi()])
+    expect(soutien).toHaveLength(1)
+    expect(soutien[0]).toMatchObject({ matiere: 'Mathématiques', enseignant: 'Prof t1', nePasRestent: 0 })
+    expect(soutien[0].confirmes.map((c) => [c.name, c.sortie])).toEqual([
+      ['Adam', 'Habituellement au car : non assuré ce jour'],
+      ['Dina', 'Sort seul(e)'],
+      ['Chadi', 'Habituellement au car : non assuré ce jour'],
+    ])
+    expect(soutien[0].enAttente).toEqual([{ name: 'Basma', classe: 'CE1-A' }])
+  })
+
+  it('élèves qui sortent seul(e) : heure de fin du soutien auquel ils restent', () => {
+    expect(calcul([mercredi()]).sortieSeul).toMatchObject([{ name: 'Dina', accordSigne: true, resteJusqua: '17:30' }])
+    expect(calcul([mercredi()], '2026-10-15').sortieSeul[0].resteJusqua).toBeNull()
+  })
+
+  it('un jour sans séance : plus de soutien, les cars gardent leurs élèves habituels', () => {
+    const r = calcul([mercredi()], '2026-10-15')
+    expect(r.soutien).toEqual([])
+    expect(r.cars[0]).toMatchObject({ habituels: 2, restent: 0, attendus: 2 })
+  })
+
+  it('une date annulée : la séance n’a pas lieu', () => {
+    expect(calcul([mercredi({ datesAnnulees: ['2026-10-14'] })]).soutien).toEqual([])
+  })
+})
+
+describe('incoherencesSortie', () => {
+  const seulMode = { interdictionSortie: false, modaliteSortie: 'Sortie seul(e) (Accord signé)', dechargeSignee: true }
+  const source = (s: Student, id: StudentIdentity | undefined, c: ReturnType<typeof cantine>): EleveRapportSource => ({ student: s, identity: id, cantine: c })
+
+  it('mode « sortie seul(e) » avec une interdiction de sortie active', () => {
+    const r = incoherencesSortie([source(student('a', 'CE2-A'), identity(), cantine({ ...seulMode, interdictionSortie: true }))], capacite)
+    expect(r).toHaveLength(1)
+    expect(r[0].problemes[0]).toContain('interdiction de sortie')
+  })
+
+  it('sort seul(e) mais affecté(e) au car du soir', () => {
+    const r = incoherencesSortie([source(student('b', 'CE2-A'), identity({ transport: true, transportLigne: 'B' }), cantine(seulMode))], capacite)
+    expect(r[0].problemes).toEqual(['Sort seul(e) mais est affecté(e) au car du soir (ligne B).'])
+  })
+
+  it('sortie seul(e) en maternelle', () => {
+    const r = incoherencesSortie([source(student('c', 'PS-A'), identity(), cantine(seulMode))], capacite)
+    expect(r[0].problemes).toEqual(['Élève de maternelle : sortie seul(e) à vérifier.'])
+  })
+
+  it('fiche cohérente, autre mode de sortie ou dossier incomplet : rien', () => {
+    expect(
+      incoherencesSortie(
+        [
+          source(student('d', 'CE2-A'), identity(), cantine(seulMode)),
+          source(student('e', 'CE2-A'), identity({ transport: true, transportLigne: 'B' }), cantine({ modaliteSortie: 'Sortie accompagnée', interdictionSortie: false })),
+          source(student('f', 'Dossier incomplet'), identity(), cantine({ ...seulMode, interdictionSortie: true })),
+        ],
+        capacite,
+      ),
+    ).toEqual([])
   })
 })

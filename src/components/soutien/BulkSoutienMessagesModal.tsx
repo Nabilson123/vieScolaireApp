@@ -4,7 +4,7 @@ import type { SoutienInscription, SoutienSeance } from '../../data/soutien'
 import { getStudentsSnapshot } from '../../services/studentsService'
 import { useMarkSoutienMessageEnvoye, useSoutienInscriptions, useSoutienSeances } from '../../services/soutienService'
 import { libelleCreneau } from '../../utils/soutienSeances'
-import { buildSoutienOutbound } from '../../utils/soutienMessage'
+import { buildSoutienOutbound, datesAnnuleesAVenir } from '../../utils/soutienMessage'
 import { buildWhatsAppLink, type SoutienMessageKind } from '../../utils/whatsapp'
 import MessageLangSwitch, { useMessageLang } from '../reclamations/MessageLangSwitch'
 import { MessageKindSwitch } from './SoutienMessageModal'
@@ -13,6 +13,10 @@ interface Props {
   /** Inscriptions à prévenir, dans l'ordre d'affichage — figées à l'ouverture. */
   ids: string[]
   isEditable: boolean
+  /** Type de message proposé d'emblée (« annulation » après l'annulation d'une date). */
+  initialKind?: SoutienMessageKind
+  /** Dates annulées dont parle le message d'annulation ; par défaut celles à venir de chaque séance. */
+  datesAnnulees?: string[]
   onClose: () => void
 }
 
@@ -21,12 +25,14 @@ interface Props {
  * Chaque envoi (copie, ouverture de WhatsApp ou case « Envoyé ») est enregistré tout de suite : rien n'est perdu si on
  * ferme à mi-parcours. Aucun envoi automatique — la personne relit et envoie elle-même.
  */
-export default function BulkSoutienMessagesModal({ ids, isEditable, onClose }: Props) {
+export default function BulkSoutienMessagesModal({ ids, isEditable, initialKind = 'confirmation', datesAnnulees, onClose }: Props) {
   const { data: inscriptions = [] } = useSoutienInscriptions()
   const { data: seances = [] } = useSoutienSeances()
   const marquer = useMarkSoutienMessageEnvoye()
   const [lang, setLang] = useMessageLang()
-  const [kind, setKind] = useState<SoutienMessageKind>('confirmation')
+  const [kind, setKind] = useState<SoutienMessageKind>(initialKind)
+  // Une annonce d'annulation n'est pas suivie en base (elle ne change pas l'état « prévenu du créneau ») : la case « Envoyé » vaut pour cette fenêtre.
+  const [envoyesLocal, setEnvoyesLocal] = useState<Set<string>>(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [copyError, setCopyError] = useState(false)
 
@@ -37,10 +43,14 @@ export default function BulkSoutienMessagesModal({ ids, isEditable, onClose }: P
     .filter((i): i is SoutienInscription => !!i)
     .map((i) => ({ inscription: i, seance: seanceParId.get(i.seanceId), student: students.get(i.studentId) }))
     .filter((r): r is { inscription: SoutienInscription; seance: SoutienSeance; student: NonNullable<typeof r.student> } => !!r.seance && !!r.student)
-  const envoyes = rows.filter((r) => r.inscription.messageEnvoyeLe).length
+  const estEnvoye = (i: SoutienInscription) => (kind === 'annulation' ? envoyesLocal.has(i.id) : !!i.messageEnvoyeLe)
+  const envoyes = rows.filter((r) => estEnvoye(r.inscription)).length
+  const avecAnnulation = rows.some((r) => (datesAnnulees ?? datesAnnuleesAVenir(r.seance)).length > 0)
 
   const marquerEnvoye = (i: SoutienInscription) => {
-    if (isEditable && !i.messageEnvoyeLe) marquer.mutate([i.id])
+    if (estEnvoye(i)) return
+    if (kind === 'annulation') setEnvoyesLocal((prev) => new Set(prev).add(i.id))
+    else if (isEditable) marquer.mutate([i.id])
   }
 
   const copier = async (i: SoutienInscription, message: string) => {
@@ -71,7 +81,7 @@ export default function BulkSoutienMessagesModal({ ids, isEditable, onClose }: P
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <MessageLangSwitch lang={lang} onChange={setLang} />
-            <MessageKindSwitch kind={kind} onChange={setKind} />
+            <MessageKindSwitch kind={kind} onChange={setKind} avecAnnulation={avecAnnulation} />
           </div>
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">
             <X className="h-4 w-4" />
@@ -82,11 +92,12 @@ export default function BulkSoutienMessagesModal({ ids, isEditable, onClose }: P
           {copyError && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Le navigateur a refusé la copie : utilisez « Ouvrir WhatsApp », ou le message individuel de la ligne.</p>}
           {rows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">Aucun élève à prévenir.</p>}
           {rows.map(({ inscription, seance, student }) => {
-            const sent = !!inscription.messageEnvoyeLe
-            const { message, parents } = buildSoutienOutbound(seance, student.id, kind, lang)
+            const sent = estEnvoye(inscription)
+            const annulees = datesAnnulees ?? datesAnnuleesAVenir(seance)
+            const { message, parents } = buildSoutienOutbound(seance, student.id, kind, lang, undefined, annulees)
             const liens = parents
               .filter((p) => p.phone)
-              .map((p) => ({ parent: p, href: buildWhatsAppLink(p.phone, buildSoutienOutbound(seance, student.id, kind, lang, p.key).message) }))
+              .map((p) => ({ parent: p, href: buildWhatsAppLink(p.phone, buildSoutienOutbound(seance, student.id, kind, lang, p.key, annulees).message) }))
               .filter((l): l is typeof l & { href: string } => !!l.href)
             return (
               <div key={inscription.id} className={`rounded-xl border p-3.5 ${sent ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}>
@@ -100,7 +111,7 @@ export default function BulkSoutienMessagesModal({ ids, isEditable, onClose }: P
                     </p>
                   </div>
                   <label className={`flex items-center gap-1.5 text-xs font-semibold ${sent ? 'text-emerald-700' : 'text-slate-600'}`}>
-                    <input type="checkbox" checked={sent} disabled={sent || !isEditable} onChange={() => marquerEnvoye(inscription)} className="h-4 w-4 rounded border-slate-300" />
+                    <input type="checkbox" checked={sent} disabled={sent || (kind !== 'annulation' && !isEditable)} onChange={() => marquerEnvoye(inscription)} className="h-4 w-4 rounded border-slate-300" />
                     Envoyé
                   </label>
                 </div>

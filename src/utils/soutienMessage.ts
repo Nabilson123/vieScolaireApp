@@ -7,7 +7,7 @@ import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { normalizeText } from './textMatch'
-import { aujourdhuiLocalISO, prochaineOccurrence } from './soutienSeances'
+import { aujourdhuiLocalISO, occurrencesAnnulees, prochaineOccurrence } from './soutienSeances'
 import { transportInfoOf } from './soutienContexte'
 import { buildSoutienMessage, type ReclamationMessageLang, type SoutienMessageKind } from './whatsapp'
 
@@ -32,6 +32,12 @@ const MATIERES_AR: Record<string, string> = {
 /** Nom arabe d'une matière : celui du référentiel s'il existe, sinon le nom usuel ; rien pour une matière inconnue. */
 export function nomArabeMatiere(matiere: string, nomAr?: string): string | undefined {
   return nomAr?.trim() || MATIERES_AR[normalizeText(matiere)]
+}
+
+/** Dates annulées qui ne sont pas encore passées, dans l'ordre. */
+export function datesAnnuleesAVenir(seance: SoutienSeance): string[] {
+  const aujourdhui = aujourdhuiLocalISO()
+  return occurrencesAnnulees(seance).filter((d) => d >= aujourdhui)
 }
 
 export interface ParentEleve {
@@ -64,7 +70,15 @@ export interface SoutienOutbound {
  * Message de soutien prêt pour un élève, adressé au parent choisi (le parent 1 par défaut). Le nom arabe de l'élève et de
  * la matière sont pris dans les fiches quand ils existent ; la date annoncée est la prochaine séance qui a lieu.
  */
-export function buildSoutienOutbound(seance: SoutienSeance, studentId: string, kind: SoutienMessageKind, lang: ReclamationMessageLang, parentKey?: ParentEleve['key']): SoutienOutbound {
+export function buildSoutienOutbound(
+  seance: SoutienSeance,
+  studentId: string,
+  kind: SoutienMessageKind,
+  lang: ReclamationMessageLang,
+  parentKey?: ParentEleve['key'],
+  /** Séances annulées dont le message d'annulation parle ; par défaut celles à venir. */
+  datesAnnulees?: string[],
+): SoutienOutbound {
   const student = getStudentsSnapshot().find((s) => s.id === studentId)
   const identity = getStudentIdentitySnapshot(studentId)
   const parents = parentsDeLEleve(studentId)
@@ -93,6 +107,8 @@ export function buildSoutienOutbound(seance: SoutienSeance, studentId: string, k
       aTransportSoir: transport.aTransportSoir,
       ligneSoir: transport.ligneSoir,
       heureDepart: transport.heureDepart || undefined,
+      datesAnnulees: datesAnnulees ?? datesAnnuleesAVenir(seance),
+      prochaine: prochaineOccurrence(seance, aujourdhuiLocalISO()),
     },
     lang,
   )

@@ -254,16 +254,16 @@ export function useDeleteSoutienSeance() {
   })
 }
 
-/** Annule (ou rétablit) la séance à une date précise. */
+/** Annule (ou rétablit) la séance à une ou plusieurs dates précises (une période de vacances, par exemple). */
 export function useSetSoutienDateAnnulee() {
   const invalidate = useInvalidateSoutien()
   return useMutation({
-    mutationFn: async ({ id, date, annulee }: { id: string; date: string; annulee: boolean }) => {
+    mutationFn: async ({ id, dates, annulee }: { id: string; dates: string[]; annulee: boolean }) => {
       const courante = cachedSeances.find((s) => s.id === id)?.datesAnnulees ?? []
-      const dates = annulee ? [...new Set([...courante, date])].sort() : courante.filter((d) => d !== date)
-      const { error } = await supabase.from('soutien_seances').update({ dates_annulees: dates }).eq('id', id)
+      const resultat = annulee ? [...new Set([...courante, ...dates])].sort() : courante.filter((d) => !dates.includes(d))
+      const { error } = await supabase.from('soutien_seances').update({ dates_annulees: resultat }).eq('id', id)
       if (error) throw error
-      await logAudit({ tableName: 'soutien_seances', recordId: id, action: 'update', newData: { date, annulee } })
+      await logAudit({ tableName: 'soutien_seances', recordId: id, action: 'update', newData: { dates, annulee } })
     },
     onSuccess: invalidate,
   })
@@ -300,6 +300,25 @@ export function useMarkSoutienMessageEnvoye() {
       if (ids.length === 0) return
       const { error } = await supabase.from('soutien_inscriptions').update({ message_envoye_le: new Date().toISOString() }).in('id', ids)
       if (error) throw error
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/** Inscrit un élève à une séance existante (réponse des parents « à confirmer » ; la famille est à prévenir ensuite). */
+export function useAddSoutienInscription() {
+  const invalidate = useInvalidateSoutien()
+  return useMutation({
+    mutationFn: async ({ seanceId, studentId }: { seanceId: string; studentId: string }): Promise<string> => {
+      const { data, error } = await supabase.from('soutien_inscriptions').insert({ seance_id: seanceId, student_id: studentId }).select('id').single()
+      if (error) {
+        // 23505 : l'élève est déjà inscrit à cette séance (contrainte d'unicité).
+        if (error.code === '23505') throw new Error('Cet élève est déjà inscrit à cette séance.')
+        throw error
+      }
+      const id = (data as { id: string }).id
+      await logAudit({ tableName: 'soutien_inscriptions', recordId: id, action: 'insert', newData: { seance_id: seanceId, student_id: studentId } })
+      return id
     },
     onSuccess: invalidate,
   })
