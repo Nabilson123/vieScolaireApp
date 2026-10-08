@@ -39,7 +39,7 @@ function LigneEnvoi({ date, ligne }: { date: string; ligne: TransportDuSoutien['
         <Bus className="h-4 w-4 text-slate-400" />
         Ligne {ligne.ligne}
         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-          {ligne.eleves.length > 1 ? `${ligne.eleves.length} élèves ne prennent pas le car` : '1 élève ne prend pas le car'}
+          {ligne.eleves.length > 1 ? `${ligne.eleves.length} élèves ne prennent pas le transport` : '1 élève ne prend pas le transport'}
         </span>
       </h3>
       <p className="mb-2 text-xs text-slate-500">
@@ -55,7 +55,7 @@ function LigneEnvoi({ date, ligne }: { date: string; ligne: TransportDuSoutien['
 }
 
 /**
- * Prévenir l'équipe transport : pour un jour de soutien, les élèves qui restent et manquent leur car, ligne par ligne,
+ * Prévenir l'équipe transport : pour un jour de soutien, les élèves qui restent et manquent leur transport, ligne par ligne,
  * avec un message en arabe prêt pour le chauffeur, l'aide-maîtresse de la ligne, ou le groupe WhatsApp transport.
  * Rien n'est envoyé automatiquement : la personne relit, puis envoie elle-même.
  */
@@ -109,14 +109,14 @@ export default function SoutienTransportModal({ initialDate, onClose }: Props) {
             <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                {donnees.enAttente} élève{donnees.enAttente > 1 ? 's' : ''} du car {donnees.enAttente > 1 ? "n'ont" : "n'a"} pas encore répondu au soutien : seuls ceux qui ont confirmé qu'ils restent sont listés ci-dessous.
+                {donnees.enAttente} élève{donnees.enAttente > 1 ? 's' : ''} du transport {donnees.enAttente > 1 ? "n'ont" : "n'a"} pas encore répondu au soutien : seuls ceux qui ont confirmé qu'ils restent sont listés ci-dessous.
               </span>
             </div>
           )}
 
           {donnees.lignes.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-              Aucun élève du car du soir ne reste au soutien ce jour-là : il n'y a rien à signaler au transport.
+              Aucun élève du transport du soir ne reste au soutien ce jour-là : il n'y a rien à signaler au transport.
             </p>
           ) : (
             <>

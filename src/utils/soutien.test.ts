@@ -68,7 +68,7 @@ describe('normaliserHeure', () => {
 })
 
 describe('infoTransportEleve', () => {
-  it('élève au car du soir : ligne, départ 16h pour le primaire', () => {
+  it('élève au transport du soir : ligne, départ 16h pour le primaire', () => {
     const t = infoTransportEleve(student('e1', 'CE1-A'), identity({ transport: true, transportLigne: 'A' }), capacite)
     expect(t).toEqual({ aTransportSoir: true, ligneSoir: 'A', depart: '16h', heureDepart: '16:00' })
   })
@@ -88,7 +88,7 @@ describe('infoTransportEleve', () => {
     expect(t.ligneSoir).toBe('C')
   })
 
-  it('soir assuré par les parents, pas de transport ou pas de ligne : pas de car du soir', () => {
+  it('soir assuré par les parents, pas de transport ou pas de ligne : pas de transport du soir', () => {
     expect(infoTransportEleve(student('e1', 'CE1-A'), identity({ transport: true, transportLigne: 'A', transportLigneSoir: TRANSPORT_PARENTS }), capacite).aTransportSoir).toBe(false)
     expect(infoTransportEleve(student('e1', 'CE1-A'), identity({ transport: false, transportLigne: 'A' }), capacite).aTransportSoir).toBe(false)
     expect(infoTransportEleve(student('e1', 'CE1-A'), identity({ transport: true }), capacite).aTransportSoir).toBe(false)
@@ -104,7 +104,7 @@ describe('infoTransportEleve', () => {
 describe('alerteCar', () => {
   const car = { aTransportSoir: true, ligneSoir: 'A', depart: '16h' as const, heureDepart: '16:00' }
 
-  it('la séance finit après le car : renvoie l’heure du car', () => {
+  it('la séance finit après le transport : renvoie l’heure du transport', () => {
     expect(alerteCar({ heureFin: '17:30' }, car)).toBe('16:00')
   })
 
@@ -272,7 +272,7 @@ describe('rapportParClasse', () => {
     ])
   })
 
-  it('soutien : toutes les séances non closes, avec l’état et l’alerte du car', () => {
+  it('soutien : toutes les séances non closes, avec l’état et l’alerte du transport', () => {
     const ce1 = rapport.find((r) => r.classe === 'CE1-B')!
     expect(ce1.soutien.map((s) => [s.name, s.statut, s.aTransportSoir, s.alerteCar])).toEqual([
       ['Bilal', 'a_confirmer', false, null],
@@ -339,7 +339,7 @@ describe('soutienDuJour', () => {
     expect(soutienDuJour([{ ...mardi, datesAnnulees: ['2026-10-13'] }], inscriptions, '2026-10-13', minutes(10), eleve)).toEqual([])
   })
 
-  it('compte les réponses et signale les élèves confirmés qui ont normalement le car', () => {
+  it('compte les réponses et signale les élèves confirmés qui ont normalement le transport', () => {
     const [l] = soutienDuJour([mardi], inscriptions, '2026-10-13', minutes(10), eleve)
     expect(l).toMatchObject({ confirmes: 2, aConfirmer: 1, nePasRestent: 1, confirmesAuCar: ['E1'] })
   })
@@ -364,8 +364,8 @@ describe('modeDepartSoutien', () => {
 
   it('seul(e), car manqué, car encore pris, parents', () => {
     expect(modeDepartSoutien({ heureFin: '17:30' }, true, car)).toBe('Sort seul(e)')
-    expect(modeDepartSoutien({ heureFin: '17:30' }, false, car)).toBe('Habituellement au car : non assuré ce jour')
-    expect(modeDepartSoutien({ heureFin: '15:30' }, false, car)).toBe('Car de 16:00')
+    expect(modeDepartSoutien({ heureFin: '17:30' }, false, car)).toBe('Habituellement au transport : non assuré ce jour')
+    expect(modeDepartSoutien({ heureFin: '15:30' }, false, car)).toBe('Transport de 16:00')
     expect(modeDepartSoutien({ heureFin: '17:30' }, false, sansCar)).toBe('Récupéré par les parents')
   })
 })
@@ -389,7 +389,7 @@ describe('sortiesDuJour', () => {
   ]
   const calcul = (seances: SoutienSeance[], dateISO = '2026-10-14') => sortiesDuJour({ dateISO, eleves, capacite, seances, inscriptions, nomEnseignant: (id) => (id ? `Prof ${id}` : '') })
 
-  it('cars du soir : qui reste au soutien manque son car, les réponses attendues sont signalées', () => {
+  it('transports du soir : qui reste au soutien manque son transport, les réponses attendues sont signalées', () => {
     const { cars } = calcul([mercredi()])
     expect(cars.map((c) => `${c.depart}-${c.ligne}`)).toEqual(['16:00-A', '17:00-C'])
     expect(cars[0]).toMatchObject({ habituels: 2, restent: 1, attendus: 1 })
@@ -398,14 +398,14 @@ describe('sortiesDuJour', () => {
     expect(cars[1]).toMatchObject({ habituels: 1, restent: 1, attendus: 0 })
   })
 
-  it('« Dossier incomplet » n’entre dans aucun car', () => {
+  it('« Dossier incomplet » n’entre dans aucun transport', () => {
     expect(calcul([mercredi()]).cars[0].habituels).toBe(2)
   })
 
-  it('séance qui finit avant le car : l’élève le prend encore', () => {
+  it('séance qui finit avant le transport : l’élève le prend encore', () => {
     const { cars, soutien } = calcul([mercredi({ heureDebut: '14:30', heureFin: '15:30' })])
     expect(cars[0]).toMatchObject({ habituels: 2, restent: 0, attendus: 2, enAttente: [] })
-    expect(soutien[0].confirmes.find((c) => c.name === 'Adam')?.sortie).toBe('Car de 16:00')
+    expect(soutien[0].confirmes.find((c) => c.name === 'Adam')?.sortie).toBe('Transport de 16:00')
   })
 
   it('séances du jour : élèves confirmés avec leur mode de départ, réponses en attente', () => {
@@ -413,9 +413,9 @@ describe('sortiesDuJour', () => {
     expect(soutien).toHaveLength(1)
     expect(soutien[0]).toMatchObject({ matiere: 'Mathématiques', enseignant: 'Prof t1', nePasRestent: 0 })
     expect(soutien[0].confirmes.map((c) => [c.name, c.sortie])).toEqual([
-      ['Adam', 'Habituellement au car : non assuré ce jour'],
+      ['Adam', 'Habituellement au transport : non assuré ce jour'],
       ['Dina', 'Sort seul(e)'],
-      ['Chadi', 'Habituellement au car : non assuré ce jour'],
+      ['Chadi', 'Habituellement au transport : non assuré ce jour'],
     ])
     expect(soutien[0].enAttente).toEqual([{ name: 'Basma', classe: 'CE1-A' }])
   })
@@ -446,9 +446,9 @@ describe('incoherencesSortie', () => {
     expect(r[0].problemes[0]).toContain('interdiction de sortie')
   })
 
-  it('sort seul(e) mais affecté(e) au car du soir', () => {
+  it('sort seul(e) mais affecté(e) au transport du soir', () => {
     const r = incoherencesSortie([source(student('b', 'CE2-A'), identity({ transport: true, transportLigne: 'B' }), cantine(seulMode))], capacite)
-    expect(r[0].problemes).toEqual(['Sort seul(e) mais est affecté(e) au car du soir (ligne B).'])
+    expect(r[0].problemes).toEqual(['Sort seul(e) mais est affecté(e) au transport du soir (ligne B).'])
   })
 
   it('sortie seul(e) en maternelle', () => {

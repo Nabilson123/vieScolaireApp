@@ -113,10 +113,10 @@ function ligneSortie(r: RapportSortieLigne) {
 }
 
 function ligneSoutien(r: RapportSoutienLigne) {
-  // Un élève au car du soir qui reste au soutien n'est plus pris en charge par le service transport ce jour-là.
+  // Un élève au transport du soir qui reste au soutien n'est plus pris en charge par le service transport ce jour-là.
   const remarque = r.aTransportSoir
     ? r.statut === 'ne_reste_pas'
-      ? 'Prend le car du soir'
+      ? 'Prend le transport du soir'
       : r.statut === 'reste'
         ? 'Reste : transport du soir non assuré'
         : 'S’il reste : transport du soir non assuré'
@@ -158,7 +158,7 @@ function blocsDeLaClasse(r: RapportClasse): PaginatedBlock[] {
       })
     })
   }
-  section('transport', 'Transport scolaire', TRANSPORT, 'Aucun élève de cette classe n’a le transport.', r.transport, ['Élève', 'Ligne du matin', 'Ligne du soir', 'Départ du car du soir'], ligneTransport)
+  section('transport', 'Transport scolaire', TRANSPORT, 'Aucun élève de cette classe n’a le transport.', r.transport, ['Élève', 'Ligne du matin', 'Ligne du soir', 'Départ du transport du soir'], ligneTransport)
   section('sortie', 'Sortie seul(e)', SORTIE, 'Aucun élève de cette classe ne sort seul(e).', r.sortieSeul, ['Élève', 'Accord des parents'], ligneSortie)
   section('soutien', 'Soutien scolaire', SOUTIEN, 'Aucun élève de cette classe n’est inscrit au soutien.', r.soutien, ['Élève', 'Séance', 'Réponse des parents', 'Remarque'], ligneSoutien)
   return blocks

@@ -64,7 +64,7 @@ export function buildConflitsContext(): ConflitsContext {
   }
 }
 
-/** Car du soir d'un élève, d'après sa fiche (transport, ligne du soir) et les horaires configurés. */
+/** Transport du soir d'un élève, d'après sa fiche (transport, ligne du soir) et les horaires configurés. */
 export function transportInfoOf(studentId: string): InfoTransportSoutien {
   const student = getStudentsSnapshot().find((s) => s.id === studentId)
   if (!student) return { aTransportSoir: false, ligneSoir: null, depart: null, heureDepart: '' }
@@ -96,7 +96,7 @@ export function incoherencesDeLEcole(): IncoherenceSortie[] {
   return incoherencesSortie(elevesDeLEcole(), getServicesCapaciteSnapshot() ?? undefined)
 }
 
-/** Sorties du jour : cars du soir, séances de soutien et élèves qui sortent seul(e). */
+/** Sorties du jour : transports du soir, séances de soutien et élèves qui sortent seul(e). */
 export function sortiesDuJourDeLEcole(dateISO: string): SortiesDuJour {
   const teachers = new Map(getTeachersSnapshot().map((t) => [t.id, teacherName(t)]))
   return sortiesDuJour({
@@ -167,19 +167,19 @@ export interface ContactTransport {
 
 export interface TransportDuSoutien {
   date: string
-  /** Lignes dont au moins un élève reste au soutien et manque son car ce soir-là. */
+  /** Lignes dont au moins un élève reste au soutien et manque son transport ce soir-là. */
   lignes: {
     ligne: string
     chauffeur: ContactTransport | null
     aide: ContactTransport | null
     eleves: { name: string; classe: string; matiere: string; heureFin: string }[]
   }[]
-  /** Élèves du car qui n'ont pas encore répondu au soutien : on ne sait pas s'ils le prendront. */
+  /** Élèves du transport qui n'ont pas encore répondu au soutien : on ne sait pas s'ils le prendront. */
   enAttente: number
   groupeUrl: string
 }
 
-/** Élèves à signaler à l'équipe transport pour un jour de soutien : ceux qui restent et manquent leur car, ligne par ligne, avec les contacts de la ligne. */
+/** Élèves à signaler à l'équipe transport pour un jour de soutien : ceux qui restent et manquent leur transport, ligne par ligne, avec les contacts de la ligne. */
 export function transportDuSoutien(dateISO: string): TransportDuSoutien {
   const { cars } = sortiesDuJourDeLEcole(dateISO)
   const lignesTransport = getTransportLignesSnapshot()

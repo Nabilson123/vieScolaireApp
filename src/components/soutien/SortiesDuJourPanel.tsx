@@ -16,7 +16,7 @@ function dateLongue(iso: string): string {
 }
 
 /**
- * Sorties du soir d'un jour : combien d'élèves sont attendus à chaque car, qui reste au soutien (et manque son car),
+ * Sorties du soir d'un jour : combien d'élèves sont attendus à chaque transport, qui reste au soutien (et manque son transport),
  * qui sort seul(e). Deux actions : imprimer la feuille pour le portail, et prévenir l'équipe transport.
  */
 export default function SortiesDuJourPanel() {
@@ -48,7 +48,7 @@ export default function SortiesDuJourPanel() {
             <Bus className="h-5 w-5 text-sky-500" />
             Sorties du soir
           </h2>
-          <p className="text-xs text-slate-500">Cars du soir, soutien et sorties seul(e) d'une même journée : de quoi préparer le portail et prévenir le transport.</p>
+          <p className="text-xs text-slate-500">Transport du soir, soutien et sorties seul(e) d'une même journée : de quoi préparer le portail et prévenir le transport.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -84,7 +84,7 @@ export default function SortiesDuJourPanel() {
           type="button"
           onClick={() => setTransport(true)}
           disabled={restent === 0}
-          title={restent === 0 ? 'Aucun élève du car ne reste au soutien ce jour-là' : undefined}
+          title={restent === 0 ? 'Aucun élève du transport ne reste au soutien ce jour-là' : undefined}
           className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Bus className="h-4 w-4" />
@@ -95,11 +95,11 @@ export default function SortiesDuJourPanel() {
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm lg:col-span-2">
           <h3 className="mb-2 flex items-center justify-between text-sm font-bold text-slate-900">
-            Cars du soir
+            Transport du soir
             <span className="text-xs font-medium text-slate-400">{attendus} élèves attendus</span>
           </h3>
           {data.cars.length === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-400">Aucun élève n'a de car du soir.</p>
+            <p className="py-4 text-center text-sm text-slate-400">Aucun élève n'a de transport du soir.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[440px] text-left text-sm">
@@ -130,7 +130,7 @@ export default function SortiesDuJourPanel() {
           )}
           {data.cars.some((c) => c.enAttente.length > 0) && (
             <p className="mt-2 text-xs font-medium text-amber-700">
-              {data.cars.reduce((n, c) => n + c.enAttente.length, 0)} élève(s) du car n'ont pas encore répondu au soutien : comptés au car en attendant.
+              {data.cars.reduce((n, c) => n + c.enAttente.length, 0)} élève(s) du transport n'ont pas encore répondu au soutien : comptés au transport en attendant.
             </p>
           )}
         </section>

@@ -196,7 +196,7 @@ export function conflitsSeance(brouillon: BrouillonSeance, ctx: ConflitsContext)
 // ───────────────────────── Transport et sortie seul(e) ─────────────────────────
 
 export interface InfoTransportSoutien {
-  /** L'élève prend normalement le car du soir (transport affecté, ligne du soir, pas « amené(e) par les parents »). */
+  /** L'élève prend normalement le transport du soir (transport affecté, ligne du soir, pas « amené(e) par les parents »). */
   aTransportSoir: boolean
   ligneSoir: string | null
   depart: '16h' | '17h' | null
@@ -224,8 +224,8 @@ export function normaliserHeure(raw: string): string {
 }
 
 /**
- * La séance se termine-t-elle après le départ du car du soir de l'élève ? Renvoie l'heure du car (HH:MM) dans ce cas,
- * `null` sinon : s'il reste, il manque le car.
+ * La séance se termine-t-elle après le départ du transport du soir de l'élève ? Renvoie l'heure du départ (HH:MM) dans ce cas,
+ * `null` sinon : s'il reste, il manque le transport.
  */
 export function alerteCar(seance: Pick<SoutienSeance, 'heureFin'>, transport: InfoTransportSoutien): string | null {
   if (!transport.aTransportSoir || !transport.heureDepart) return null
@@ -264,7 +264,7 @@ export interface RapportTransportLigne {
   name: string
   matin: string
   soir: string
-  /** HH:MM du car du soir, vide si l'élève n'en prend pas. */
+  /** HH:MM du transport du soir, vide si l'élève n'en prend pas. */
   depart: string
 }
 
@@ -283,7 +283,7 @@ export interface RapportSoutienLigne {
   heureFin: string
   statut: StatutSoutien
   aTransportSoir: boolean
-  /** Heure du car manqué si l'élève reste, sinon `null`. */
+  /** Heure du transport manqué si l'élève reste, sinon `null`. */
   alerteCar: string | null
 }
 
@@ -431,20 +431,20 @@ export interface SoutienDuJourLigne {
   confirmes: number
   aConfirmer: number
   nePasRestent: number
-  /** Élèves confirmés qui prennent normalement le car du soir et le manquent (la séance finit après son départ). */
+  /** Élèves confirmés qui prennent normalement le transport du soir et le manquent (la séance finit après son départ). */
   confirmesAuCar: string[]
 }
 
 /**
  * Séances de soutien qui ont lieu ce jour-là (date annulée écartée), dans l'ordre des heures, avec où en sont les
- * réponses des parents et les élèves normalement au car qui restent.
+ * réponses des parents et les élèves normalement au transport qui restent.
  */
 export function soutienDuJour(
   seances: SoutienSeance[],
   inscriptions: SoutienInscription[],
   dateISO: string,
   nowMinutes: number,
-  eleve: { nom: (studentId: string) => string; /** L'élève manque son car du soir s'il reste jusqu'à `heureFin`. */ manqueLeCar: (studentId: string, heureFin: string) => boolean },
+  eleve: { nom: (studentId: string) => string; /** L'élève manque son transport du soir s'il reste jusqu'à `heureFin`. */ manqueLeCar: (studentId: string, heureFin: string) => boolean },
 ): SoutienDuJourLigne[] {
   return seances
     .filter((s) => seanceActiveLe(s, dateISO))
@@ -473,7 +473,7 @@ export function soutienDuJour(
 /** Comment un élève confirmé quitte l'école à la fin de la séance. */
 export function modeDepartSoutien(seance: Pick<SoutienSeance, 'heureFin'>, seul: boolean, transport: InfoTransportSoutien): string {
   if (seul) return 'Sort seul(e)'
-  if (transport.aTransportSoir) return alerteCar(seance, transport) ? 'Habituellement au car : non assuré ce jour' : `Car de ${transport.heureDepart}`
+  if (transport.aTransportSoir) return alerteCar(seance, transport) ? 'Habituellement au transport : non assuré ce jour' : `Transport de ${transport.heureDepart}`
   return 'Récupéré par les parents'
 }
 
@@ -484,11 +484,11 @@ export interface CarDuSoir {
   /** HH:MM */
   depart: string
   habituels: number
-  /** Élèves qui restent au soutien et manquent ce car. */
+  /** Élèves qui restent au soutien et manquent ce transport. */
   restent: number
   attendus: number
   restants: { studentId: string; name: string; classe: string; matiere: string; heureFin: string }[]
-  /** Élèves du car dont la réponse au soutien est attendue : on ne sait pas encore s'ils le prendront. */
+  /** Élèves du transport dont la réponse au soutien est attendue : on ne sait pas encore s'ils le prendront. */
   enAttente: { studentId: string; name: string; classe: string; matiere: string }[]
 }
 
@@ -519,8 +519,8 @@ export interface SortiesDuJour {
 }
 
 /**
- * Qui part comment à la fin de la journée du `dateISO` : les cars du soir (combien d'élèves attendus, qui reste au soutien
- * et manque le car), les séances de soutien (élèves confirmés et leur mode de départ) et les élèves qui sortent seul(e).
+ * Qui part comment à la fin de la journée du `dateISO` : les transports du soir (combien d'élèves attendus, qui reste au soutien
+ * et manque le transport), les séances de soutien (élèves confirmés et leur mode de départ) et les élèves qui sortent seul(e).
  */
 export function sortiesDuJour(p: {
   dateISO: string
@@ -621,7 +621,7 @@ export interface IncoherenceSortie {
 
 /**
  * Fiches dont le mode de sortie se contredit : « sortie seul(e) » avec une interdiction de sortie active, sortie seul(e) alors
- * que l'élève est affecté au car du soir, ou sortie seul(e) en maternelle. Seules les fiches qui ont (ou prétendent avoir) le
+ * que l'élève est affecté au transport du soir, ou sortie seul(e) en maternelle. Seules les fiches qui ont (ou prétendent avoir) le
  * mode « sortie seul(e) » sont examinées.
  */
 export function incoherencesSortie(eleves: EleveRapportSource[], capacite: ServicesCapacite | undefined): IncoherenceSortie[] {
@@ -634,7 +634,7 @@ export function incoherencesSortie(eleves: EleveRapportSource[], capacite: Servi
     if (cantine.interdictionSortie) problemes.push('Le mode est « sortie seul(e) » mais une interdiction de sortie est active : la fiche se contredit.')
     else {
       const transport = infoTransportEleve(student, identity, capacite)
-      if (transport.aTransportSoir) problemes.push(`Sort seul(e) mais est affecté(e) au car du soir (ligne ${transport.ligneSoir}).`)
+      if (transport.aTransportSoir) problemes.push(`Sort seul(e) mais est affecté(e) au transport du soir (ligne ${transport.ligneSoir}).`)
       if (cycleOfClasse(student.classe) === 'maternelle') problemes.push('Élève de maternelle : sortie seul(e) à vérifier.')
     }
     if (problemes.length > 0) out.push({ studentId: student.id, name: student.name, classe: student.classe, problemes })

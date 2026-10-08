@@ -810,7 +810,7 @@ export default function CockpitLive({ onDataChanged, onNavigateToJournalAppelsPa
                     </p>
                     {s.confirmesAuCar.length > 0 && (
                       <p className="mt-1 text-xs font-medium text-amber-700">
-                        Normalement au car (non assuré ce soir) : {s.confirmesAuCar.join(', ')}
+                        Normalement au transport (non assuré ce soir) : {s.confirmesAuCar.join(', ')}
                       </p>
                     )}
                   </div>

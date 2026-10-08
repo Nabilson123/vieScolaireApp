@@ -66,7 +66,7 @@ const td = 'px-3 py-1'
 const row = { borderColor: RULE }
 
 /**
- * Feuille de sortie du jour pour le portail : combien d'élèves attendus à chaque car du soir et qui n'y sera pas (soutien),
+ * Feuille de sortie du jour pour le portail : combien d'élèves attendus à chaque transport du soir et qui n'y sera pas (soutien),
  * les séances de soutien avec le départ de chaque élève confirmé, et les élèves qui sortent seul(e).
  */
 export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }) {
@@ -77,7 +77,7 @@ export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }
     blocks.push({
       key: 'cars',
       node: (
-        <Section titre="Cars du soir" theme={TRANSPORT} badge={`${data.cars.reduce((n, c) => n + c.attendus, 0)} élèves attendus`} head={['Ligne', 'Départ', 'Habituels', 'Restent au soutien', 'Attendus']}>
+        <Section titre="Transport du soir" theme={TRANSPORT} badge={`${data.cars.reduce((n, c) => n + c.attendus, 0)} élèves attendus`} head={['Ligne', 'Départ', 'Habituels', 'Restent au soutien', 'Attendus']}>
           {data.cars.map((c) => (
             <tr key={`${c.depart}-${c.ligne}`} className="border-t" style={row}>
               <td className={`${td} font-bold`} style={{ color: INK }}>
@@ -100,7 +100,7 @@ export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }
           {restent === 0 && (
             <tr className="border-t" style={row}>
               <td colSpan={5} className={td} style={{ color: MUTED }}>
-                Aucun élève du car ne reste au soutien ce soir.
+                Aucun élève du transport ne reste au soutien ce soir.
               </td>
             </tr>
           )}
@@ -113,7 +113,7 @@ export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }
       blocks.push({
         key: `restants-${i}`,
         node: (
-          <Section titre="Ne prennent pas le car ce soir" theme={TRANSPORT} badge={`${restants.length} élève${restants.length > 1 ? 's' : ''}`} suite={i > 0} head={['Élève', 'Classe', 'Car habituel', 'Soutien jusqu’à']}>
+          <Section titre="Ne prennent pas le transport ce soir" theme={TRANSPORT} badge={`${restants.length} élève${restants.length > 1 ? 's' : ''}`} suite={i > 0} head={['Élève', 'Classe', 'Transport habituel', 'Soutien jusqu’à']}>
             {chunk.map((r) => (
               <tr key={r.studentId} className="border-t" style={row}>
                 <td className={`${td} font-semibold`} style={{ color: INK }}>
@@ -142,7 +142,7 @@ export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }
         node: (
           <div className="rounded-[10px] border px-3.5 py-2 text-[9.5px]" style={{ borderColor: RULE, color: MUTED2 }}>
             <span className="font-bold" style={{ color: AMBER }}>
-              Réponse attendue ({enAttente.length}) — comptés au car tant que les parents n’ont pas répondu :
+              Réponse attendue ({enAttente.length}) — comptés au transport tant que les parents n’ont pas répondu :
             </span>{' '}
             {enAttente.map((e) => `${e.name} (${e.classe}, ligne ${e.ligne})`).join(', ')}.
           </div>
@@ -244,7 +244,7 @@ export default function PrintableSortiesDuJour({ data }: { data: SortiesDuJour }
       key: 'rien',
       node: (
         <div className="rounded-[10px] border px-3.5 py-3 text-[10px]" style={{ borderColor: RULE, color: MUTED }}>
-          Rien à signaler pour cette journée : aucun car du soir, aucune séance de soutien et aucun élève en sortie seul(e).
+          Rien à signaler pour cette journée : aucun transport du soir, aucune séance de soutien et aucun élève en sortie seul(e).
         </div>
       ),
     })

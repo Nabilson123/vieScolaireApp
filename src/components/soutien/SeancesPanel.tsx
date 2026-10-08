@@ -216,9 +216,9 @@ export default function SeancesPanel({ isEditable }: { isEditable: boolean }) {
                           {comptes.a_confirmer > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">{comptes.a_confirmer} à confirmer</span>}
                           {comptes.ne_reste_pas > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">{comptes.ne_reste_pas} ne restent pas</span>}
                           {manquentLeCar > 0 && (
-                            <span title="Élèves au car du soir dont la séance se termine après le départ du car" className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
+                            <span title="Élèves au transport du soir dont la séance se termine après le départ du transport" className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
                               <Bus className="h-3 w-3" />
-                              {manquentLeCar} au car du soir
+                              {manquentLeCar} au transport du soir
                             </span>
                           )}
                         </div>

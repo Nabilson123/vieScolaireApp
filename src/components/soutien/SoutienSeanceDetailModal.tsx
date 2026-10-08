@@ -87,7 +87,7 @@ export default function SoutienSeanceDetailModal({ seance, classe, onClose, onEd
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {car && (
-                          <span title={`Au car du soir, départ ${car} : la séance se termine après`} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                          <span title={`Au transport du soir, départ ${car} : la séance se termine après`} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                             <Bus className="h-3 w-3" />
                             {car}
                           </span>

@@ -27,7 +27,7 @@ const SELECT = 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm te
 
 /**
  * Réponses des parents au soutien : une ligne par élève inscrit avec son état (à confirmer, reste, part en transport), le
- * car du soir et le message envoyé. Les parents répondent par WhatsApp : la vie scolaire note leur réponse ici.
+ * transport du soir et le message envoyé. Les parents répondent par WhatsApp : la vie scolaire note leur réponse ici.
  */
 export default function ConfirmationsPanel({ isEditable }: { isEditable: boolean }) {
   const { data: seances = [] } = useSoutienSeances()
@@ -83,7 +83,7 @@ export default function ConfirmationsPanel({ isEditable }: { isEditable: boolean
       <div className="mb-3 flex items-start gap-2 rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-2.5 text-xs text-sky-800">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
         <p>
-          Les parents répondent par WhatsApp : notez ici leur réponse. Un élève qui prend le car du soir et reste au soutien n'est plus pris en charge par le service transport ce jour-là — c'est une simple mention, aucune liste de car n'est modifiée.
+          Les parents répondent par WhatsApp : notez ici leur réponse. Un élève qui prend le transport du soir et reste au soutien n'est plus pris en charge par le service transport ce jour-là — c'est une simple mention, aucune liste de transport n'est modifiée.
         </p>
       </div>
 
@@ -137,7 +137,7 @@ export default function ConfirmationsPanel({ isEditable }: { isEditable: boolean
             <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               <th className="px-4 py-3">Élève</th>
               <th className="px-3 py-3">Séance</th>
-              <th className="px-3 py-3">Car du soir</th>
+              <th className="px-3 py-3">Transport du soir</th>
               <th className="px-3 py-3">Message</th>
               <th className="px-3 py-3">Réponse des parents</th>
             </tr>
@@ -168,9 +168,9 @@ export default function ConfirmationsPanel({ isEditable }: { isEditable: boolean
                         Ligne {transport.ligneSoir} · départ {transport.heureDepart}
                       </p>
                       {car ? (
-                        <p className="font-semibold text-amber-700">Fin du soutien après le car : s'il reste, pas de car ce jour-là.</p>
+                        <p className="font-semibold text-amber-700">Fin du soutien après le départ du transport : s'il reste, pas de transport ce jour-là.</p>
                       ) : (
-                        <p className="text-slate-400">Le soutien finit avant le car.</p>
+                        <p className="text-slate-400">Le soutien finit avant le départ du transport.</p>
                       )}
                     </div>
                   ) : (

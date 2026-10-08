@@ -402,10 +402,10 @@ export interface SoutienWhatsAppInfo {
   jusquAu?: string | null
   enseignant?: string
   salle?: string
-  /** L'élève prend normalement le car du soir. */
+  /** L'élève prend normalement le transport du soir. */
   aTransportSoir: boolean
   ligneSoir?: string | null
-  /** HH:MM : départ du car du soir. */
+  /** HH:MM : départ du transport du soir. */
   heureDepart?: string
   /** AAAA-MM-JJ : séances annulées (message d'annulation). */
   datesAnnulees?: string[]
@@ -418,7 +418,7 @@ function minutesDe(t: string): number {
   return h * 60 + (m || 0)
 }
 
-/** Vrai si la séance se termine après le départ du car (l'élève qui reste le manque). */
+/** Vrai si la séance se termine après le départ du transport (l'élève qui reste le manque). */
 function finApresLeCar(info: SoutienWhatsAppInfo): boolean {
   return !!info.heureDepart && minutesDe(info.heureFin) > minutesDe(info.heureDepart)
 }
@@ -441,7 +441,7 @@ function buildAnnulationFr(info: SoutienWhatsAppInfo): string {
   lines.push(
     '',
     info.aTransportSoir
-      ? `Votre enfant prendra donc le car du soir comme d'habitude${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.`
+      ? `Votre enfant prendra donc le transport du soir comme d'habitude${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.`
       : 'Il n\'y a donc pas de soutien ce jour-là.'
   )
   if (info.prochaine) lines.push('', `La prochaine séance a lieu le ${dateCourte(info.prochaine)}.`)
@@ -487,8 +487,8 @@ function buildSoutienMessageFr(kind: SoutienMessageKind, info: SoutienWhatsAppIn
   if (info.aTransportSoir) {
     lines.push(
       '',
-      `Votre enfant prend le car du soir${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.` +
-        `${finApresLeCar(info) ? ` Le soutien se termine à ${info.heureFin}, après le départ du car.` : ''}` +
+      `Votre enfant prend le transport du soir${info.ligneSoir ? ` (ligne ${info.ligneSoir}${info.heureDepart ? `, départ à ${info.heureDepart}` : ''})` : ''}.` +
+        `${finApresLeCar(info) ? ` Le soutien se termine à ${info.heureFin}, après le départ du transport.` : ''}` +
         ' *S\'il reste au soutien, le transport du soir ne sera pas assuré par le service transport.*'
     )
   }
@@ -496,7 +496,7 @@ function buildSoutienMessageFr(kind: SoutienMessageKind, info: SoutienWhatsAppIn
   lines.push(
     '',
     info.aTransportSoir
-      ? 'Merci de nous répondre à ce message : *RESTE* si votre enfant reste au soutien, ou *TRANSPORT* s\'il prend le car comme d\'habitude.'
+      ? 'Merci de nous répondre à ce message : *RESTE* si votre enfant reste au soutien, ou *TRANSPORT* s\'il prend le transport comme d\'habitude.'
       : 'Merci de nous répondre à ce message : *OUI* si votre enfant reste au soutien, ou *NON* dans le cas contraire.'
   )
   lines.push(...SIGNATURE)
@@ -554,7 +554,7 @@ export interface SoutienTransportLigne {
 
 /**
  * Message en arabe pour l'équipe transport (chauffeur, aide-maîtresse ou groupe) : élèves qui restent au soutien ce soir
- * et ne prendront donc pas le car, ligne par ligne — pour que le car n'attende pas un élève qui ne viendra pas.
+ * et ne prendront donc pas le transport, ligne par ligne — pour que le transport n'attende pas un élève qui ne viendra pas.
  */
 export function buildSoutienTransportMessage(info: { date: string; lignes: SoutienTransportLigne[] }): string {
   const jour = jourDeSemaineAr(info.date)

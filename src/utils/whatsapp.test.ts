@@ -225,26 +225,25 @@ describe('buildSoutienMessage', () => {
     expect(m).toContain('*Salle :* Salle 4')
   })
 
-  it('sans transport : réponse OUI / NON et aucune mention du car', () => {
+  it('sans transport : réponse OUI / NON et aucune mention du transport', () => {
     const m = buildSoutienMessage('confirmation', info)
     expect(m).toContain('*OUI*')
-    expect(m).not.toContain('car')
     expect(m).not.toContain('transport')
   })
 
-  it('avec le car du soir : précise que le transport n’est plus assuré s’il reste, et demande RESTE / TRANSPORT', () => {
+  it('avec le transport du soir : précise que le transport n’est plus assuré s’il reste, et demande RESTE / TRANSPORT', () => {
     const m = buildSoutienMessage('confirmation', avecCar)
     expect(m).toContain('(ligne A, départ à 16:00)')
-    expect(m).toContain('après le départ du car')
+    expect(m).toContain('après le départ du transport')
     expect(m).toContain("le transport du soir ne sera pas assuré par le service transport")
     expect(m).toContain('*RESTE*')
     expect(m).toContain('*TRANSPORT*')
     expect(m).not.toContain('*OUI*')
   })
 
-  it('séance qui finit avant le car : pas de mention « après le départ du car »', () => {
+  it('séance qui finit avant le transport : pas de mention « après le départ du transport »', () => {
     const m = buildSoutienMessage('confirmation', { ...avecCar, heureFin: '15:30', heureDebut: '14:30' })
-    expect(m).not.toContain('après le départ du car')
+    expect(m).not.toContain('après le départ du transport')
     expect(m).toContain('ne sera pas assuré')
   })
 
@@ -320,9 +319,9 @@ describe('buildSoutienMessage — annulation', () => {
     expect(m).not.toContain('prochaine séance')
   })
 
-  it('élève au car du soir : il le prend comme d’habitude', () => {
+  it('élève au transport du soir : il le prend comme d’habitude', () => {
     const m = buildSoutienMessage('annulation', { ...info, aTransportSoir: true, ligneSoir: 'A', heureDepart: '16:00' })
-    expect(m).toContain('prendra donc le car du soir comme d\'habitude (ligne A, départ à 16:00)')
+    expect(m).toContain('prendra donc le transport du soir comme d\'habitude (ligne A, départ à 16:00)')
     expect(m).not.toContain('pas de soutien')
   })
 

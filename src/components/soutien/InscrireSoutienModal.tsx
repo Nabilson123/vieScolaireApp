@@ -31,7 +31,7 @@ function dateCourte(iso: string): string {
 
 /**
  * Inscrire un élève à une séance de soutien depuis la Réunion de suivi : les séances en cours avec, pour chacune, la moyenne de
- * l'élève dans la matière (celles où il est sous le seuil en premier), les cours de sa classe au même moment et son car du soir.
+ * l'élève dans la matière (celles où il est sous le seuil en premier), les cours de sa classe au même moment et son transport du soir.
  */
 export default function InscrireSoutienModal({ studentId, studentName, classe, onClose }: Props) {
   const { data: seances = [] } = useSoutienSeances()
@@ -157,7 +157,7 @@ export default function InscrireSoutienModal({ studentId, studentName, classe, o
                 {car && (
                   <span className="flex items-center gap-1 font-medium text-amber-700">
                     <Bus className="h-3 w-3" />
-                    Car du soir à {car} : la séance finit après
+                    Transport du soir à {car} : la séance finit après
                   </span>
                 )}
               </div>

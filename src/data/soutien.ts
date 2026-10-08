@@ -62,7 +62,7 @@ export interface SoutienInscription {
 }
 
 /**
- * Libellé d'une réponse. Pour un élève qui prend le car du soir, ne pas rester revient à partir en transport ;
+ * Libellé d'une réponse. Pour un élève qui prend le transport du soir, ne pas rester revient à partir en transport ;
  * pour les autres, c'est simplement qu'il ne reste pas.
  */
 export function statutSoutienLabel(statut: StatutSoutien, aTransportSoir: boolean): string {

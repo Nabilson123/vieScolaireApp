@@ -142,7 +142,7 @@ describe('libellés et créneau', () => {
     expect(creneauModifie(a, { ...a, heureFin: '18:00' })).toBe(true)
   })
 
-  it('statutSoutienLabel : « part en transport » seulement pour un élève au car', () => {
+  it('statutSoutienLabel : « part en transport » seulement pour un élève au transport', () => {
     expect(statutSoutienLabel('ne_reste_pas', true)).toBe('Part en transport')
     expect(statutSoutienLabel('ne_reste_pas', false)).toBe('Ne reste pas')
     expect(statutSoutienLabel('reste', true)).toBe('Reste au soutien')

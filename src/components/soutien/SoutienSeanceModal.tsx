@@ -263,7 +263,7 @@ export default function SoutienSeanceModal({ seance, onClose, onSaved }: Props) 
                     <span key={id} className="inline-flex items-center gap-1 rounded-full bg-violet-50 py-1 pl-2.5 pr-1 text-xs font-medium text-violet-800">
                       {s.name} <span className="text-violet-400">({s.classe})</span>
                       {car && (
-                        <span title={`Prend le car du soir (départ ${car}) : la séance se termine après`} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">
+                        <span title={`Prend le transport du soir (départ ${car}) : la séance se termine après`} className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">
                           <Bus className="h-3 w-3" />
                           {car}
                         </span>
