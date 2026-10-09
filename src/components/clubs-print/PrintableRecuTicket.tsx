@@ -77,8 +77,9 @@ export default function PrintableRecuTicket({ recu }: { recu: DonneesRecu }) {
         }}
       >
         {association.logo && (
-          // Une imprimante thermique ne rend que du noir et du blanc : le logo est passé en niveaux de gris contrastés.
-          <img src={association.logo} alt="Logo" style={{ display: 'block', margin: '0 auto 4px', maxHeight: '20mm', maxWidth: '44mm', objectFit: 'contain', filter: 'grayscale(1) contrast(1.4)' }} />
+          // Une imprimante thermique ne rend que du noir et du blanc : un jaune ou un gris clair ne sortirait qu'en points épars.
+          // Le logo est donc passé en noir et blanc pur (gris, assombri, puis seuil) : toute couleur devient pleine, le fond reste blanc.
+          <img src={association.logo} alt="Logo" style={{ display: 'block', margin: '0 auto 4px', maxHeight: '20mm', maxWidth: '44mm', objectFit: 'contain', filter: 'grayscale(1) brightness(0.62) contrast(100)' }} />
         )}
         <p style={{ textAlign: 'center', fontSize: POLICE_PX + 2, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.15 }}>{association.nom}</p>
         <Trait />
