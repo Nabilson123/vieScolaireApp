@@ -38,6 +38,7 @@ import {
   History,
   FileDown,
   PhoneCall,
+  Trophy,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -80,6 +81,7 @@ export const navGroups: NavGroup[] = [
       { key: 'lunch', label: 'Garde Repas & Cantine', icon: UtensilsCrossed },
       { key: 'transport', label: 'Transport', icon: Bus },
       { key: 'garde', label: 'Garde', icon: Clock3 },
+      { key: 'clubs', label: 'Clubs', icon: Trophy },
       { key: 'personnel', label: 'Personnel', icon: IdCard },
     ],
   },
@@ -170,6 +172,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'lunch',
   'transport',
   'garde',
+  'clubs',
   'personnel',
   'helpdesk',
   'referentiel',

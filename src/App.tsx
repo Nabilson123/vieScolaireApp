@@ -40,6 +40,7 @@ const ReservationSallesGlobal = lazy(() => import('./pages/ReservationSallesGlob
 const JournalAuditGlobal = lazy(() => import('./pages/JournalAuditGlobal'))
 const JournalAppelsParentsGlobal = lazy(() => import('./pages/JournalAppelsParentsGlobal'))
 const ExportGlobal = lazy(() => import('./pages/ExportGlobal'))
+const ClubsGlobal = lazy(() => import('./pages/ClubsGlobal'))
 const AiCopilotGlobal = lazy(() => import('./pages/AiCopilotGlobal'))
 const ParentPortalApp = lazy(() => import('./portal/ParentPortalApp'))
 import { IMPLEMENTED_MODULE_KEYS } from './data/navigation'
@@ -72,6 +73,7 @@ import { useAidesMaitresses } from './services/aidesMaitressesService'
 import { useAccountType } from './services/accountType'
 import { useParents } from './services/parentsService'
 import { useSoutienInscriptions, useSoutienSeances } from './services/soutienService'
+import { useClubEcheances, useClubInscriptions, useClubs } from './services/clubsService'
 
 function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -126,6 +128,9 @@ function App() {
   useParents(isStaff)
   useSoutienSeances(isStaff)
   useSoutienInscriptions(isStaff)
+  useClubs(isStaff)
+  useClubInscriptions(isStaff)
+  useClubEcheances(isStaff)
   const [active, setActive] = useState('dashboard')
   const [navTarget, setNavTarget] = useState<{ studentId?: string; teacherId?: string; tab?: string; classe?: string } | null>(null)
   const [, setGlobalRefresh] = useState(0)
@@ -302,6 +307,7 @@ function App() {
           {active === 'lunch' && <GardeRepasGlobal onNavigateToStudent={navigateToStudent} onDataChanged={notifyDataChanged} />}
           {active === 'transport' && <TransportGlobal onDataChanged={notifyDataChanged} />}
           {active === 'garde' && <GardeGlobal onDataChanged={notifyDataChanged} />}
+          {active === 'clubs' && <ClubsGlobal />}
           {active === 'personnel' && <PersonnelGlobal onDataChanged={notifyDataChanged} />}
           {active === 'helpdesk' && <HelpdeskGlobal />}
           {active === 'reservationSalles' && <ReservationSallesGlobal />}
