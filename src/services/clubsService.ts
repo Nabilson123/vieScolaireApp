@@ -309,6 +309,25 @@ async function synchroniserEcheances(club: Club, inscriptions: ClubInscription[]
 }
 
 /**
+ * Recale les mensualités de ces inscriptions sur le tarif, les mois et l'arrêt de leur club. Utilisé après l'annulation d'un
+ * règlement : un mois payé d'avance après l'arrêt de l'élève n'était conservé que parce qu'il avait été payé, il disparaît
+ * dès que ce paiement est annulé.
+ */
+export async function resynchroniserInscriptions(inscriptionIds: string[]): Promise<ResumeSynchro> {
+  const total: ResumeSynchro = { ajoutees: 0, modifiees: 0, supprimees: 0 }
+  const concernees = cachedInscriptions.filter((i) => inscriptionIds.includes(i.id))
+  for (const club of cachedClubs) {
+    const duClub = facturables(concernees.filter((i) => i.clubId === club.id))
+    if (duClub.length === 0) continue
+    const r = await synchroniserEcheances(club, duClub)
+    total.ajoutees += r.ajoutees
+    total.modifiees += r.modifiees
+    total.supprimees += r.supprimees
+  }
+  return total
+}
+
+/**
  * Effet qu'aurait la modification du club sur les mensualités déjà créées de ses inscrits, sans rien écrire. Sert à
  * prévenir avant de changer un tarif ou une période (« N mensualités sans règlement seront recalculées »).
  */

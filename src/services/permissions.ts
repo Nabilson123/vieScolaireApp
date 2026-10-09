@@ -1,6 +1,7 @@
 import { useCurrentUserId, getCurrentUserIdSnapshot } from './currentUser'
 import { useProfiles, getProfilesSnapshot } from './profilesService'
 import type { Profile } from '../data/profiles'
+import { clubsPaiementsAccess, type ClubsPaiementsAccess } from '../utils/clubsDroits'
 
 export interface ModuleAccess {
   canView: boolean
@@ -31,4 +32,16 @@ export function getModuleAccess(profile: Profile | undefined, moduleKey: string)
   const entry = profile?.permissions?.[moduleKey]
   if (!entry) return { canView: true, canEdit: true }
   return { canView: entry.view, canEdit: entry.edit }
+}
+
+/**
+ * Droit sur les paiements des clubs (règlements, reçus, impayés). À l'inverse de `getModuleAccess`, l'absence d'entrée
+ * REFUSE l'accès : seule la Direction l'a par défaut. Le même droit est imposé en base par les politiques RLS.
+ */
+export function getClubsPaiementsAccess(profile: Profile | undefined): ClubsPaiementsAccess {
+  return clubsPaiementsAccess(profile)
+}
+
+export function useClubsPaiementsAccess(): ClubsPaiementsAccess {
+  return clubsPaiementsAccess(useCurrentProfile())
 }

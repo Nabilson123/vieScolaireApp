@@ -1,13 +1,16 @@
 import { timeToMinutes } from '../data/classSchedules'
-import type { Club, ClubInscription, JourClub } from '../data/clubs'
+import type { Club, ClubInscription, ClubReglement, JourClub } from '../data/clubs'
 import { fullLabel } from '../data/salles'
 import { JOUR_LABELS } from '../data/soutien'
 import { teacherName } from '../data/teachers'
-import { getClubInscriptionsSnapshot, getClubsSnapshot } from '../services/clubsService'
+import { getClubEcheancesSnapshot, getClubInscriptionsSnapshot, getClubsSnapshot } from '../services/clubsService'
+import { getClubImputationsSnapshot, getClubReglementsSnapshot } from '../services/clubsPaiementsService'
 import { getSallesSnapshot } from '../services/sallesService'
+import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { debutDuClub, finDuClub, inscritsActifs, listeAttente } from './clubs'
+import { cleFamille, libelleFamille, lignesMensualites, montantEnLettres, paiementsParEcheance, type EleveFinance } from './clubsFinance'
 import { alerteCar, conflitsSeance, parClasseNom, type ConflitSeance } from './soutien'
 import { buildConflitsContext, transportInfoOf } from './soutienContexte'
 
@@ -115,5 +118,90 @@ export function feuilleDuClub(club: Club): FeuilleClub {
     salle: salleDuClub(club),
     inscrits: enLignes(inscritsActifs(inscriptions, club.id)).sort(parClasseNom),
     attente: enLignes(listeAttente(inscriptions, club.id)),
+  }
+}
+
+// ───────────────────────── Reçu de paiement ─────────────────────────
+
+/** Les élèves inscrits aux clubs, avec leur famille (clé et libellé), d'après les données chargées. */
+function elevesFinanceDeLEcole(): Map<string, EleveFinance> {
+  const concernes = new Set(getClubInscriptionsSnapshot().map((i) => i.studentId))
+  const parId = new Map<string, EleveFinance>()
+  for (const s of getStudentsSnapshot()) {
+    if (!concernes.has(s.id)) continue
+    const identity = getStudentIdentitySnapshot(s.id)
+    parId.set(s.id, { name: s.name, classe: s.classe, familleCle: cleFamille(identity, s.id), familleLibelle: libelleFamille(identity, s.name) })
+  }
+  return parId
+}
+
+export interface LigneRecu {
+  studentNom: string
+  classe: string
+  clubNom: string
+  mois: string
+  montantCentimes: number
+}
+
+export interface SoldeClubRecu {
+  clubNom: string
+  /** Reste dû, à la date du règlement, sur les mensualités déjà échues. */
+  resteEchuCentimes: number
+  /** Reste sur les mensualités à venir déjà créées. */
+  resteAVenirCentimes: number
+}
+
+export interface DonneesRecu {
+  reglement: ClubReglement
+  lignes: LigneRecu[]
+  /** « cent cinquante dirhams », sans majuscule. */
+  enLettres: string
+  /** Situation de la famille juste après ce règlement (les règlements enregistrés plus tard ne comptent pas). */
+  soldeParClub: SoldeClubRecu[]
+  resteEchuTotalCentimes: number
+  resteAVenirTotalCentimes: number
+}
+
+/** Données du reçu d'un règlement : ce qu'il paie (élève, club, mois), le montant en lettres et le solde restant de la famille après lui. */
+export function recuDuReglement(reglement: ClubReglement): DonneesRecu {
+  const eleves = elevesFinanceDeLEcole()
+  const clubs = getClubsSnapshot()
+  const inscriptions = getClubInscriptionsSnapshot()
+  const echeances = getClubEcheancesSnapshot()
+  const imputations = getClubImputationsSnapshot()
+
+  const echeanceParId = new Map(echeances.map((e) => [e.id, e]))
+  const inscriptionParId = new Map(inscriptions.map((i) => [i.id, i]))
+  const clubParId = new Map(clubs.map((c) => [c.id, c]))
+
+  const lignes: LigneRecu[] = []
+  for (const imp of imputations.filter((i) => i.reglementId === reglement.id)) {
+    const echeance = echeanceParId.get(imp.echeanceId)
+    const inscription = echeance ? inscriptionParId.get(echeance.inscriptionId) : undefined
+    const club = inscription ? clubParId.get(inscription.clubId) : undefined
+    if (!echeance || !inscription || !club) continue
+    const eleve = eleves.get(inscription.studentId)
+    lignes.push({ studentNom: eleve?.name ?? 'Élève introuvable', classe: eleve?.classe ?? '', clubNom: club.nom, mois: echeance.mois, montantCentimes: imp.montantCentimes })
+  }
+  lignes.sort((a, b) => a.mois.localeCompare(b.mois) || a.clubNom.localeCompare(b.clubNom, 'fr') || a.studentNom.localeCompare(b.studentNom, 'fr'))
+
+  // Situation juste après ce règlement : seuls les règlements enregistrés jusque-là comptent.
+  const paiements = paiementsParEcheance(imputations, getClubReglementsSnapshot(), reglement)
+  const siennes = lignesMensualites({ clubs, inscriptions, echeances, paiements, eleves, aujourdhui: reglement.dateReglement }).filter((l) => l.familleCle === reglement.familleCle)
+  const parClub = new Map<string, SoldeClubRecu>()
+  for (const l of siennes) {
+    const s = parClub.get(l.clubId) ?? { clubNom: l.clubNom, resteEchuCentimes: 0, resteAVenirCentimes: 0 }
+    if (l.dateEcheance <= reglement.dateReglement) s.resteEchuCentimes += l.resteCentimes
+    else s.resteAVenirCentimes += l.resteCentimes
+    parClub.set(l.clubId, s)
+  }
+  const soldeParClub = [...parClub.values()].sort((a, b) => a.clubNom.localeCompare(b.clubNom, 'fr'))
+  return {
+    reglement,
+    lignes,
+    enLettres: montantEnLettres(reglement.montantCentimes),
+    soldeParClub,
+    resteEchuTotalCentimes: soldeParClub.reduce((n, s) => n + s.resteEchuCentimes, 0),
+    resteAVenirTotalCentimes: soldeParClub.reduce((n, s) => n + s.resteAVenirCentimes, 0),
   }
 }

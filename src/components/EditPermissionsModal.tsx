@@ -3,6 +3,7 @@ import { X, ShieldCheck } from 'lucide-react'
 import { navGroups } from '../data/navigation'
 import { useUpdateProfilePermissions } from '../services/profilesService'
 import type { Profile, ModulePermission } from '../data/profiles'
+import { CLUBS_PAIEMENTS_KEY, droitParDefaut } from '../utils/clubsDroits'
 
 interface EditPermissionsModalProps {
   profile: Profile
@@ -18,6 +19,9 @@ function seedDraft(profile: Profile): Draft {
       draft[item.key] = profile.permissions[item.key] ?? { view: true, edit: true }
     })
   )
+  // L'argent des clubs est refusé par défaut (sauf Direction) : le droit est toujours enregistré explicitement, et jamais
+  // perdu à l'enregistrement puisque cette fenêtre réécrit tout l'objet `permissions`.
+  draft[CLUBS_PAIEMENTS_KEY] = profile.permissions[CLUBS_PAIEMENTS_KEY] ?? droitParDefaut(profile.role)
   return draft
 }
 
@@ -72,6 +76,26 @@ export default function EditPermissionsModal({ profile, onClose }: EditPermissio
               </div>
             </div>
           ))}
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Argent</p>
+            <div className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/40 px-3 py-2.5">
+              <div className="min-w-0">
+                <span className="block truncate text-sm text-slate-700">Paiements des clubs</span>
+                <span className="block text-[11px] text-slate-400">Règlements, reçus, mensualités payées et impayés. Réservé à la Direction par défaut.</span>
+              </div>
+              <div className="flex shrink-0 gap-3 text-xs">
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={draft[CLUBS_PAIEMENTS_KEY].view} onChange={(e) => toggleView(CLUBS_PAIEMENTS_KEY, e.target.checked)} />
+                  Aperçu
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={draft[CLUBS_PAIEMENTS_KEY].edit} onChange={(e) => toggleEdit(CLUBS_PAIEMENTS_KEY, e.target.checked)} />
+                  Éditer
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">

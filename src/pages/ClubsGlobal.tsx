@@ -1,28 +1,45 @@
 import { useState } from 'react'
-import { Trophy, Users } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Receipt, Trophy, Users, X } from 'lucide-react'
 import ClubsCatalogue from '../components/clubs/ClubsCatalogue'
 import InscritsPanel from '../components/clubs/InscritsPanel'
+import MensualitesPanel from '../components/clubs/MensualitesPanel'
+import ReglementModal from '../components/clubs/ReglementModal'
+import ReglementsList from '../components/clubs/ReglementsList'
+import RecuPrintPreviewModal from '../components/clubs-print/RecuPrintPreviewModal'
 import NoEditAccessBanner from '../components/NoEditAccessBanner'
 import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
-import { getModuleAccess, useCurrentProfile } from '../services/permissions'
+import { getModuleAccess, useClubsPaiementsAccess, useCurrentProfile } from '../services/permissions'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 
-type Onglet = 'clubs' | 'inscrits'
+type Onglet = 'clubs' | 'inscrits' | 'mensualites' | 'reglements'
 
-/** Clubs : catalogue, inscrits (avec liste d'attente), puis mensualités, règlements et recouvrement. */
+/** Clubs : catalogue, inscrits (avec liste d'attente), puis mensualités, règlements et recouvrement pour qui a le droit sur les paiements. */
 export default function ClubsGlobal() {
   const canEditYear = useIsViewedYearEditable()
   const profile = useCurrentProfile()
   const canEditModule = getModuleAccess(profile, 'clubs').canEdit
   const isEditable = canEditYear && canEditModule
+  const paiements = useClubsPaiementsAccess()
+  const canEditPaiements = canEditYear && paiements.canEdit
 
   const [onglet, setOnglet] = useState<Onglet>('clubs')
   const [clubInscrits, setClubInscrits] = useState('')
+  const [encaisser, setEncaisser] = useState<{ familleCle?: string } | null>(null)
+  const [recuId, setRecuId] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
 
   const onglets: { key: Onglet; label: string; icon: typeof Trophy }[] = [
     { key: 'clubs', label: 'Clubs', icon: Trophy },
     { key: 'inscrits', label: 'Inscrits', icon: Users },
+    ...(paiements.canView
+      ? [
+          { key: 'mensualites' as const, label: 'Mensualités', icon: CalendarClock },
+          { key: 'reglements' as const, label: 'Règlements', icon: Receipt },
+        ]
+      : []),
   ]
+  // Un onglet d'argent n'est jamais montré sans le droit (par exemple si le droit est retiré pendant la consultation).
+  const actif: Onglet = (onglet === 'mensualites' || onglet === 'reglements') && !paiements.canView ? 'clubs' : onglet
 
   return (
     <div className="mx-auto max-w-[1200px] p-6">
@@ -37,6 +54,18 @@ export default function ClubsGlobal() {
       {!canEditYear && <ReadOnlyYearBanner />}
       {canEditYear && !canEditModule && <NoEditAccessBanner />}
 
+      {notice && (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            {notice}
+          </span>
+          <button type="button" onClick={() => setNotice('')} aria-label="Fermer" className="text-emerald-500 hover:text-emerald-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1 sm:inline-flex">
         {onglets.map(({ key, label, icon: Icon }) => (
           <button
@@ -44,7 +73,7 @@ export default function ClubsGlobal() {
             type="button"
             onClick={() => setOnglet(key)}
             className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              onglet === key ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              actif === key ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
             <Icon className="h-4 w-4" />
@@ -53,7 +82,7 @@ export default function ClubsGlobal() {
         ))}
       </div>
 
-      {onglet === 'clubs' && (
+      {actif === 'clubs' && (
         <ClubsCatalogue
           isEditable={isEditable}
           onVoirInscrits={(clubId) => {
@@ -62,7 +91,21 @@ export default function ClubsGlobal() {
           }}
         />
       )}
-      {onglet === 'inscrits' && <InscritsPanel key={clubInscrits || 'tous'} isEditable={isEditable} clubInitial={clubInscrits} />}
+      {actif === 'inscrits' && <InscritsPanel key={clubInscrits || 'tous'} isEditable={isEditable} clubInitial={clubInscrits} />}
+      {actif === 'mensualites' && <MensualitesPanel canEdit={canEditPaiements} onEncaisser={(familleCle) => setEncaisser({ familleCle })} />}
+      {actif === 'reglements' && <ReglementsList canEdit={canEditPaiements} onEncaisser={() => setEncaisser({})} onOuvrirRecu={setRecuId} />}
+
+      {encaisser && paiements.canEdit && (
+        <ReglementModal
+          familleCle={encaisser.familleCle}
+          onClose={() => setEncaisser(null)}
+          onDone={(message, reglementId) => {
+            setNotice(message)
+            setRecuId(reglementId)
+          }}
+        />
+      )}
+      {recuId && paiements.canView && <RecuPrintPreviewModal reglementId={recuId} onClose={() => setRecuId(null)} />}
     </div>
   )
 }

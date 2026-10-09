@@ -22,6 +22,7 @@ import {
   CalendarClock,
   IdCard,
   History,
+  Trophy,
 } from 'lucide-react'
 import type { Student } from '../data/students'
 import { recomputeStudentAttendance } from '../data/students'
@@ -49,6 +50,7 @@ import ReclamationsTab from './student-detail/ReclamationsTab'
 import RendezVousTab from './student-detail/RendezVousTab'
 import InformationsGeneralesTab from './student-detail/InformationsGeneralesTab'
 import HistoriqueTab from './student-detail/HistoriqueTab'
+import ClubsTab from './student-detail/ClubsTab'
 import PrintPreviewModal from './student-detail/print/PrintPreviewModal'
 
 interface StudentDetailProps {
@@ -69,6 +71,7 @@ const tabs = [
   { key: 'sante', label: 'Santé & Infirmerie', icon: Activity },
   { key: 'reclamations', label: 'Réclamations', icon: MessageSquareWarning },
   { key: 'rendezvous', label: 'Rendez-vous', icon: CalendarClock },
+  { key: 'clubs', label: 'Clubs', icon: Trophy },
   { key: 'historique', label: 'Historique', icon: History },
 ]
 
@@ -299,6 +302,7 @@ export default function StudentDetail({ student, onBack, initialTab, onStudentUp
       {activeTab === 'rendezvous' && (
         <RendezVousTab studentId={student.id} rendezVous={rendezVous} onChange={handleRendezVousChange} />
       )}
+      {activeTab === 'clubs' && <ClubsTab studentId={student.id} studentName={student.name} />}
       {activeTab === 'historique' && <HistoriqueTab dossierId={student.dossierId} currentStudentId={student.id} />}
 
       {activeTab === 'synthese' && (
