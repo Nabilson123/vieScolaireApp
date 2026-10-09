@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { MODE_REGLEMENT_LABELS } from '../../data/clubs'
+import { useAssociationIdentity } from '../../services/schoolIdentityService'
 import type { DonneesRecu } from '../../utils/clubsContexte'
 import { formatDH, libelleMois } from '../../utils/clubsFinance'
 import { dateCourte } from './clubsPrintKit'
@@ -34,6 +35,7 @@ function Ligne({ gauche, droite, gras = false }: { gauche: string; droite: strin
 export default function PrintableRecuTicket({ recu }: { recu: DonneesRecu }) {
   const { reglement: r } = recu
   const annule = r.statut === 'annule'
+  const association = useAssociationIdentity()
 
   const ref = useRef<HTMLDivElement>(null)
   const [hauteurMm, setHauteurMm] = useState(200)
@@ -74,8 +76,11 @@ export default function PrintableRecuTicket({ recu }: { recu: DonneesRecu }) {
           boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
         }}
       >
-        <p style={{ textAlign: 'center', fontSize: POLICE_PX + 3, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.15 }}>Groupe Scolaire Mondrian</p>
-        <p style={{ textAlign: 'center', fontSize: POLICE_PX - 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>École de la Bienveillance</p>
+        {association.logo && (
+          // Une imprimante thermique ne rend que du noir et du blanc : le logo est passé en niveaux de gris contrastés.
+          <img src={association.logo} alt="Logo" style={{ display: 'block', margin: '0 auto 4px', maxHeight: '20mm', maxWidth: '44mm', objectFit: 'contain', filter: 'grayscale(1) contrast(1.4)' }} />
+        )}
+        <p style={{ textAlign: 'center', fontSize: POLICE_PX + 2, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.15 }}>{association.nom}</p>
         <Trait />
         <p style={{ textAlign: 'center', fontWeight: 700 }}>Reçu de paiement — Clubs</p>
         <p style={{ textAlign: 'center', fontSize: POLICE_PX + 5, fontWeight: 800, letterSpacing: '0.02em' }}>{r.numero}</p>
@@ -144,7 +149,6 @@ export default function PrintableRecuTicket({ recu }: { recu: DonneesRecu }) {
 
         <Trait />
         <p style={{ textAlign: 'center', fontSize: POLICE_PX - 1 }}>Reçu à conserver.</p>
-        <p style={{ textAlign: 'center', fontSize: POLICE_PX - 1 }}>Direction de la Vie Scolaire</p>
         <p style={{ textAlign: 'center', fontSize: POLICE_PX - 2 }}>Édité le {new Date().toLocaleDateString('fr-FR')}</p>
       </div>
     </>

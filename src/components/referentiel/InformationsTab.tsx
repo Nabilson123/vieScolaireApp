@@ -15,6 +15,7 @@ export default function InformationsTab({ onSaved }: InformationsTabProps) {
   const [form, setForm] = useState<FormState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cachetInputRef = useRef<HTMLInputElement>(null)
+  const associationLogoRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (identity) setForm(identity)
@@ -42,6 +43,15 @@ export default function InformationsTab({ onSaved }: InformationsTabProps) {
     const reader = new FileReader()
     reader.onload = () => set('cachet', reader.result as string)
     reader.readAsDataURL(file)
+  }
+
+  const handleAssociationLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => set('associationLogo', reader.result as string)
+    reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   if (!form) {
@@ -144,6 +154,37 @@ export default function InformationsTab({ onSaved }: InformationsTabProps) {
           <Field label="Linkedin">
             <input value={form.linkedin} onChange={(e) => set('linkedin', e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none" />
           </Field>
+        </div>
+
+        <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-amber-800">Association sportive</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+            <div className="flex items-center gap-3">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {form.associationLogo ? <img src={form.associationLogo} alt="Logo de l'association" className="h-full w-full object-contain" /> : <Image className="h-8 w-8 text-slate-300" />}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input ref={associationLogoRef} type="file" accept="image/*" onChange={handleAssociationLogoChange} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => associationLogoRef.current?.click()}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:from-indigo-500 hover:to-violet-500"
+                >
+                  <Image className="h-3.5 w-3.5" />
+                  Charger le logo
+                </button>
+                {form.associationLogo && (
+                  <button type="button" onClick={() => set('associationLogo', undefined)} className="text-xs font-medium text-slate-500 hover:text-rose-600 hover:underline">
+                    Retirer le logo
+                  </button>
+                )}
+              </div>
+            </div>
+            <Field label="Nom de l'association">
+              <input value={form.associationNom} onChange={(e) => set('associationNom', e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none" />
+            </Field>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">Affichés à la place de l'école sur les documents des clubs : reçus, listes d'inscrits, feuilles de présence, états des impayés et bilans.</p>
         </div>
       </div>
     </div>

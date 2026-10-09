@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import SchoolLogo from '../print/SchoolLogo'
+import { useAssociationIdentity } from '../../services/schoolIdentityService'
 
 // Éléments visuels communs aux documents imprimables des clubs (liste d'inscrits, feuille de présence, reçu, états).
 
@@ -82,17 +82,16 @@ export function TableauClub({ titre, compteur, suite, head, couleur = ACCENT, bo
 
 /** En-tête de page : l'école, le logo, puis le type de document et son objet (nom du club…) à droite. */
 export function EnTeteClubs({ document, objet, pageIndex }: { document: string; objet: string; pageIndex: number }) {
+  // Les documents des clubs portent le nom et le logo de l'association sportive, pas ceux de l'école.
+  const association = useAssociationIdentity()
   return (
     <header className="grid grid-cols-3 items-start border-b-2 pb-3" style={{ borderColor: INK }}>
       <div className="flex flex-col gap-0.5">
-        <p className="text-[19px] font-bold tracking-tight" style={{ color: INK }}>
-          Groupe Scolaire Mondrian
-        </p>
-        <p className="text-[10px] uppercase tracking-[0.08em]" style={{ color: MUTED }}>
-          École de la Bienveillance
+        <p className="text-[17px] font-bold uppercase leading-tight tracking-tight" style={{ color: INK }}>
+          {association.nom}
         </p>
       </div>
-      <SchoolLogo size={70} />
+      {association.logo ? <img src={association.logo} alt="Logo" className="justify-self-center object-contain" style={{ height: 70, maxWidth: 110 }} /> : <div />}
       <div className="flex flex-col items-end gap-0.5 text-right">
         <p className="text-[12.5px] font-bold" style={{ color: INK }}>
           {document}
@@ -110,15 +109,17 @@ export function EnTeteClubs({ document, objet, pageIndex }: { document: string; 
 }
 
 export function PiedClubs({ libelle, pageIndex, pageCount }: { libelle: string; pageIndex: number; pageCount: number }) {
+  const association = useAssociationIdentity()
   return (
     <div className="border-t pt-1.5 text-[8px]" style={{ borderColor: 'oklch(0.92 0.005 90)', color: 'oklch(0.65 0.01 260)' }}>
       <div className="flex justify-between">
-        <span>Groupe Scolaire Mondrian — {libelle}</span>
+        <span>
+          {association.nom} — {libelle}
+        </span>
         <span>
           Page {pageIndex + 1} / {pageCount}
         </span>
       </div>
-      <div className="mt-0.5 text-center font-semibold uppercase tracking-wide">Direction de la Vie Scolaire</div>
     </div>
   )
 }

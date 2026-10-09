@@ -21,6 +21,8 @@ interface SchoolIdentityRow {
   linkedin: string
   logo: string | null
   cachet: string | null
+  association_nom: string | null
+  association_logo: string | null
 }
 
 function rowToIdentity(row: SchoolIdentityRow): SchoolIdentity {
@@ -44,6 +46,8 @@ function rowToIdentity(row: SchoolIdentityRow): SchoolIdentity {
     linkedin: row.linkedin,
     logo: row.logo ?? undefined,
     cachet: row.cachet ?? undefined,
+    associationNom: row.association_nom ?? '',
+    associationLogo: row.association_logo ?? undefined,
   }
 }
 
@@ -66,6 +70,8 @@ function identityToRow(identity: SchoolIdentity): Omit<SchoolIdentityRow, 'id'> 
     linkedin: identity.linkedin,
     logo: identity.logo ?? null,
     cachet: identity.cachet ?? null,
+    association_nom: identity.associationNom,
+    association_logo: identity.associationLogo ?? null,
   }
 }
 
@@ -79,6 +85,15 @@ async function fetchSchoolIdentity(): Promise<SchoolIdentity & { id: string }> {
 
 export function useSchoolIdentity() {
   return useQuery({ queryKey: QUERY_KEY, queryFn: fetchSchoolIdentity })
+}
+
+/**
+ * Nom et logo affichés sur les documents des clubs : ceux de l'association sportive, pas ceux de l'école. Sans nom
+ * d'association renseigné on retombe sur le nom de l'école ; sans logo, aucun logo n'est affiché.
+ */
+export function useAssociationIdentity(): { nom: string; logo?: string } {
+  const { data } = useSchoolIdentity()
+  return { nom: data?.associationNom?.trim() || data?.nom || '', logo: data?.associationLogo }
 }
 
 export function useUpdateSchoolIdentity() {
