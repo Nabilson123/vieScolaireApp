@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Club, ClubInscription } from '../data/clubs'
 import {
   clubALieuLe,
+  blocsClubParJour,
   clubComplet,
   clubTermine,
   clubsDeLEleve,
@@ -11,6 +12,7 @@ import {
   finDuClub,
   intervallesClubEnseignant,
   intervallesClubSalle,
+  libelleBlocClub,
   listeAttente,
   niveauAutorise,
   niveauDeClasse,
@@ -195,5 +197,34 @@ describe('occupation de l’encadrant et de la salle', () => {
   it('salle', () => {
     expect(intervallesClubSalle([club()], 'r1', 'MERCREDI', '2026-10-14')).toEqual([{ start: '14:00', end: '15:30' }])
     expect(intervallesClubSalle([club()], 'r2', 'MERCREDI', '2026-10-14')).toEqual([])
+  })
+})
+
+describe('blocsClubParJour', () => {
+  const inscrits = [insc(), insc({ id: 'i2', studentId: 'e2' }), insc({ id: 'i3', studentId: 'e3', statut: 'attente' })]
+
+  it('les clubs de l’enseignant rangés par jour, avec le nombre d’inscrits actifs', () => {
+    const b = blocsClubParJour([club()], inscrits, { teacherId: 't1', aPartirDe: '2026-10-09' })
+    expect(b.MERCREDI).toEqual([{ clubId: 'c1', label: 'Club – Robotique · 2 inscrits', start: '14:00', end: '15:30', nbInscrits: 2 }])
+    expect(b.LUNDI).toEqual([])
+  })
+
+  it('un autre enseignant, un intervenant externe, un club archivé ou terminé : aucun bloc', () => {
+    expect(blocsClubParJour([club()], inscrits, { teacherId: 't2', aPartirDe: '2026-10-09' }).MERCREDI).toEqual([])
+    expect(blocsClubParJour([club({ teacherId: null, intervenantNom: 'M. Alami' })], inscrits, { teacherId: 't1', aPartirDe: '2026-10-09' }).MERCREDI).toEqual([])
+    expect(blocsClubParJour([club({ archive: true })], inscrits, { teacherId: 't1', aPartirDe: '2026-10-09' }).MERCREDI).toEqual([])
+    expect(blocsClubParJour([club()], inscrits, { teacherId: 't1', aPartirDe: '2026-12-01' }).MERCREDI).toEqual([])
+    expect(blocsClubParJour([club()], inscrits, { teacherId: '', aPartirDe: '2026-10-09' }).MERCREDI).toEqual([])
+  })
+
+  it('tri par heure dans la journée', () => {
+    const tot = club({ id: 'c0', nom: 'Échecs', heureDebut: '12:30', heureFin: '13:30' })
+    expect(blocsClubParJour([club(), tot], [], { teacherId: 't1', aPartirDe: '2026-10-09' }).MERCREDI.map((x) => x.start)).toEqual(['12:30', '14:00'])
+  })
+
+  it('libelleBlocClub : singulier et pluriel', () => {
+    expect(libelleBlocClub('Robotique', 1)).toBe('Club – Robotique · 1 inscrit')
+    expect(libelleBlocClub('Robotique', 0)).toBe('Club – Robotique · 0 inscrit')
+    expect(libelleBlocClub('Robotique', 12)).toBe('Club – Robotique · 12 inscrits')
   })
 })

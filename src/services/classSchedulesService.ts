@@ -6,6 +6,8 @@ import { getClassesSnapshot } from './classesService'
 import { useViewedYearId, getViewedYearIdSnapshot } from './viewedYear'
 import { useAnneesLoaded } from './anneesScolairesService'
 import { getSoutienSeancesSnapshot } from './soutienService'
+import { getClubsSnapshot } from './clubsService'
+import { clubTermine, intervallesClubEnseignant } from '../utils/clubs'
 import { aujourdhuiLocalISO, intervallesSoutienEnseignant, seancesEnCours } from '../utils/soutienSeances'
 
 interface ScheduleRow {
@@ -244,10 +246,12 @@ export function detectConflictForTeacher(teacherId: string, day: string, start: 
     )
   )
   if (coursEnConflit) return true
+  const chevauche = (s: { start: string; end: string }) => timeToMinutes(s.start) < timeToMinutes(end) && timeToMinutes(start) < timeToMinutes(s.end)
   // Un soutien en cours rend aussi l'enseignant indisponible (sans compter dans son quota d'heures).
-  return intervallesSoutienEnseignant(seancesEnCours(getSoutienSeancesSnapshot(), aujourdhuiLocalISO()), teacherId, day).some(
-    (s) => timeToMinutes(s.start) < timeToMinutes(end) && timeToMinutes(start) < timeToMinutes(s.end)
-  )
+  if (intervallesSoutienEnseignant(seancesEnCours(getSoutienSeancesSnapshot(), aujourdhuiLocalISO()), teacherId, day).some(chevauche)) return true
+  // Un club qu'il encadre aussi (les clubs dont la période est passée ne comptent plus).
+  const aujourdhui = aujourdhuiLocalISO()
+  return intervallesClubEnseignant(getClubsSnapshot().filter((c) => !clubTermine(c, aujourdhui)), teacherId, day).some(chevauche)
 }
 
 export function getClassConflictSlotIds(className: string): Set<string> {

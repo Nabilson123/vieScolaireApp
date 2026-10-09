@@ -6,6 +6,8 @@ import { getStudentsSnapshot } from '../services/studentsService'
 import { getStudentExtraSnapshot } from '../services/studentDetailsService'
 import { getSuiviProfsSnapshot } from '../services/suiviProfsService'
 import { getSoutienSeancesSnapshot } from '../services/soutienService'
+import { getClubsSnapshot } from '../services/clubsService'
+import { intervallesClubEnseignant } from './clubs'
 import { intervallesSoutienEnseignant } from './soutienSeances'
 
 const JOUR_DEBUT = '07:30'
@@ -60,6 +62,8 @@ function getBusyIntervals(teacher: Teacher, date: string, excludeSuiviId?: strin
 
   // Séances de soutien que l'enseignant anime ce jour-là (période et dates annulées respectées).
   if (weekday) busy.push(...intervallesSoutienEnseignant(getSoutienSeancesSnapshot(), teacher.id, weekday, date))
+  // Clubs qu'il encadre ce jour-là (période respectée) : occupé lui aussi, sans compter dans son quota d'heures.
+  if (weekday) busy.push(...intervallesClubEnseignant(getClubsSnapshot(), teacher.id, weekday, date))
 
   return busy
 }

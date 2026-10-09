@@ -7,6 +7,8 @@ import { getWeekdayName } from '../utils/replacementAggregation'
 import { getCurrentUserIdSnapshot } from './currentUser'
 import { getViewedYearIdSnapshot } from './viewedYear'
 import { getSoutienSeancesSnapshot } from './soutienService'
+import { getClubsSnapshot } from './clubsService'
+import { clubALieuLe } from '../utils/clubs'
 import { seanceActiveLe } from '../utils/soutienSeances'
 
 interface ReservationSalleRow {
@@ -90,6 +92,8 @@ export interface SalleConflictResult {
   reservationConflict: ReservationSalle | null
   /** Séance de soutien qui a lieu dans la salle à cette date. */
   soutienConflict: { matiere: string; debut: string; fin: string } | null
+  /** Club qui a lieu dans la salle à cette date. */
+  clubConflict: { nom: string; debut: string; fin: string } | null
 }
 
 /**
@@ -131,5 +135,8 @@ export function detectConflictForSalle(salleId: string, date: string, heureDebut
   )
   const soutienConflict = soutien ? { matiere: soutien.matiere, debut: soutien.heureDebut, fin: soutien.heureFin } : null
 
-  return { edtConflict, reservationConflict, soutienConflict }
+  const club = getClubsSnapshot().find((c) => c.salleId === salleId && clubALieuLe(c, date) && timeToMinutes(c.heureDebut) < endMin && startMin < timeToMinutes(c.heureFin))
+  const clubConflict = club ? { nom: club.nom, debut: club.heureDebut, fin: club.heureFin } : null
+
+  return { edtConflict, reservationConflict, soutienConflict, clubConflict }
 }

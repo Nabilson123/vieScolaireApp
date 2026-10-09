@@ -56,6 +56,12 @@ import type { TimeGridSlot } from '../components/schedule/ScheduleTimeGrid'
 import SoutienSortiesTab from '../components/soutien/SoutienSortiesTab'
 import SoutienSeanceModal from '../components/soutien/SoutienSeanceModal'
 import SoutienSeanceDetailModal from '../components/soutien/SoutienSeanceDetailModal'
+import ClubDetailModal from '../components/clubs/ClubDetailModal'
+import ClubModal from '../components/clubs/ClubModal'
+import type { Club, JourClub } from '../data/clubs'
+import { getClubInscriptionsSnapshot, getClubsSnapshot, useClubInscriptions, useClubs } from '../services/clubsService'
+import { blocsClubParJour } from '../utils/clubs'
+import { salleDuClub } from '../utils/clubsContexte'
 
 const QUOTA_HEURES = 20
 
@@ -120,6 +126,8 @@ export default function EmploiDuTempsGlobal() {
   const [showSoutien, setShowSoutien] = useState(true)
   const [soutienDetail, setSoutienDetail] = useState<{ seanceId: string; classe?: string } | null>(null)
   const [editSeance, setEditSeance] = useState<SoutienSeance | null>(null)
+  const [clubDetail, setClubDetail] = useState<string | null>(null)
+  const [editClub, setEditClub] = useState<Club | null>(null)
 
   const monday = mondayOf(weekDate)
   // Abonnement direct (en plus du cache-warming dans App.tsx) : sans lui, changer d'année dans
@@ -130,6 +138,8 @@ export default function EmploiDuTempsGlobal() {
   // Abonnement aux séances de soutien : leurs blocs sont posés dans les grilles ci-dessous.
   useSoutienSeances()
   useSoutienInscriptions()
+  useClubs()
+  useClubInscriptions()
   const schedule = selectedClasse ? computeClassSchedule(selectedClasse) : {}
   const volume = selectedClasse ? computeClassVolume(selectedClasse) : { seances: 0, heures: 0 }
 
@@ -283,6 +293,24 @@ export default function EmploiDuTempsGlobal() {
         onClick: () => setSoutienDetail({ seanceId: b.seanceId, classe }),
       }
     })
+  // Clubs que l'enseignant encadre (variante ambre) : seulement dans sa grille, jamais dans celle d'une classe.
+  const clubs = getClubsSnapshot()
+  const blocsClubEnseignant =
+    showSoutien && vue === 'enseignant' && selectedTeacher ? blocsClubParJour(clubs, getClubInscriptionsSnapshot(), { teacherId: selectedTeacher.id, aPartirDe: aujourdhui }) : null
+  const clubSlots = (day: string): TimeGridSlot[] =>
+    (blocsClubEnseignant?.[day as JourClub] ?? []).map((b) => {
+      const club = clubs.find((c) => c.id === b.clubId)
+      return {
+        id: `club-${b.clubId}`,
+        subject: b.label,
+        start: b.start,
+        end: b.end,
+        hours: (timeToMinutes(b.end) - timeToMinutes(b.start)) / 60,
+        subtitle: (club && salleDuClub(club)) || 'Club',
+        variant: 'club' as const,
+        onClick: () => setClubDetail(b.clubId),
+      }
+    })
   const classGridSchedule: Record<string, TimeGridSlot[]> = Object.fromEntries(
     SCHEDULE_DAYS.map((day) => [
       day,
@@ -298,6 +326,7 @@ export default function EmploiDuTempsGlobal() {
       [
         ...(teacherSchedule[day] ?? []).map((s) => ({ id: s.id, subject: s.subject, start: s.start, end: s.end, hours: s.hours, subtitle: `Cl ${s.classe}` })),
         ...soutienSlots(blocsEnseignant, day, undefined),
+        ...clubSlots(day),
       ],
     ])
   )
@@ -309,9 +338,20 @@ export default function EmploiDuTempsGlobal() {
         soutienSlots(blocs, day, classe).map((s) => ({ id: s.id, subject: s.subject, start: s.start, end: s.end, hours: s.hours, secondaryLabel: s.subtitle, hatched: true })),
       ])
     )
-  // La grille s'arrête à 17 h, sauf si un soutien se termine plus tard.
+  // Les mêmes clubs pour l'impression de la grille d'un enseignant.
+  const enseignantImpression: Record<string, PrintScheduleSlot[]> = Object.fromEntries(
+    SCHEDULE_DAYS.map((day) => [
+      day,
+      [
+        ...(soutienImpression(blocsEnseignant, undefined)[day] ?? []),
+        ...clubSlots(day).map((s) => ({ id: s.id, subject: s.subject, start: s.start, end: s.end, hours: s.hours, secondaryLabel: s.subtitle, hatched: true })),
+      ],
+    ])
+  )
+  // La grille s'arrête à 17 h, sauf si un soutien ou un club se termine plus tard.
   const finSoutienMax = Math.max(0, ...Object.values(blocsClasse ?? blocsEnseignant ?? {}).flat().map((b) => timeToMinutes(b.end)))
-  const gridEndHour = Math.max(17, Math.ceil(finSoutienMax / 60))
+  const finClubMax = Math.max(0, ...Object.values(blocsClubEnseignant ?? {}).flat().map((b) => timeToMinutes(b.end)))
+  const gridEndHour = Math.max(17, Math.ceil(Math.max(finSoutienMax, finClubMax) / 60))
 
   const weekEnd = new Date(monday)
   weekEnd.setDate(monday.getDate() + 4)
@@ -361,11 +401,11 @@ export default function EmploiDuTempsGlobal() {
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none"
             />
             <label
-              title="Afficher les séances de soutien scolaire (blocs hachurés) dans la grille"
+              title="Afficher le soutien scolaire (blocs violets) et les clubs de l'enseignant (blocs ambre) dans la grille"
               className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
               <input type="checkbox" checked={showSoutien} onChange={(e) => setShowSoutien(e.target.checked)} className="accent-violet-600" />
-              Soutien
+              Soutien / clubs
             </label>
             <button
               type="button"
@@ -569,6 +609,26 @@ export default function EmploiDuTempsGlobal() {
         })()}
       {editSeance && <SoutienSeanceModal seance={editSeance} onClose={() => setEditSeance(null)} />}
 
+      {clubDetail &&
+        (() => {
+          const club = clubs.find((c) => c.id === clubDetail)
+          return club ? (
+            <ClubDetailModal
+              club={club}
+              onClose={() => setClubDetail(null)}
+              onEdit={
+                isEditable
+                  ? () => {
+                      setClubDetail(null)
+                      setEditClub(club)
+                    }
+                  : undefined
+              }
+            />
+          ) : null
+        })()}
+      {editClub && <ClubModal club={editClub} onClose={() => setEditClub(null)} />}
+
       {remplacementDirect && (
         <RemplacementDirectModal
           pending={remplacementDirect}
@@ -600,7 +660,7 @@ export default function EmploiDuTempsGlobal() {
               weekStart={monday}
               weekEnd={weekEnd}
               schedule={teacherSchedule}
-              soutien={soutienImpression(blocsEnseignant, undefined)}
+              soutien={enseignantImpression}
               onClose={() => setShowPrintPreview(false)}
             />
           )

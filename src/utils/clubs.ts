@@ -1,4 +1,4 @@
-import type { Club, ClubInscription } from '../data/clubs'
+import type { Club, ClubInscription, JourClub } from '../data/clubs'
 import { moisDe } from './clubsFinance'
 import { ajouterJours, jourDeDate } from './soutienSeances'
 
@@ -149,4 +149,36 @@ export function intervallesClubEnseignant(clubs: Club[], teacherId: string, jour
 export function intervallesClubSalle(clubs: Club[], salleId: string, jour: string, dateISO?: string): Intervalle[] {
   if (!salleId) return []
   return intervallesClubs(clubs, (c) => c.salleId === salleId, jour, dateISO)
+}
+
+// ───────────────────────── Blocs de la grille de l'encadrant ─────────────────────────
+
+export interface BlocClub {
+  clubId: string
+  label: string
+  start: string
+  end: string
+  nbInscrits: number
+}
+
+export function libelleBlocClub(nom: string, nbInscrits: number): string {
+  return `Club – ${nom} · ${nbInscrits} inscrit${nbInscrits > 1 ? 's' : ''}`
+}
+
+const JOURS_CLUB: JourClub[] = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI']
+
+/**
+ * Blocs de clubs de la grille hebdomadaire d'un enseignant : ses clubs non archivés dont la période n'est pas passée, rangés
+ * par jour et triés par heure. Les clubs d'un intervenant externe n'apparaissent dans aucune grille d'enseignant.
+ */
+export function blocsClubParJour(clubs: Club[], inscriptions: ClubInscription[], filtre: { teacherId: string; aPartirDe: string }): Record<JourClub, BlocClub[]> {
+  const out = Object.fromEntries(JOURS_CLUB.map((j) => [j, [] as BlocClub[]])) as Record<JourClub, BlocClub[]>
+  if (!filtre.teacherId) return out
+  for (const c of clubs) {
+    if (c.archive || c.teacherId !== filtre.teacherId || clubTermine(c, filtre.aPartirDe)) continue
+    const nb = inscritsActifs(inscriptions, c.id).length
+    out[c.jour].push({ clubId: c.id, label: libelleBlocClub(c.nom, nb), start: c.heureDebut, end: c.heureFin, nbInscrits: nb })
+  }
+  JOURS_CLUB.forEach((j) => out[j].sort((a, b) => a.start.localeCompare(b.start)))
+  return out
 }

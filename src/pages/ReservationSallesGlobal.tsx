@@ -109,7 +109,7 @@ function NouvelleReservationModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {(conflict?.edtConflict || conflict?.reservationConflict || conflict?.soutienConflict) && (
+          {(conflict?.edtConflict || conflict?.reservationConflict || conflict?.soutienConflict || conflict?.clubConflict) && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <div className="space-y-1">
@@ -129,6 +129,11 @@ function NouvelleReservationModal({ onClose }: { onClose: () => void }) {
                   <p>
                     Un soutien scolaire (<strong>{conflict.soutienConflict.matiere}</strong>) a lieu dans cette salle ce jour-là de {conflict.soutienConflict.debut} à{' '}
                     {conflict.soutienConflict.fin}.
+                  </p>
+                )}
+                {conflict.clubConflict && (
+                  <p>
+                    Le club <strong>{conflict.clubConflict.nom}</strong> a lieu dans cette salle ce jour-là de {conflict.clubConflict.debut} à {conflict.clubConflict.fin}.
                   </p>
                 )}
                 <p className="font-semibold">Vous pouvez tout de même confirmer si vous jugez que ça convient.</p>

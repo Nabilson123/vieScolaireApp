@@ -9,8 +9,8 @@ export interface TimeGridSlot {
   end: string
   hours: number
   subtitle: string
-  /** `soutien` : séance de soutien scolaire — bloc hachuré, non déplaçable, hors total d'heures du jour. */
-  variant?: 'soutien'
+  /** `soutien` (violet) ou `club` (ambre) : séance ajoutée hors des cours — bloc hachuré, non déplaçable, hors total d'heures du jour. */
+  variant?: 'soutien' | 'club'
   onClick?: () => void
 }
 
@@ -54,8 +54,16 @@ const SOUTIEN_STYLE = {
   backgroundImage: 'repeating-linear-gradient(135deg, rgba(139,92,246,0.14) 0px, rgba(139,92,246,0.14) 5px, rgba(255,255,255,0.9) 5px, rgba(255,255,255,0.9) 10px)',
 }
 
+/** Même hachure en ambre pour les clubs : on distingue un club d'un soutien d'un coup d'œil. */
+const CLUB_STYLE = {
+  backgroundImage: 'repeating-linear-gradient(135deg, rgba(217,119,6,0.16) 0px, rgba(217,119,6,0.16) 5px, rgba(255,255,255,0.9) 5px, rgba(255,255,255,0.9) 10px)',
+}
+
+/** Un soutien ou un club : posé en plus des cours, jamais déplaçable ni compté dans les heures du jour. */
+const estAjout = (s: TimeGridSlot) => s.variant === 'soutien' || s.variant === 'club'
+
 function hasPauseOverlap(slots: TimeGridSlot[]): boolean {
-  return slots.some((s) => s.variant !== 'soutien' && timeToMinutes(s.start) < timeToMinutes('13:00') && timeToMinutes('12:00') < timeToMinutes(s.end))
+  return slots.some((s) => !estAjout(s) && timeToMinutes(s.start) < timeToMinutes('13:00') && timeToMinutes('12:00') < timeToMinutes(s.end))
 }
 
 interface ScheduleTimeGridProps {
@@ -106,7 +114,7 @@ export default function ScheduleTimeGrid({
         <div />
         {days.map((day) => {
           const slots = schedule[day] ?? []
-          const total = slots.reduce((sum, s) => sum + (s.variant === 'soutien' ? 0 : s.hours), 0)
+          const total = slots.reduce((sum, s) => sum + (estAjout(s) ? 0 : s.hours), 0)
           return (
             <div key={day} className="border-b border-slate-200 pb-1.5 text-center">
               <p className="text-xs font-bold uppercase text-slate-700">{dayLabels[day] ?? day}</p>
@@ -181,10 +189,12 @@ export default function ScheduleTimeGrid({
                 const height = ((endMin - startMin) / totalMin) * 100
                 const inConflict = conflictSlotIds?.has(slot.id) ?? false
                 const isSoutien = slot.variant === 'soutien'
-                // Un soutien posé sur un cours : les deux se partagent la largeur au lieu de se recouvrir.
-                const sharesWidth = slots.some((o) => o.id !== slot.id && (o.variant === 'soutien') !== isSoutien && slotsOverlap(slot, o))
-                const horizontal = sharesWidth ? (isSoutien ? { left: '50%', right: '4px' } : { left: '4px', right: '50%' }) : {}
-                const draggable = draggableSlots && !isSoutien
+                const isClub = slot.variant === 'club'
+                const isAjout = isSoutien || isClub
+                // Un soutien ou un club posé sur un cours : les deux se partagent la largeur au lieu de se recouvrir.
+                const sharesWidth = slots.some((o) => o.id !== slot.id && estAjout(o) !== isAjout && slotsOverlap(slot, o))
+                const horizontal = sharesWidth ? (isAjout ? { left: '50%', right: '4px' } : { left: '4px', right: '50%' }) : {}
+                const draggable = draggableSlots && !isAjout
                 return (
                   <div
                     key={slot.id}
@@ -198,15 +208,17 @@ export default function ScheduleTimeGrid({
                         : undefined
                     }
                     onClick={slot.onClick}
-                    title={isSoutien ? 'Soutien scolaire — cliquer pour voir les élèves' : undefined}
+                    title={isSoutien ? 'Soutien scolaire — cliquer pour voir les élèves' : isClub ? 'Club — cliquer pour voir les inscrits' : undefined}
                     className={`absolute left-1 right-1 overflow-hidden rounded-lg border-l-4 px-1.5 py-1 text-[10px] ${
                       isSoutien
                         ? `border-violet-500 text-violet-800 ring-1 ring-violet-200 ${slot.onClick ? 'cursor-pointer hover:ring-violet-400' : ''}`
-                        : inConflict
+                        : isClub
+                          ? `border-amber-500 text-amber-800 ring-1 ring-amber-200 ${slot.onClick ? 'cursor-pointer hover:ring-amber-400' : ''}`
+                          : inConflict
                           ? 'border-rose-500 bg-white text-rose-700 ring-1 ring-rose-400'
                           : colorForSubject(slot.subject)
                     } ${draggable ? 'cursor-move' : ''}`}
-                    style={{ top: `${top}%`, height: `${height}%`, ...horizontal, ...(isSoutien ? SOUTIEN_STYLE : {}) }}
+                    style={{ top: `${top}%`, height: `${height}%`, ...horizontal, ...(isSoutien ? SOUTIEN_STYLE : isClub ? CLUB_STYLE : {}) }}
                   >
                     <div className="mb-0.5 flex items-start justify-between gap-1">
                       <p className="flex items-center gap-1 truncate font-bold">
