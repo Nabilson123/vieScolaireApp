@@ -108,14 +108,15 @@ export interface ReconciliationEcheances {
 
 /**
  * Compare les mensualités enregistrées à celles qu'il faudrait. Règle : une mensualité qui a reçu un règlement n'est
- * jamais modifiée ni supprimée (tarif, exonération et arrêt ne touchent que les mois sans paiement). `payees` donne,
- * par identifiant d'échéance, ce qui a déjà été payé en centimes. `moisPlancher` protège les mois antérieurs : les
- * impayés d'une inscription précédente (élève revenu après un arrêt) ne disparaissent jamais en silence.
+ * jamais modifiée ni supprimée (tarif, exonération et arrêt ne touchent que les mois sans paiement). `payees` est
+ * l'ensemble des identifiants d'échéances qui ont reçu un règlement valide, même partiel (on ne connaît jamais les
+ * montants ici : un compte sans le droit sur les paiements n'y a pas accès). `moisPlancher` protège les mois antérieurs :
+ * les impayés d'une inscription précédente (élève revenu après un arrêt) ne disparaissent jamais en silence.
  */
 export function reconcilerEcheances(
   existantes: ClubEcheance[],
   voulues: EcheanceVoulue[],
-  payees: ReadonlyMap<string, number> = new Map(),
+  payees: ReadonlySet<string> = new Set(),
   moisPlancher = '',
 ): ReconciliationEcheances {
   const parMois = new Map(existantes.map((e) => [e.mois, e]))
@@ -128,14 +129,13 @@ export function reconcilerEcheances(
       resultat.aAjouter.push(v)
       continue
     }
-    const payee = (payees.get(e.id) ?? 0) > 0
-    if (!payee && (e.montantCentimes !== v.montantCentimes || e.dateEcheance !== v.dateEcheance)) {
+    if (!payees.has(e.id) && (e.montantCentimes !== v.montantCentimes || e.dateEcheance !== v.dateEcheance)) {
       resultat.aMettreAJour.push({ id: e.id, montantCentimes: v.montantCentimes, dateEcheance: v.dateEcheance })
     }
   }
   for (const e of existantes) {
     if (voulueParMois.has(e.mois)) continue
-    if ((payees.get(e.id) ?? 0) > 0) continue
+    if (payees.has(e.id)) continue
     if (moisPlancher && e.mois < moisPlancher) continue
     resultat.aSupprimer.push(e.id)
   }

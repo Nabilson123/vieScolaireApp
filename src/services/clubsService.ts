@@ -229,19 +229,18 @@ function parTranches<T>(items: T[], taille = TRANCHE): T[][] {
   return out
 }
 
-/** Ce qui a déjà été payé, en centimes, par mensualité (règlements valides seulement). */
-async function fetchPayees(echeanceIds: string[]): Promise<Map<string, number>> {
-  const payees = new Map<string, number>()
+/**
+ * Mensualités qui ont déjà reçu un règlement valide (même partiel). Passe par la fonction SQL `club_echeances_payees`
+ * (migration 080) : elle ne renvoie que les identifiants, jamais les montants, et fonctionne pour tout le personnel,
+ * alors que les règlements eux-mêmes sont réservés au droit sur les paiements. Une lecture directe de `club_imputations`
+ * ne verrait rien sans ce droit et ferait croire qu'aucun mois n'est payé.
+ */
+async function fetchPayees(echeanceIds: string[]): Promise<Set<string>> {
+  const payees = new Set<string>()
   for (const tranche of parTranches(echeanceIds)) {
-    const { data, error } = await supabase
-      .from('club_imputations')
-      .select('echeance_id, montant_centimes, club_reglements!inner(statut)')
-      .in('echeance_id', tranche)
-      .eq('club_reglements.statut', 'valide')
+    const { data, error } = await supabase.rpc('club_echeances_payees', { p_echeance_ids: tranche })
     if (error) throw error
-    for (const r of data as { echeance_id: string; montant_centimes: number }[]) {
-      payees.set(r.echeance_id, (payees.get(r.echeance_id) ?? 0) + r.montant_centimes)
-    }
+    for (const id of (data ?? []) as string[]) payees.add(id)
   }
   return payees
 }

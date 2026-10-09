@@ -181,27 +181,27 @@ describe('reconcilerEcheances', () => {
   it('un mois déjà payé n’est jamais modifié, même si le tarif change', () => {
     const existantes = voulues.map((v, i) => existante(v.mois, `e${i}`))
     const nouvelles = echeancesPourInscription({ ...club, mensualiteCentimes: 20000 }, insc())
-    const r = reconcilerEcheances(existantes, nouvelles, new Map([['e0', 15000]]))
+    const r = reconcilerEcheances(existantes, nouvelles, new Set(['e0']))
     expect(r.aMettreAJour.map((x) => x.id)).toEqual(['e1', 'e2', 'e3'])
   })
 
   it('un paiement partiel suffit à figer le mois', () => {
     const existantes = [existante('2026-10-01', 'e0')]
     const nouvelles = echeancesPourInscription({ ...club, moisFin: '2026-10-01', mensualiteCentimes: 20000 }, insc())
-    expect(reconcilerEcheances(existantes, nouvelles, new Map([['e0', 5000]])).aMettreAJour).toEqual([])
+    expect(reconcilerEcheances(existantes, nouvelles, new Set(['e0'])).aMettreAJour).toEqual([])
   })
 
   it('arrêt : supprime les mois suivants sans paiement, garde ceux qui ont été payés d’avance', () => {
     const existantes = voulues.map((v, i) => existante(v.mois, `e${i}`))
     const apresArret = echeancesPourInscription(club, insc({ statut: 'arrete', dateArret: '2026-10-25' }))
-    const r = reconcilerEcheances(existantes, apresArret, new Map([['e2', 15000]]))
+    const r = reconcilerEcheances(existantes, apresArret, new Set(['e2']))
     expect(r.aSupprimer).toEqual(['e1', 'e3'])
   })
 
   it('exonération ajoutée : les mois sans paiement passent à 0, le mois payé reste', () => {
     const existantes = voulues.map((v, i) => existante(v.mois, `e${i}`))
     const exoneres = echeancesPourInscription(club, insc({ exonere: true }))
-    const r = reconcilerEcheances(existantes, exoneres, new Map([['e0', 15000]]))
+    const r = reconcilerEcheances(existantes, exoneres, new Set(['e0']))
     expect(r.aMettreAJour.map((x) => x.id)).toEqual(['e1', 'e2', 'e3'])
     expect(r.aMettreAJour.every((x) => x.montantCentimes === 0)).toBe(true)
   })
@@ -210,7 +210,7 @@ describe('reconcilerEcheances', () => {
     // Octobre et novembre sont restés impayés ; il est réinscrit en janvier (premier mois voulu : janvier).
     const existantes = [existante('2026-10-01', 'e0'), existante('2026-11-01', 'e1')]
     const reinscrit = echeancesPourInscription(club, insc({ dateInscription: '2027-01-12' }))
-    const r = reconcilerEcheances(existantes, reinscrit, new Map(), '2027-01-01')
+    const r = reconcilerEcheances(existantes, reinscrit, new Set(), '2027-01-01')
     expect(r.aSupprimer).toEqual([])
     expect(r.aAjouter.map((x) => x.mois)).toEqual(['2027-01-01'])
   })
@@ -219,14 +219,14 @@ describe('reconcilerEcheances', () => {
     // Le club commençait en septembre, il commence maintenant en octobre ; l’élève est inscrit depuis le 2 septembre.
     const existantes = [existante('2026-09-01', 'e-sept'), existante('2026-10-01', 'e0')]
     const voulue = echeancesPourInscription(club, insc({ dateInscription: '2026-09-02' }))
-    expect(reconcilerEcheances(existantes, voulue, new Map(), '2026-09-01').aSupprimer).toEqual(['e-sept'])
-    expect(reconcilerEcheances(existantes, voulue, new Map([['e-sept', 15000]]), '2026-09-01').aSupprimer).toEqual([])
+    expect(reconcilerEcheances(existantes, voulue, new Set(), '2026-09-01').aSupprimer).toEqual(['e-sept'])
+    expect(reconcilerEcheances(existantes, voulue, new Set(['e-sept']), '2026-09-01').aSupprimer).toEqual([])
   })
 
   it('jour d’échéance modifié : la date change pour les mois sans paiement', () => {
     const existantes = voulues.map((v, i) => existante(v.mois, `e${i}`))
     const nouvelles = echeancesPourInscription({ ...club, jourEcheance: 10 }, insc())
-    const r = reconcilerEcheances(existantes, nouvelles, new Map([['e0', 15000]]))
+    const r = reconcilerEcheances(existantes, nouvelles, new Set(['e0']))
     expect(r.aMettreAJour.map((x) => x.dateEcheance)).toEqual(['2026-11-10', '2026-12-10', '2027-01-10'])
   })
 })
