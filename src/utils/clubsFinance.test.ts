@@ -462,6 +462,20 @@ describe('imputerReglement', () => {
     expect(imputerReglement(5000, []).nonImputeCentimes).toBe(5000)
   })
 
+  it('mois choisis : ne paie que ceux fournis, même si un mois plus ancien reste impayé', () => {
+    const choisies = ouvertes.filter((o) => o.echeanceId === 'e3')
+    const r = imputerReglement(15000, choisies)
+    expect(r.imputations).toEqual([{ echeanceId: 'e3', montantCentimes: 15000 }])
+    expect(r.nonImputeCentimes).toBe(0)
+  })
+
+  it('mois choisis : un montant au-delà de leur total est signalé, sans toucher aux autres mois', () => {
+    const choisies = ouvertes.filter((o) => o.echeanceId === 'e3')
+    const r = imputerReglement(20000, choisies)
+    expect(r.imputations.map((i) => i.echeanceId)).toEqual(['e3'])
+    expect(r.nonImputeCentimes).toBe(5000)
+  })
+
   it('ne modifie pas la liste reçue', () => {
     const copie = JSON.parse(JSON.stringify(ouvertes))
     imputerReglement(40000, ouvertes)

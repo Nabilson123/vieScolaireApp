@@ -20,7 +20,10 @@ function dhEnTexte(centimes: number): string {
   return (centimes / 100).toFixed(2).replace(/\.00$/, '').replace('.', ',')
 }
 
-/** Encaisse un règlement pour une famille : le montant est réparti automatiquement sur ses mensualités les plus anciennes, puis sur les mois à venir. */
+/**
+ * Encaisse un règlement pour une famille. Le montant paie les mois cochés (du plus ancien au plus récent) ; sans coche,
+ * il est réparti automatiquement sur les mensualités les plus anciennes, puis sur les mois à venir.
+ */
 export default function ReglementModal({ familleCle: familleInitiale, onClose, onDone }: Props) {
   const { lignes, aujourdhui } = useClubsFinance()
   const enregistrer = useEnregistrerReglement()
@@ -45,12 +48,21 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
   const [date, setDate] = useState(aujourdhuiLocalISO())
   const [erreur, setErreur] = useState('')
 
+  /** Mensualités cochées par l'utilisateur : le règlement ne paie que celles-là. Aucune coche = répartition automatique sur toutes. */
+  const [choisies, setChoisies] = useState<string[]>([])
+
   const famille = familles.find((f) => f.cle === familleCle)
   const ouvertes = useMemo(() => (famille ? mensualitesOuvertes(lignes, famille.cle) : []), [famille, lignes])
+  const retenues = useMemo(() => ouvertes.filter((o) => choisies.includes(o.echeanceId)), [ouvertes, choisies])
+  const selectionActive = retenues.length > 0
+  const cibles = selectionActive ? retenues : ouvertes
   const totalOuvert = ouvertes.reduce((n, o) => n + o.resteCentimes, 0)
+  const totalCible = cibles.reduce((n, o) => n + o.resteCentimes, 0)
   const centimes = dhVersCentimes(montant)
-  const repartition = useMemo(() => (centimes && centimes > 0 ? imputerReglement(centimes, ouvertes) : null), [centimes, ouvertes])
+  const repartition = useMemo(() => (centimes && centimes > 0 ? imputerReglement(centimes, cibles) : null), [centimes, cibles])
   const ligneParId = new Map(ouvertes.map((o) => [o.echeanceId, o.ligne]))
+
+  const basculer = (echeanceId: string) => setChoisies((prev) => (prev.includes(echeanceId) ? prev.filter((x) => x !== echeanceId) : [...prev, echeanceId]))
 
   const referenceRequise = mode !== 'especes'
   const montantValide = centimes !== null && centimes > 0
@@ -97,6 +109,7 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
               value={familleCle}
               onChange={(e) => {
                 setFamilleCle(e.target.value)
+                setChoisies([])
                 setMontant('')
               }}
               className={INPUT}
@@ -115,19 +128,42 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
           {famille && (
             <>
               <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">Mensualités à payer ({ouvertes.length})</p>
-                <ul className="max-h-36 space-y-1 overflow-y-auto text-xs">
-                  {ouvertes.map((o) => (
-                    <li key={o.echeanceId} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5">
-                      <span className="min-w-0 truncate text-slate-700">
-                        {o.ligne.studentNom} <span className="text-slate-400">({o.ligne.clubNom})</span> — {libelleMois(o.mois)}
-                      </span>
-                      <span className={`shrink-0 font-semibold ${o.ligne.statut === 'en_retard' ? 'text-rose-600' : 'text-slate-600'}`}>
-                        {formatDH(o.resteCentimes)}
-                        {o.ligne.statut === 'en_retard' && ' · en retard'}
-                      </span>
-                    </li>
-                  ))}
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Mensualités à payer ({ouvertes.length}){selectionActive && <span className="ml-1 normal-case text-emerald-700">· {retenues.length} choisie{retenues.length > 1 ? 's' : ''}</span>}
+                  </p>
+                  <div className="flex shrink-0 gap-3 text-[11px] font-medium">
+                    <button type="button" onClick={() => setChoisies(ouvertes.map((o) => o.echeanceId))} className="text-slate-500 hover:text-slate-700 hover:underline">
+                      Tout cocher
+                    </button>
+                    {selectionActive && (
+                      <button type="button" onClick={() => setChoisies([])} className="text-slate-500 hover:text-slate-700 hover:underline">
+                        Tout décocher
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="mb-2 text-[11px] text-slate-400">
+                  {selectionActive ? 'Le règlement ne paiera que les mois cochés (du plus ancien au plus récent).' : 'Cochez les mois que ce règlement paie. Sans coche, le montant est réparti sur les mois les plus anciens.'}
+                </p>
+                <ul className="max-h-44 space-y-1 overflow-y-auto text-xs">
+                  {ouvertes.map((o) => {
+                    const coche = choisies.includes(o.echeanceId)
+                    return (
+                      <li key={o.echeanceId}>
+                        <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 ${coche ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-white hover:bg-slate-50'}`}>
+                          <input type="checkbox" checked={coche} onChange={() => basculer(o.echeanceId)} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-slate-700">
+                            {o.ligne.studentNom} <span className="text-slate-400">({o.ligne.clubNom})</span> — {libelleMois(o.mois)}
+                          </span>
+                          <span className={`shrink-0 font-semibold ${o.ligne.statut === 'en_retard' ? 'text-rose-600' : 'text-slate-600'}`}>
+                            {formatDH(o.resteCentimes)}
+                            {o.ligne.statut === 'en_retard' && ' · en retard'}
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
 
@@ -136,14 +172,22 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">Montant reçu (DH)*</label>
                   <input value={montant} onChange={(e) => setMontant(e.target.value)} inputMode="decimal" className={INPUT} placeholder="Ex. 300" />
                   <div className="mt-1.5 flex flex-wrap gap-2 text-[11px]">
-                    {famille.solde.resteEchuCentimes > 0 && (
-                      <button type="button" onClick={() => setMontant(dhEnTexte(famille.solde.resteEchuCentimes))} className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">
-                        Solder ce qui est échu ({formatDH(famille.solde.resteEchuCentimes)})
+                    {selectionActive ? (
+                      <button type="button" onClick={() => setMontant(dhEnTexte(totalCible))} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 font-medium text-emerald-700 hover:bg-emerald-100">
+                        {retenues.length > 1 ? `Solder les ${retenues.length} mois choisis` : 'Solder le mois choisi'} ({formatDH(totalCible)})
                       </button>
+                    ) : (
+                      <>
+                        {famille.solde.resteEchuCentimes > 0 && (
+                          <button type="button" onClick={() => setMontant(dhEnTexte(famille.solde.resteEchuCentimes))} className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">
+                            Solder ce qui est échu ({formatDH(famille.solde.resteEchuCentimes)})
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setMontant(dhEnTexte(totalOuvert))} className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">
+                          Tout solder ({formatDH(totalOuvert)})
+                        </button>
+                      </>
                     )}
-                    <button type="button" onClick={() => setMontant(dhEnTexte(totalOuvert))} className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50">
-                      Tout solder ({formatDH(totalOuvert)})
-                    </button>
                   </div>
                   {montant.trim() !== '' && !montantValide && <p className="mt-1 text-[11px] text-amber-600">Montant illisible ou nul (ex. 300 ou 300,50).</p>}
                 </div>
@@ -189,7 +233,7 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
                   {depasse && (
                     <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-rose-700">
                       <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      Le montant dépasse de {formatDH(repartition.nonImputeCentimes)} ce qui reste à payer ({formatDH(totalOuvert)} au maximum). Aucun trop-perçu n'est accepté.
+                      Le montant dépasse de {formatDH(repartition.nonImputeCentimes)} ce qui reste à payer {selectionActive ? 'sur les mois choisis' : ''} ({formatDH(totalCible)} au maximum). {selectionActive ? 'Cochez d’autres mois ou réduisez le montant.' : 'Aucun trop-perçu n’est accepté.'}
                     </p>
                   )}
                 </div>
