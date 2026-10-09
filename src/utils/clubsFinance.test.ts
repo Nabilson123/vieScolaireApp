@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Club, ClubEcheance, ClubImputation, ClubInscription, ClubReglement } from '../data/clubs'
 import {
   ajouterMois,
+  bilanParClub,
+  bilanParMois,
   cleFamille,
   dateEcheance,
   dhVersCentimes,
@@ -25,6 +27,7 @@ import {
   soldeDeLignes,
   statutEcheance,
   type EleveFinance,
+  type LigneMensualite,
 } from './clubsFinance'
 
 const club = { moisDebut: '2026-10-01', moisFin: '2027-01-01', mensualiteCentimes: 15000, jourEcheance: 5 }
@@ -546,5 +549,66 @@ describe('montantEnLettres', () => {
     expect(montantEnLettres(101)).toBe('un dirham et un centime')
     expect(montantEnLettres(8000)).toBe('quatre-vingts dirhams')
     expect(montantEnLettres(7100)).toBe('soixante et onze dirhams')
+  })
+})
+
+describe('bilans', () => {
+  const ligne = (over: Partial<LigneMensualite>): LigneMensualite => ({
+    echeanceId: 'e',
+    inscriptionId: 'i',
+    clubId: 'c1',
+    clubNom: 'Robotique',
+    studentId: 's',
+    studentNom: 'X',
+    classe: 'CE1-A',
+    familleCle: 'f',
+    familleLibelle: 'Famille X',
+    mois: '2026-10-01',
+    dateEcheance: '2026-10-05',
+    montantCentimes: 15000,
+    payeCentimes: 0,
+    resteCentimes: 15000,
+    statut: 'due',
+    ...over,
+  })
+
+  it('bilanParMois : attendu, encaissé, reste et taux par mois de facturation', () => {
+    const b = bilanParMois([
+      ligne({ montantCentimes: 15000, payeCentimes: 15000, resteCentimes: 0 }),
+      ligne({ montantCentimes: 15000, payeCentimes: 5000, resteCentimes: 10000 }),
+      ligne({ mois: '2026-11-01', montantCentimes: 15000, payeCentimes: 0 }),
+    ])
+    expect(b).toHaveLength(2)
+    expect(b[0]).toEqual({ mois: '2026-10-01', attenduCentimes: 30000, encaisseCentimes: 20000, resteCentimes: 10000, tauxPct: 67 })
+    expect(b[1]).toEqual({ mois: '2026-11-01', attenduCentimes: 15000, encaisseCentimes: 0, resteCentimes: 15000, tauxPct: 0 })
+  })
+
+  it('un mois d’exonérés : rien d’attendu, pas de taux', () => {
+    const b = bilanParMois([ligne({ montantCentimes: 0, payeCentimes: 0, resteCentimes: 0, statut: 'exoneree' })])
+    expect(b[0].tauxPct).toBeNull()
+    expect(b[0].attenduCentimes).toBe(0)
+  })
+
+  it('un trop-payé ne dépasse jamais ce qui était attendu', () => {
+    const b = bilanParMois([ligne({ montantCentimes: 15000, payeCentimes: 20000, resteCentimes: 0 })])
+    expect(b[0].encaisseCentimes).toBe(15000)
+    expect(b[0].tauxPct).toBe(100)
+  })
+
+  it('bilanParClub : un bilan par club avec son total, clubs triés par nom', () => {
+    const b = bilanParClub([
+      ligne({ clubId: 'c2', clubNom: 'Théâtre', montantCentimes: 10000, payeCentimes: 10000, resteCentimes: 0 }),
+      ligne({ montantCentimes: 15000, payeCentimes: 0 }),
+      ligne({ mois: '2026-11-01', montantCentimes: 15000, payeCentimes: 15000, resteCentimes: 0 }),
+    ])
+    expect(b.map((c) => c.clubNom)).toEqual(['Robotique', 'Théâtre'])
+    expect(b[0].mois).toHaveLength(2)
+    expect(b[0].total).toMatchObject({ attenduCentimes: 30000, encaisseCentimes: 15000, resteCentimes: 15000, tauxPct: 50 })
+    expect(b[1].total.tauxPct).toBe(100)
+  })
+
+  it('aucune mensualité : aucun bilan', () => {
+    expect(bilanParMois([])).toEqual([])
+    expect(bilanParClub([])).toEqual([])
   })
 })

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Ban, Banknote, CheckCircle2, FileText, Receipt, X } from 'lucide-react'
+import { Ban, Banknote, CheckCircle2, FileSpreadsheet, FileText, Receipt, X } from 'lucide-react'
 import { MODES_REGLEMENT, MODE_REGLEMENT_LABELS, type ModeReglement, type StatutReglement } from '../../data/clubs'
 import { useClubReglements, useAnnulerReglement } from '../../services/clubsPaiementsService'
+import { journalEncaissements } from '../../utils/clubsContexte'
+import { exportJournalEncaissementsExcel } from '../../utils/clubsExport'
 import { formatDH } from '../../utils/clubsFinance'
 
 interface Props {
@@ -53,12 +55,23 @@ export default function ReglementsList({ canEdit, onEncaisser, onOuvrirRecu }: P
             {valides.length} règlement{valides.length > 1 ? 's' : ''} valide{valides.length > 1 ? 's' : ''}, {formatDH(totalEncaisse)} encaissés. Un règlement ne se supprime pas : on l'annule avec un motif, et son numéro reste attribué.
           </p>
         </div>
-        {canEdit && (
-          <button type="button" onClick={onEncaisser} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:from-emerald-500 hover:to-teal-500">
-            <Banknote className="h-4 w-4" />
-            Enregistrer un règlement
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={reglements.length === 0}
+            onClick={() => exportJournalEncaissementsExcel(journalEncaissements())}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Journal des encaissements (Excel)
           </button>
-        )}
+          {canEdit && (
+            <button type="button" onClick={onEncaisser} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:from-emerald-500 hover:to-teal-500">
+              <Banknote className="h-4 w-4" />
+              Enregistrer un règlement
+            </button>
+          )}
+        </div>
       </div>
 
       {notice && (

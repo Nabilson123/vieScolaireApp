@@ -9,6 +9,7 @@ import { countUnseenAlerts } from '../utils/alertsSeenStore'
 import { countHorsDelaiIn } from '../utils/reclamationsAlerts'
 import { useStudentExtras } from '../services/studentDetailsService'
 import { useStudents } from '../services/studentsService'
+import { useClubsImpayes } from '../hooks/useClubsImpayes'
 import { useAnneesScolaires, getActiveYearIdSnapshot, getAnneesScolairesSnapshot } from '../services/anneesScolairesService'
 import { useViewedYearId, setViewedYearId } from '../services/viewedYear'
 import { useCurrentProfile, getModuleAccess } from '../services/permissions'
@@ -24,6 +25,18 @@ function HorsDelaiBadge({ count }: { count: number }) {
   return (
     <span
       title={`${count} réclamation${count > 1 ? 's' : ''} hors délai`}
+      className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
+    >
+      {count}
+    </span>
+  )
+}
+
+/** Pastille de l'entrée « Clubs » : nombre de familles en retard sur une mensualité (visible seulement avec le droit sur les paiements). */
+function ClubsImpayesBadge({ count }: { count: number }) {
+  return (
+    <span
+      title={`${count} famille${count > 1 ? 's' : ''} en retard de paiement`}
       className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
     >
       {count}
@@ -69,6 +82,7 @@ export default function Sidebar({
   const { data: extrasForBadge } = useStudentExtras()
   const { data: studentsForBadge } = useStudents()
   const reclamationsHorsDelai = useMemo(() => countHorsDelaiIn(studentsForBadge ?? [], extrasForBadge), [extrasForBadge, studentsForBadge])
+  const clubsImpayes = useClubsImpayes()
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ scolarite: true })
   const [showSearch, setShowSearch] = useState(false)
   const [showYearMenu, setShowYearMenu] = useState(false)
@@ -249,6 +263,7 @@ export default function Sidebar({
                       <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
                       <span className="truncate">{item.label}</span>
                       {item.key === 'reclamations' && reclamationsHorsDelai > 0 && <HorsDelaiBadge count={reclamationsHorsDelai} />}
+                      {item.key === 'clubs' && clubsImpayes.visible && clubsImpayes.nbFamilles > 0 && <ClubsImpayesBadge count={clubsImpayes.nbFamilles} />}
                     </button>
                     <button
                       type="button"
@@ -304,6 +319,7 @@ export default function Sidebar({
                               </span>
                             )}
                             {item.key === 'reclamations' && reclamationsHorsDelai > 0 && <HorsDelaiBadge count={reclamationsHorsDelai} />}
+                            {item.key === 'clubs' && clubsImpayes.visible && clubsImpayes.nbFamilles > 0 && <ClubsImpayesBadge count={clubsImpayes.nbFamilles} />}
                           </button>
                           <button
                             type="button"

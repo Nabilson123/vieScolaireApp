@@ -459,3 +459,47 @@ export function montantEnLettres(centimes: number): string {
   if (cts > 0) parts.push(`${nombreEnLettres(cts)} centime${cts > 1 ? 's' : ''}`)
   return parts.join(' et ')
 }
+
+// ───────────────────────── Bilans ─────────────────────────
+
+export interface BilanMois {
+  mois: string
+  attenduCentimes: number
+  encaisseCentimes: number
+  resteCentimes: number
+  /** Part encaissée de ce qui était attendu, en %, arrondie ; `null` quand rien n'est attendu (mois d'exonérés). */
+  tauxPct: number | null
+}
+
+function bilanDeLignes(mois: string, lignes: LigneMensualite[]): BilanMois {
+  const attendu = lignes.reduce((n, l) => n + l.montantCentimes, 0)
+  const encaisse = lignes.reduce((n, l) => n + Math.min(l.payeCentimes, l.montantCentimes), 0)
+  return { mois, attenduCentimes: attendu, encaisseCentimes: encaisse, resteCentimes: attendu - encaisse, tauxPct: attendu > 0 ? Math.round((encaisse / attendu) * 100) : null }
+}
+
+/** Ce qui était attendu et ce qui a été encaissé pour chaque mois de facturation (les paiements comptent dans le mois qu'ils paient). */
+export function bilanParMois(lignes: LigneMensualite[]): BilanMois[] {
+  const parMois = new Map<string, LigneMensualite[]>()
+  for (const l of lignes) parMois.set(l.mois, [...(parMois.get(l.mois) ?? []), l])
+  return [...parMois.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([mois, ls]) => bilanDeLignes(mois, ls))
+}
+
+export interface BilanClub {
+  clubId: string
+  clubNom: string
+  mois: BilanMois[]
+  total: BilanMois
+}
+
+/** Bilan mensuel de chaque club, avec une ligne de total ; les clubs sont triés par nom. */
+export function bilanParClub(lignes: LigneMensualite[]): BilanClub[] {
+  const parClub = new Map<string, { clubNom: string; lignes: LigneMensualite[] }>()
+  for (const l of lignes) {
+    const c = parClub.get(l.clubId) ?? { clubNom: l.clubNom, lignes: [] }
+    c.lignes.push(l)
+    parClub.set(l.clubId, c)
+  }
+  return [...parClub.entries()]
+    .map(([clubId, c]) => ({ clubId, clubNom: c.clubNom, mois: bilanParMois(c.lignes), total: bilanDeLignes('', c.lignes) }))
+    .sort((a, b) => a.clubNom.localeCompare(b.clubNom, 'fr'))
+}

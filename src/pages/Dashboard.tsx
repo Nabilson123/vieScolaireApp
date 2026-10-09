@@ -5,6 +5,7 @@ import KpiCard from '../components/KpiCard'
 import TrendChart from '../components/TrendChart'
 import CantineCard from '../components/CantineCard'
 import TransportCard from '../components/TransportCard'
+import ClubsImpayesCard from '../components/ClubsImpayesCard'
 import ImpactedDayCard from '../components/ImpactedDayCard'
 import GoalCard from '../components/GoalCard'
 import VigilanceCard from '../components/VigilanceCard'
@@ -51,6 +52,7 @@ interface DashboardProps {
   onNavigateToRendezVous?: () => void
   onNavigateToLunch?: () => void
   onNavigateToTransport?: () => void
+  onNavigateToClubs?: () => void
   onDataChanged?: () => void
 }
 
@@ -61,6 +63,7 @@ export default function Dashboard({
   onNavigateToRendezVous,
   onNavigateToLunch,
   onNavigateToTransport,
+  onNavigateToClubs,
   onDataChanged,
 }: DashboardProps) {
   const [activeTab, setActiveTab] = useState('global')
@@ -311,6 +314,7 @@ export default function Dashboard({
             <div className="space-y-4">
               <CantineCard onManage={onNavigateToLunch} />
               <TransportCard onManage={onNavigateToTransport} />
+              <ClubsImpayesCard onManage={onNavigateToClubs} />
               <ImpactedDayCard />
             </div>
           </div>

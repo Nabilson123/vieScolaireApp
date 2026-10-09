@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { CalendarClock, CheckCircle2, Receipt, Trophy, Users, X } from 'lucide-react'
+import { BarChart3, CalendarClock, CheckCircle2, Receipt, TriangleAlert, Trophy, Users, X } from 'lucide-react'
+import BilanPanel from '../components/clubs/BilanPanel'
 import ClubsCatalogue from '../components/clubs/ClubsCatalogue'
 import InscritsPanel from '../components/clubs/InscritsPanel'
 import MensualitesPanel from '../components/clubs/MensualitesPanel'
+import RecouvrementPanel from '../components/clubs/RecouvrementPanel'
 import ReglementModal from '../components/clubs/ReglementModal'
 import ReglementsList from '../components/clubs/ReglementsList'
 import RecuPrintPreviewModal from '../components/clubs-print/RecuPrintPreviewModal'
@@ -11,10 +13,12 @@ import ReadOnlyYearBanner from '../components/ReadOnlyYearBanner'
 import { getModuleAccess, useClubsPaiementsAccess, useCurrentProfile } from '../services/permissions'
 import { useIsViewedYearEditable } from '../services/viewedYear'
 
-type Onglet = 'clubs' | 'inscrits' | 'mensualites' | 'reglements'
+type Onglet = 'clubs' | 'inscrits' | 'mensualites' | 'reglements' | 'recouvrement' | 'bilan'
+
+const ONGLETS_ARGENT: Onglet[] = ['mensualites', 'reglements', 'recouvrement', 'bilan']
 
 /** Clubs : catalogue, inscrits (avec liste d'attente), puis mensualités, règlements et recouvrement pour qui a le droit sur les paiements. */
-export default function ClubsGlobal() {
+export default function ClubsGlobal({ initialOnglet }: { initialOnglet?: string }) {
   const canEditYear = useIsViewedYearEditable()
   const profile = useCurrentProfile()
   const canEditModule = getModuleAccess(profile, 'clubs').canEdit
@@ -22,7 +26,7 @@ export default function ClubsGlobal() {
   const paiements = useClubsPaiementsAccess()
   const canEditPaiements = canEditYear && paiements.canEdit
 
-  const [onglet, setOnglet] = useState<Onglet>('clubs')
+  const [onglet, setOnglet] = useState<Onglet>(() => (initialOnglet === 'recouvrement' ? 'recouvrement' : 'clubs'))
   const [clubInscrits, setClubInscrits] = useState('')
   const [encaisser, setEncaisser] = useState<{ familleCle?: string } | null>(null)
   const [recuId, setRecuId] = useState<string | null>(null)
@@ -35,11 +39,13 @@ export default function ClubsGlobal() {
       ? [
           { key: 'mensualites' as const, label: 'Mensualités', icon: CalendarClock },
           { key: 'reglements' as const, label: 'Règlements', icon: Receipt },
+          { key: 'recouvrement' as const, label: 'Recouvrement', icon: TriangleAlert },
+          { key: 'bilan' as const, label: 'Bilan', icon: BarChart3 },
         ]
       : []),
   ]
   // Un onglet d'argent n'est jamais montré sans le droit (par exemple si le droit est retiré pendant la consultation).
-  const actif: Onglet = (onglet === 'mensualites' || onglet === 'reglements') && !paiements.canView ? 'clubs' : onglet
+  const actif: Onglet = ONGLETS_ARGENT.includes(onglet) && !paiements.canView ? 'clubs' : onglet
 
   return (
     <div className="mx-auto max-w-[1200px] p-6">
@@ -94,6 +100,8 @@ export default function ClubsGlobal() {
       {actif === 'inscrits' && <InscritsPanel key={clubInscrits || 'tous'} isEditable={isEditable} clubInitial={clubInscrits} />}
       {actif === 'mensualites' && <MensualitesPanel canEdit={canEditPaiements} onEncaisser={(familleCle) => setEncaisser({ familleCle })} />}
       {actif === 'reglements' && <ReglementsList canEdit={canEditPaiements} onEncaisser={() => setEncaisser({})} onOuvrirRecu={setRecuId} />}
+      {actif === 'recouvrement' && <RecouvrementPanel canEdit={canEditPaiements} onEncaisser={(familleCle) => setEncaisser({ familleCle })} />}
+      {actif === 'bilan' && <BilanPanel />}
 
       {encaisser && paiements.canEdit && (
         <ReglementModal

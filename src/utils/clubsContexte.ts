@@ -1,5 +1,5 @@
 import { timeToMinutes } from '../data/classSchedules'
-import type { Club, ClubInscription, ClubReglement, JourClub } from '../data/clubs'
+import { MODE_REGLEMENT_LABELS, type Club, type ClubInscription, type ClubReglement, type JourClub } from '../data/clubs'
 import { fullLabel } from '../data/salles'
 import { JOUR_LABELS } from '../data/soutien'
 import { teacherName } from '../data/teachers'
@@ -10,7 +10,7 @@ import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { debutDuClub, finDuClub, inscritsActifs, listeAttente } from './clubs'
-import { cleFamille, libelleFamille, lignesMensualites, montantEnLettres, paiementsParEcheance, type EleveFinance } from './clubsFinance'
+import { cleFamille, formatDH, libelleFamille, libelleMois, lignesMensualites, montantEnLettres, paiementsParEcheance, type EleveFinance } from './clubsFinance'
 import { alerteCar, conflitsSeance, parClasseNom, type ConflitSeance } from './soutien'
 import { buildConflitsContext, transportInfoOf } from './soutienContexte'
 
@@ -204,4 +204,39 @@ export function recuDuReglement(reglement: ClubReglement): DonneesRecu {
     resteEchuTotalCentimes: soldeParClub.reduce((n, s) => n + s.resteEchuCentimes, 0),
     resteAVenirTotalCentimes: soldeParClub.reduce((n, s) => n + s.resteAVenirCentimes, 0),
   }
+}
+
+// ───────────────────────── Journal des encaissements ─────────────────────────
+
+export interface LigneJournal {
+  numero: string
+  dateReglement: string
+  famille: string
+  mode: string
+  reference: string
+  /** Montant en dirhams (pas en centimes) pour le tableur. */
+  montantDh: number
+  statut: 'Valide' | 'Annulé'
+  motifAnnulation: string
+  /** « Adam ALAMI (Robotique, octobre 2026 : 150,00 DH) ; … » */
+  detail: string
+}
+
+/** Tous les règlements de l'année, du plus ancien au plus récent, avec ce qu'ils paient : de quoi tenir la caisse et la comptabilité. */
+export function journalEncaissements(): LigneJournal[] {
+  return [...getClubReglementsSnapshot()]
+    .sort((a, b) => a.numero.localeCompare(b.numero))
+    .map((r) => ({
+      numero: r.numero,
+      dateReglement: r.dateReglement,
+      famille: r.familleLibelle,
+      mode: MODE_REGLEMENT_LABELS[r.mode],
+      reference: r.reference,
+      montantDh: r.montantCentimes / 100,
+      statut: r.statut === 'annule' ? 'Annulé' : 'Valide',
+      motifAnnulation: r.motifAnnulation,
+      detail: recuDuReglement(r)
+        .lignes.map((l) => `${l.studentNom} (${l.clubNom}, ${libelleMois(l.mois)} : ${formatDH(l.montantCentimes)})`)
+        .join(' ; '),
+    }))
 }

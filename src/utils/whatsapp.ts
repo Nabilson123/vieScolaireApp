@@ -1,5 +1,6 @@
 import { demandeurLabel, type RendezVousRecord } from '../data/studentDetails'
 import { JOUR_LABELS, JOUR_LABELS_AR, type JourSoutien } from '../data/soutien'
+import { formatDH, libelleMois } from './clubsFinance'
 
 const MOROCCO_COUNTRY_CODE = '212'
 
@@ -581,4 +582,60 @@ function jourDeSemaineAr(iso: string): string {
   const jours: (JourSoutien | null)[] = [null, 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', null]
   const j = jours[d.getDay()]
   return j ? JOUR_LABELS_AR[j] : ''
+}
+
+// ───────────────────────── Relance des mensualités des clubs ─────────────────────────
+
+export interface ClubRelanceLigne {
+  eleve: string
+  club: string
+  /** AAAA-MM-01 */
+  mois: string
+  resteCentimes: number
+}
+
+export interface ClubRelanceWhatsAppInfo {
+  /** Parent à qui on écrit (vide = formule neutre). */
+  parentNom: string
+  lignes: ClubRelanceLigne[]
+}
+
+const MOIS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر']
+
+function moisAr(mois: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(mois)
+  return m ? `${MOIS_AR[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : mois
+}
+
+function montantAr(centimes: number): string {
+  return formatDH(centimes).replace(/ DH$/, ' درهم')
+}
+
+function buildClubRelanceFr(info: ClubRelanceWhatsAppInfo): string {
+  const total = info.lignes.reduce((n, l) => n + l.resteCentimes, 0)
+  const lines = [info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,', '']
+  lines.push('Nous revenons vers vous au sujet des clubs de votre enfant. Selon nos registres, les mensualités suivantes restent à régler :', '')
+  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}, ${libelleMois(l.mois)} : ${formatDH(l.resteCentimes)}`))
+  lines.push('', `*Total à régler : ${formatDH(total)}*`, '')
+  lines.push("Merci de passer régler cette somme auprès de l'administration. Si le paiement a déjà été effectué, merci de nous le signaler afin que nous corrigions nos registres.")
+  lines.push(...SIGNATURE)
+  return lines.join('\n')
+}
+
+function buildClubRelanceAr(info: ClubRelanceWhatsAppInfo): string {
+  const total = info.lignes.reduce((n, l) => n + l.resteCentimes, 0)
+  const lines = ['السلام عليكم،', '']
+  lines.push('نعود إليكم بخصوص أندية ابنكم (ابنتكم). حسب سجلاتنا، الأقساط الشهرية التالية لم تُسدَّد بعد :', '')
+  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}، ${moisAr(l.mois)} : ${montantAr(l.resteCentimes)}`))
+  lines.push('', `*المبلغ الإجمالي المستحق : ${montantAr(total)}*`, '')
+  lines.push('نرجو منكم المرور إلى الإدارة لتسوية هذا المبلغ. وإذا كان الأداء قد تم بالفعل، نرجو إشعارنا بذلك حتى نصحح سجلاتنا.')
+  lines.push(...SIGNATURE_AR)
+  return lines.join('\n')
+}
+
+/** Relance d'une famille pour ses mensualités de clubs en retard, dans la langue choisie ; « both » met le français puis l'arabe. */
+export function buildClubRelanceMessage(info: ClubRelanceWhatsAppInfo, lang: ReclamationMessageLang = 'fr'): string {
+  if (lang === 'ar') return buildClubRelanceAr(info)
+  const fr = buildClubRelanceFr(info)
+  return lang === 'both' ? `${fr}\n\n──────────\n\n${buildClubRelanceAr(info)}` : fr
 }

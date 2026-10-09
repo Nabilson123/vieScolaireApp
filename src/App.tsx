@@ -187,6 +187,11 @@ function App() {
     setActive('transport')
   }
 
+  const navigateToClubsRecouvrement = () => {
+    setNavTarget({ tab: 'recouvrement' })
+    setActive('clubs')
+  }
+
   const navigateToJournalAppelsParents = () => {
     setActive('journalAppelsParents')
   }
@@ -271,6 +276,7 @@ function App() {
               onNavigateToRendezVous={navigateToRendezVous}
               onNavigateToLunch={navigateToLunch}
               onNavigateToTransport={navigateToTransport}
+              onNavigateToClubs={navigateToClubsRecouvrement}
               onDataChanged={notifyDataChanged}
             />
           )}
@@ -307,7 +313,7 @@ function App() {
           {active === 'lunch' && <GardeRepasGlobal onNavigateToStudent={navigateToStudent} onDataChanged={notifyDataChanged} />}
           {active === 'transport' && <TransportGlobal onDataChanged={notifyDataChanged} />}
           {active === 'garde' && <GardeGlobal onDataChanged={notifyDataChanged} />}
-          {active === 'clubs' && <ClubsGlobal />}
+          {active === 'clubs' && <ClubsGlobal key={navTarget?.tab ?? 'clubs'} initialOnglet={navTarget?.tab} />}
           {active === 'personnel' && <PersonnelGlobal onDataChanged={notifyDataChanged} />}
           {active === 'helpdesk' && <HelpdeskGlobal />}
           {active === 'reservationSalles' && <ReservationSallesGlobal />}

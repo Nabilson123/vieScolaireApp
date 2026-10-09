@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage, buildSoutienMessage, buildSoutienTransportMessage } from './whatsapp'
+import { toWhatsAppPhone, buildWhatsAppLink, buildRemplacementMessage, buildRdvMessage, buildReclamationMessage, buildSoutienMessage, buildSoutienTransportMessage, buildClubRelanceMessage } from './whatsapp'
 
 describe('toWhatsAppPhone', () => {
   it('converts a local Moroccan number (leading 0) to international format', () => {
@@ -356,5 +356,59 @@ describe('buildSoutienTransportMessage', () => {
     expect(m).toContain('خط C :\n- Adam BELGRAINI (1APIC-A)\n- Omar AKIL (1APIC-A)')
     expect(m).toContain('ولن يستقلوا حافلة النقل هذا المساء')
     expect(m.startsWith('السلام عليكم')).toBe(true)
+  })
+})
+
+describe('buildClubRelanceMessage', () => {
+  const info = {
+    parentNom: 'Karim ALAMI',
+    lignes: [
+      { eleve: 'Adam ALAMI', club: 'Robotique', mois: '2026-10-01', resteCentimes: 15000 },
+      { eleve: 'Lina ALAMI', club: 'Théâtre', mois: '2026-11-01', resteCentimes: 10050 },
+    ],
+  }
+
+  it('français : salutation, une ligne par élève, club et mois, total et signature', () => {
+    const m = buildClubRelanceMessage(info, 'fr')
+    expect(m.startsWith('Bonjour Karim ALAMI,')).toBe(true)
+    expect(m).toContain('- *Adam ALAMI* — Robotique, octobre 2026 : 150,00 DH')
+    expect(m).toContain('- *Lina ALAMI* — Théâtre, novembre 2026 : 100,50 DH')
+    expect(m).toContain('*Total à régler : 250,50 DH*')
+    expect(m).toContain('Si le paiement a déjà été effectué')
+    expect(m).toContain('Direction de la Vie Scolaire')
+    expect(m).not.toContain('السلام')
+  })
+
+  it('sans nom de parent : salutation neutre', () => {
+    expect(buildClubRelanceMessage({ ...info, parentNom: '  ' }, 'fr').startsWith('Bonjour,\n')).toBe(true)
+  })
+
+  it('arabe : mois en arabe du Maroc, montants en dirhams, total', () => {
+    const m = buildClubRelanceMessage(info, 'ar')
+    expect(m.startsWith('السلام عليكم')).toBe(true)
+    expect(m).toContain('- *Adam ALAMI* — Robotique، أكتوبر 2026 : 150,00 درهم')
+    expect(m).toContain('- *Lina ALAMI* — Théâtre، نونبر 2026 : 100,50 درهم')
+    expect(m).toContain('*المبلغ الإجمالي المستحق : 250,50 درهم*')
+    expect(m).toContain('إدارة الحياة المدرسية')
+    expect(m).not.toContain('Bonjour')
+  })
+
+  it('les deux langues : français, filet, puis arabe', () => {
+    const m = buildClubRelanceMessage(info, 'both')
+    const [fr, ar] = m.split('\n\n──────────\n\n')
+    expect(fr.startsWith('Bonjour Karim ALAMI,')).toBe(true)
+    expect(ar.startsWith('السلام عليكم')).toBe(true)
+  })
+
+  it('français par défaut', () => {
+    expect(buildClubRelanceMessage(info)).toBe(buildClubRelanceMessage(info, 'fr'))
+  })
+
+  it('les douze mois arabes du Maroc', () => {
+    const attendus = ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر']
+    attendus.forEach((nom, i) => {
+      const mois = `2026-${String(i + 1).padStart(2, '0')}-01`
+      expect(buildClubRelanceMessage({ parentNom: '', lignes: [{ eleve: 'X', club: 'C', mois, resteCentimes: 100 }] }, 'ar')).toContain(`${nom} 2026`)
+    })
   })
 })
