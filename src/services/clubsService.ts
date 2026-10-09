@@ -522,32 +522,93 @@ export function useInscrireClub() {
       const club = cachedClubs.find((c) => c.id === input.clubId)
       if (!club) throw new Error('Club introuvable.')
       if (club.archive) throw new Error('Ce club est archivé.')
-      const existante = cachedInscriptions.find((i) => i.clubId === input.clubId && i.studentId === input.studentId)
-      if (existante && existante.statut === 'actif') throw new Error('Cet élève est déjà inscrit à ce club.')
-      if (existante && existante.statut === 'attente') throw new Error("Cet élève est déjà sur la liste d'attente de ce club.")
-
-      const statut = statutPourNouvelInscrit(club, cachedInscriptions)
-      const champs = {
-        statut,
-        date_inscription: input.dateInscription || aujourdhuiLocalISO(),
-        date_arret: null,
-        exonere: !!input.exonere,
-        motif_exoneration: input.exonere ? (input.motifExoneration ?? '').trim() : '',
-        derogation_niveau: !!input.derogationNiveau,
-      }
-      const requete = existante
-        ? supabase.from('club_inscriptions').update(champs).eq('id', existante.id).select('*').single()
-        : supabase.from('club_inscriptions').insert({ ...champs, club_id: input.clubId, student_id: input.studentId }).select('*').single()
-      const { data, error } = await requete
-      if (error) {
-        // 23505 : l'élève est déjà inscrit à ce club (contrainte d'unicité).
-        if (error.code === '23505') throw new Error('Cet élève est déjà inscrit à ce club.')
-        throw error
-      }
-      const inscription = rowToInscription(data as InscriptionRow)
-      await synchroniserEcheances(club, facturables([inscription]))
-      await logAudit({ tableName: 'club_inscriptions', recordId: inscription.id, action: existante ? 'update' : 'insert', newData: { club: club.nom, student_id: input.studentId, ...champs } })
+      const { inscription, statut } = await inscrireUnEleve(club, input, cachedInscriptions)
       return { id: inscription.id, statut }
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/**
+ * Inscrit un élève au club d'après la liste d'inscriptions donnée (ce qui permet à une inscription en lot de compter les
+ * places au fur et à mesure) : actif s'il reste une place, sinon en liste d'attente ; réinscrit sur la même ligne s'il
+ * avait quitté le club ; mensualités créées et trace dans le journal d'audit.
+ */
+async function inscrireUnEleve(club: Club, input: InscrireInput, inscriptions: ClubInscription[]): Promise<{ inscription: ClubInscription; statut: 'actif' | 'attente' }> {
+  const existante = inscriptions.find((i) => i.clubId === club.id && i.studentId === input.studentId)
+  if (existante && existante.statut === 'actif') throw new Error('Cet élève est déjà inscrit à ce club.')
+  if (existante && existante.statut === 'attente') throw new Error("Cet élève est déjà sur la liste d'attente de ce club.")
+
+  const statut = statutPourNouvelInscrit(club, inscriptions)
+  const champs = {
+    statut,
+    date_inscription: input.dateInscription || aujourdhuiLocalISO(),
+    date_arret: null,
+    exonere: !!input.exonere,
+    motif_exoneration: input.exonere ? (input.motifExoneration ?? '').trim() : '',
+    derogation_niveau: !!input.derogationNiveau,
+  }
+  const requete = existante
+    ? supabase.from('club_inscriptions').update(champs).eq('id', existante.id).select('*').single()
+    : supabase.from('club_inscriptions').insert({ ...champs, club_id: club.id, student_id: input.studentId }).select('*').single()
+  const { data, error } = await requete
+  if (error) {
+    // 23505 : l'élève est déjà inscrit à ce club (contrainte d'unicité).
+    if (error.code === '23505') throw new Error('Cet élève est déjà inscrit à ce club.')
+    throw error
+  }
+  const inscription = rowToInscription(data as InscriptionRow)
+  await synchroniserEcheances(club, facturables([inscription]))
+  await logAudit({ tableName: 'club_inscriptions', recordId: inscription.id, action: existante ? 'update' : 'insert', newData: { club: club.nom, student_id: input.studentId, ...champs } })
+  return { inscription, statut }
+}
+
+export interface InscrireLotInput {
+  clubId: string
+  studentIds: string[]
+  dateInscription?: string
+  exonere?: boolean
+  motifExoneration?: string
+  /** Élèves hors des niveaux admis que l'on inscrit malgré tout (dérogation confirmée). */
+  derogationIds?: string[]
+}
+
+export interface InscrireLotResult {
+  inscrits: number
+  enAttente: number
+  /** Élèves non inscrits, avec la raison (déjà inscrit, erreur…). */
+  echecs: { studentId: string; raison: string }[]
+}
+
+/**
+ * Inscrit plusieurs élèves d'un coup. Les places sont comptées au fur et à mesure : les premiers sont inscrits tant qu'il
+ * en reste, les suivants vont en liste d'attente. Un élève qui échoue (déjà inscrit, erreur) n'empêche pas les autres.
+ */
+export function useInscrireClubLot() {
+  const invalidate = useInvalidateClubs()
+  return useMutation({
+    mutationFn: async (input: InscrireLotInput): Promise<InscrireLotResult> => {
+      const club = cachedClubs.find((c) => c.id === input.clubId)
+      if (!club) throw new Error('Club introuvable.')
+      if (club.archive) throw new Error('Ce club est archivé.')
+      const derogations = new Set(input.derogationIds ?? [])
+      let actuelles = [...cachedInscriptions]
+      const resultat: InscrireLotResult = { inscrits: 0, enAttente: 0, echecs: [] }
+      for (const studentId of [...new Set(input.studentIds)]) {
+        try {
+          const { inscription, statut } = await inscrireUnEleve(
+            club,
+            { clubId: club.id, studentId, dateInscription: input.dateInscription, exonere: input.exonere, motifExoneration: input.motifExoneration, derogationNiveau: derogations.has(studentId) },
+            actuelles,
+          )
+          actuelles = [...actuelles.filter((i) => i.id !== inscription.id), inscription]
+          if (statut === 'attente') resultat.enAttente++
+          else resultat.inscrits++
+        } catch (e) {
+          resultat.echecs.push({ studentId, raison: e instanceof Error ? e.message : 'Inscription impossible.' })
+        }
+      }
+      return resultat
     },
     onSuccess: invalidate,
   })
