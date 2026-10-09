@@ -8,7 +8,8 @@ import { getCurrentUserIdSnapshot } from './currentUser'
 import { getViewedYearIdSnapshot } from './viewedYear'
 import { getSoutienSeancesSnapshot } from './soutienService'
 import { getClubsSnapshot } from './clubsService'
-import { clubALieuLe } from '../utils/clubs'
+import { libelleClub } from '../data/clubs'
+import { seancesClubEnSalleLe } from '../utils/clubs'
 import { seanceActiveLe } from '../utils/soutienSeances'
 
 interface ReservationSalleRow {
@@ -135,8 +136,8 @@ export function detectConflictForSalle(salleId: string, date: string, heureDebut
   )
   const soutienConflict = soutien ? { matiere: soutien.matiere, debut: soutien.heureDebut, fin: soutien.heureFin } : null
 
-  const club = getClubsSnapshot().find((c) => c.salleId === salleId && clubALieuLe(c, date) && timeToMinutes(c.heureDebut) < endMin && startMin < timeToMinutes(c.heureFin))
-  const clubConflict = club ? { nom: club.nom, debut: club.heureDebut, fin: club.heureFin } : null
+  const seanceClub = seancesClubEnSalleLe(getClubsSnapshot(), salleId, date).find(({ seance }) => timeToMinutes(seance.heureDebut) < endMin && startMin < timeToMinutes(seance.heureFin))
+  const clubConflict = seanceClub ? { nom: libelleClub(seanceClub.club), debut: seanceClub.seance.heureDebut, fin: seanceClub.seance.heureFin } : null
 
   return { edtConflict, reservationConflict, soutienConflict, clubConflict }
 }

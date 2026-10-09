@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Banknote, CalendarClock } from 'lucide-react'
+import { libelleClub } from '../../data/clubs'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { STATUT_ECHEANCE_LABELS, formatDH, libelleMois, soldeDeLignes, type LigneMensualite, type StatutEcheance } from '../../utils/clubsFinance'
 
@@ -113,10 +114,10 @@ export default function MensualitesPanel({ canEdit, onEncaisser }: Props) {
           <option value="">Tous les clubs</option>
           {clubs
             .slice()
-            .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+            .sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true }))
             .map((c) => (
               <option key={c.id} value={c.id}>
-                {c.nom}
+                {libelleClub(c)}
               </option>
             ))}
         </select>

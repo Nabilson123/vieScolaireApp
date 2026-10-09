@@ -1,3 +1,4 @@
+import { libelleClub } from '../../data/clubs'
 import type { FeuilleClub } from '../../utils/clubsContexte'
 import PrintPreviewShell from '../print/PrintPreviewShell'
 import { sanitizeFileName, todayFileStamp } from '../print/printFileName'
@@ -10,10 +11,10 @@ export type DocumentClub = { type: 'liste'; feuilles: FeuilleClub[] } | { type: 
 export default function ClubsPrintPreviewModal({ document, onClose }: { document: DocumentClub; onClose: () => void }) {
   if (document.type === 'liste') {
     const n = document.feuilles.length
-    const nom = n === 1 ? document.feuilles[0].club.nom : `${n}_clubs`
+    const nom = n === 1 ? libelleClub(document.feuilles[0].club) : `${n}_clubs`
     return (
       <PrintPreviewShell
-        subtitle={n === 1 ? `Liste des inscrits — ${document.feuilles[0].club.nom}` : `Liste des inscrits — ${n} clubs`}
+        subtitle={n === 1 ? `Liste des inscrits — ${libelleClub(document.feuilles[0].club)}` : `Liste des inscrits — ${n} clubs`}
         printLabel="Imprimer / Télécharger"
         onClose={onClose}
         fileName={`Inscrits_${sanitizeFileName(nom)}_${todayFileStamp()}`}
@@ -25,10 +26,10 @@ export default function ClubsPrintPreviewModal({ document, onClose }: { document
   const s = document.dates.length
   return (
     <PrintPreviewShell
-      subtitle={`Feuille de présence — ${document.feuille.club.nom} (${document.portee}, ${s} séance${s > 1 ? 's' : ''})`}
+      subtitle={`Feuille de présence — ${libelleClub(document.feuille.club)} (${document.portee}, ${s} séance${s > 1 ? 's' : ''})`}
       printLabel="Imprimer / Télécharger"
       onClose={onClose}
-      fileName={`Presence_${sanitizeFileName(document.feuille.club.nom)}_${todayFileStamp()}`}
+      fileName={`Presence_${sanitizeFileName(libelleClub(document.feuille.club))}_${todayFileStamp()}`}
     >
       <PrintablePresenceSeance feuille={document.feuille} dates={document.dates} />
     </PrintPreviewShell>

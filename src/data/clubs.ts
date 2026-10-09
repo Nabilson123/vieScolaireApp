@@ -26,23 +26,35 @@ export type StatutReglement = 'valide' | 'annule'
 
 export type LangueRelance = 'fr' | 'ar' | 'both'
 
-/**
- * Un club : une activité hebdomadaire encadrée par un enseignant de l'école ou un intervenant externe, avec une
- * mensualité unique pour tous ses inscrits. Les montants sont des centimes entiers.
- */
-export interface Club {
-  id: string
-  nom: string
-  description: string
-  /** Enseignant de l'école ; `null` si l'encadrant est un intervenant externe. */
-  teacherId: string | null
-  /** Intervenant externe (nom libre) ; vide si l'encadrant est un enseignant. */
-  intervenantNom: string
+/** Une séance hebdomadaire d'un club : un jour, des heures et (facultatif) une salle. */
+export interface ClubSeance {
   jour: JourClub
   /** HH:MM */
   heureDebut: string
   heureFin: string
   salleId: string | null
+}
+
+/**
+ * Un club : une activité encadrée par un enseignant de l'école ou un intervenant externe, avec une mensualité unique pour
+ * tous ses inscrits, quel que soit le nombre de ses séances par semaine. Les montants sont des centimes entiers.
+ *
+ * Une catégorie (U9, U12…) est une fiche de club à part qui porte le même `nom` que ses sœurs (« Football ») : elle a ses
+ * propres séances, encadrant, places, niveaux, tarif et inscrits.
+ */
+export interface Club {
+  id: string
+  /** Nom de l'activité (« Football ») : les catégories d'une même activité le partagent. */
+  nom: string
+  /** Catégorie au sein de l'activité (« U9 ») ; vide pour un club sans catégories. */
+  categorie: string
+  description: string
+  /** Enseignant de l'école ; `null` si l'encadrant est un intervenant externe. */
+  teacherId: string | null
+  /** Intervenant externe (nom libre) ; vide si l'encadrant est un enseignant. */
+  intervenantNom: string
+  /** Séances de la semaine (au moins une). */
+  seances: ClubSeance[]
   /** `null` = places illimitées. */
   placesMax: number | null
   /** Niveaux admis (ex. « CE1 »), vide = tous les niveaux. */
@@ -58,6 +70,12 @@ export interface Club {
   delaiGraceJours: number
   archive: boolean
   createdAt: string
+}
+
+/** Nom affiché d'un club : « Football U9 » (activité et catégorie), ou simplement « Théâtre » sans catégorie. */
+export function libelleClub(club: Pick<Club, 'nom' | 'categorie'>): string {
+  const categorie = club.categorie.trim()
+  return categorie ? `${club.nom} ${categorie}` : club.nom
 }
 
 export interface ClubInscription {

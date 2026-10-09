@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Clock, DoorOpen, Lock, Trophy, User, UserPlus } from 'lucide-react'
-import { STATUT_INSCRIPTION_LABELS } from '../../data/clubs'
+import { STATUT_INSCRIPTION_LABELS, libelleClub } from '../../data/clubs'
 import { JOUR_LABELS } from '../../data/soutien'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { getModuleAccess, useCurrentProfile } from '../../services/permissions'
 import { useIsViewedYearEditable } from '../../services/viewedYear'
-import { clubsDeLEleve, listeAttente } from '../../utils/clubs'
+import { clubsDeLEleve, listeAttente, seancesTriees } from '../../utils/clubs'
 import { encadrantDuClub, salleDuClub } from '../../utils/clubsContexte'
 import { STATUT_ECHEANCE_LABELS, formatDH, libelleMois, soldeDeLignes, type StatutEcheance } from '../../utils/clubsFinance'
 import InscrireClubModal from '../clubs/InscrireClubModal'
@@ -36,7 +36,7 @@ export default function ClubsTab({ studentId, studentName }: { studentId: string
   const [inscrire, setInscrire] = useState(false)
   const [notice, setNotice] = useState('')
 
-  const siens = clubsDeLEleve(clubs, inscriptions, studentId).sort((a, b) => Number(a.inscription.statut === 'arrete') - Number(b.inscription.statut === 'arrete') || a.club.nom.localeCompare(b.club.nom, 'fr'))
+  const siens = clubsDeLEleve(clubs, inscriptions, studentId).sort((a, b) => Number(a.inscription.statut === 'arrete') - Number(b.inscription.statut === 'arrete') || libelleClub(a.club).localeCompare(libelleClub(b.club), 'fr'))
   const mensualites = lignes.filter((l) => l.studentId === studentId)
   const solde = soldeDeLignes(mensualites, aujourdhui)
 
@@ -70,11 +70,17 @@ export default function ClubsTab({ studentId, studentName }: { studentId: string
               <article key={inscription.id} className={`rounded-2xl border bg-white p-4 shadow-sm ${inscription.statut === 'arrete' ? 'border-slate-200 opacity-70' : 'border-amber-100'}`}>
                 <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="text-base font-bold text-slate-900">{club.nom}</p>
-                    <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-700">
-                      <Clock className="h-3.5 w-3.5" />
-                      {JOUR_LABELS[club.jour]} {club.heureDebut} – {club.heureFin}
-                    </p>
+                    <p className="text-base font-bold text-slate-900">{libelleClub(club)}</p>
+                    <div className="flex items-start gap-1.5 text-sm font-semibold text-amber-700">
+                      <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <div>
+                        {seancesTriees(club).map((s, i) => (
+                          <p key={i}>
+                            {JOUR_LABELS[s.jour]} {s.heureDebut} – {s.heureFin}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${inscription.statut === 'actif' ? 'bg-emerald-50 text-emerald-700' : inscription.statut === 'attente' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-500'}`}>
                     {STATUT_INSCRIPTION_LABELS[inscription.statut]}

@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
 import { ArrowUpCircle, Bus, CheckCircle2, ChevronDown, ChevronRight, LogOut, Printer, RotateCcw, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
-import { STATUT_INSCRIPTION_LABELS, type Club, type ClubInscription } from '../../data/clubs'
-import { JOUR_LABELS } from '../../data/soutien'
+import { STATUT_INSCRIPTION_LABELS, libelleClub, type Club, type ClubInscription } from '../../data/clubs'
 import { useArreterInscription, useClubInscriptions, useClubs, usePromouvoirInscription, useSetExoneration } from '../../services/clubsService'
 import { getStudentsSnapshot } from '../../services/studentsService'
-import { clubComplet, inscritsActifs, inscritsArretes, listeAttente, placesRestantes } from '../../utils/clubs'
+import { clubComplet, inscritsActifs, inscritsArretes, libelleSeances, listeAttente, placesRestantes } from '../../utils/clubs'
 import { alerteTransportClub, feuilleDuClub } from '../../utils/clubsContexte'
 import { aujourdhuiLocalISO } from '../../utils/soutienSeances'
 import ClubsPrintPreviewModal, { type DocumentClub } from '../clubs-print/ClubsPrintPreviewModal'
@@ -45,7 +44,7 @@ export default function InscritsPanel({ isEditable, clubInitial }: Props) {
   const eleves = useMemo(() => new Map(getStudentsSnapshot().map((s) => [s.id, s])), [inscriptions])
   const terme = recherche.trim().toLowerCase()
   const clubsAffiches = useMemo(
-    () => clubs.filter((c) => !c.archive && (!clubFiltre || c.id === clubFiltre)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr')),
+    () => clubs.filter((c) => !c.archive && (!clubFiltre || c.id === clubFiltre)).sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true })),
     [clubs, clubFiltre],
   )
 
@@ -103,7 +102,7 @@ export default function InscritsPanel({ isEditable, clubInitial }: Props) {
                     type="button"
                     disabled={clubComplet(club, inscriptions) || promouvoir.isPending}
                     title={clubComplet(club, inscriptions) ? 'Le club est complet' : 'Promouvoir'}
-                    onClick={() => promouvoir.mutate(i.id, { onSuccess: () => reussi(`${nomEleve(i)} est maintenant inscrit(e) à « ${club.nom} ».`), onError: echec })}
+                    onClick={() => promouvoir.mutate(i.id, { onSuccess: () => reussi(`${nomEleve(i)} est maintenant inscrit(e) à « ${libelleClub(club)} ».`), onError: echec })}
                     className="flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ArrowUpCircle className="h-3 w-3" />
@@ -157,7 +156,7 @@ export default function InscritsPanel({ isEditable, clubInitial }: Props) {
               <button
                 type="button"
                 disabled={arreter.isPending || (i.statut !== 'attente' && !enAction.date)}
-                onClick={() => arreter.mutate({ id: i.id, dateArret: enAction.date }, { onSuccess: () => reussi(i.statut === 'attente' ? `${nomEleve(i)} est retiré(e) de la liste d'attente.` : `${nomEleve(i)} a quitté le club « ${club.nom} ».`), onError: echec })}
+                onClick={() => arreter.mutate({ id: i.id, dateArret: enAction.date }, { onSuccess: () => reussi(i.statut === 'attente' ? `${nomEleve(i)} est retiré(e) de la liste d'attente.` : `${nomEleve(i)} a quitté le club « ${libelleClub(club)} ».`), onError: echec })}
                 className="rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
               >
                 Confirmer
@@ -219,10 +218,10 @@ export default function InscritsPanel({ isEditable, clubInitial }: Props) {
             <option value="">Tous les clubs</option>
             {clubs
               .filter((c) => !c.archive)
-              .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+              .sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true }))
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nom}
+                  {libelleClub(c)}
                 </option>
               ))}
           </select>
@@ -264,9 +263,9 @@ export default function InscritsPanel({ isEditable, clubInitial }: Props) {
               <section key={club.id} className="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">{club.nom}</h3>
+                    <h3 className="text-base font-bold text-slate-900">{libelleClub(club)}</h3>
                     <p className="text-xs text-slate-500">
-                      {JOUR_LABELS[club.jour]} {club.heureDebut} – {club.heureFin} ·{' '}
+                      {libelleSeances(club)} ·{' '}
                       {club.placesMax === null ? `${inscritsActifs(inscriptions, club.id).length} inscrits` : `${inscritsActifs(inscriptions, club.id).length} / ${club.placesMax} places`}
                       {restantes === 0 && <span className="ml-1 font-semibold text-rose-600">· complet</span>}
                     </p>

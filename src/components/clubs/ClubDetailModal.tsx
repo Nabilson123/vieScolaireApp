@@ -1,9 +1,9 @@
 import { Bus, Clock, DoorOpen, Pencil, Trophy, User, X } from 'lucide-react'
-import type { Club } from '../../data/clubs'
+import { libelleClub, type Club } from '../../data/clubs'
 import { JOUR_LABELS } from '../../data/soutien'
 import { getStudentsSnapshot } from '../../services/studentsService'
 import { useClubInscriptions } from '../../services/clubsService'
-import { inscritsActifs } from '../../utils/clubs'
+import { inscritsActifs, seancesTriees } from '../../utils/clubs'
 import { alerteTransportClub, encadrantDuClub, salleDuClub } from '../../utils/clubsContexte'
 import { libelleMois } from '../../utils/clubsFinance'
 
@@ -32,12 +32,18 @@ export default function ClubDetailModal({ club, onClose, onEdit }: Props) {
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
               <Trophy className="h-5 w-5 text-amber-500" />
-              Club — {club.nom}
+              Club — {libelleClub(club)}
             </h2>
-            <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold text-amber-700">
-              <Clock className="h-3.5 w-3.5" />
-              {JOUR_LABELS[club.jour]} {club.heureDebut} – {club.heureFin}
-            </p>
+            <div className="mt-0.5 flex items-start gap-1.5 text-sm font-semibold text-amber-700">
+              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                {seancesTriees(club).map((s, i) => (
+                  <p key={i}>
+                    {JOUR_LABELS[s.jour]} {s.heureDebut} – {s.heureFin}
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100">
             <X className="h-4 w-4" />

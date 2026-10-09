@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart3, Printer } from 'lucide-react'
+import { libelleClub } from '../../data/clubs'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { bilanParClub, formatDH, libelleMois } from '../../utils/clubsFinance'
 import ClubsFinancePrintPreviewModal, { type DocumentFinance } from '../clubs-print/ClubsFinancePrintPreviewModal'
@@ -44,10 +45,10 @@ export default function BilanPanel() {
             <option value="">Tous les clubs</option>
             {clubs
               .slice()
-              .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+              .sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true }))
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nom}
+                  {libelleClub(c)}
                 </option>
               ))}
           </select>

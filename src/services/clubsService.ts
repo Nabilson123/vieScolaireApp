@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabaseClient'
-import type { Club, ClubEcheance, ClubInscription, JourClub, StatutInscriptionClub } from '../data/clubs'
+import { libelleClub, type Club, type ClubEcheance, type ClubInscription, type ClubSeance, type JourClub, type StatutInscriptionClub } from '../data/clubs'
 import { ajouterMois, echeancesPourInscription, moisDe, reconcilerEcheances } from '../utils/clubsFinance'
-import { clubComplet, statutPourNouvelInscrit } from '../utils/clubs'
+import { clubComplet, seancesTriees, statutPourNouvelInscrit } from '../utils/clubs'
 import { aujourdhuiLocalISO } from '../utils/soutienSeances'
 import { getAnneesScolairesSnapshot, useAnneesLoaded } from './anneesScolairesService'
 import { logAudit } from './auditLogService'
@@ -12,12 +12,15 @@ import { getViewedYearIdSnapshot, useViewedYearId } from './viewedYear'
 interface ClubRow {
   id: string
   nom: string
+  categorie: string | null
   description: string
   teacher_id: string | null
   intervenant_nom: string
-  jour: JourClub
-  heure_debut: string
-  heure_fin: string
+  /** Séances de la semaine (jsonb) ; les colonnes `jour`, `heure_debut`, `heure_fin` et `salle_id` sont l'ancienne séance unique. */
+  seances: ClubSeance[] | null
+  jour: JourClub | null
+  heure_debut: string | null
+  heure_fin: string | null
   salle_id: string | null
   places_max: number | null
   niveaux: string[]
@@ -54,17 +57,23 @@ interface EcheanceRow {
 // Les colonnes `time` reviennent en HH:MM:SS.
 const hhmm = (t: string) => t.slice(0, 5)
 
+/** Séances d'un club : la liste enregistrée, ou à défaut l'ancienne séance unique (clubs créés avant les séances multiples). */
+function seancesDeLaLigne(row: ClubRow): ClubSeance[] {
+  const enregistrees = (row.seances ?? []).filter((s) => s && s.jour && s.heureDebut && s.heureFin).map((s) => ({ jour: s.jour, heureDebut: hhmm(s.heureDebut), heureFin: hhmm(s.heureFin), salleId: s.salleId ?? null }))
+  if (enregistrees.length > 0) return enregistrees
+  if (row.jour && row.heure_debut && row.heure_fin) return [{ jour: row.jour, heureDebut: hhmm(row.heure_debut), heureFin: hhmm(row.heure_fin), salleId: row.salle_id }]
+  return []
+}
+
 function rowToClub(row: ClubRow): Club {
   return {
     id: row.id,
     nom: row.nom,
+    categorie: row.categorie ?? '',
     description: row.description ?? '',
     teacherId: row.teacher_id,
     intervenantNom: row.intervenant_nom ?? '',
-    jour: row.jour,
-    heureDebut: hhmm(row.heure_debut),
-    heureFin: hhmm(row.heure_fin),
-    salleId: row.salle_id,
+    seances: seancesDeLaLigne(row),
     placesMax: row.places_max,
     niveaux: row.niveaux ?? [],
     mensualiteCentimes: row.mensualite_centimes,
@@ -341,13 +350,11 @@ export async function apercuSynchroClub(apres: Club): Promise<ResumeSynchro> {
 /** Champs d'un club saisis par la vie scolaire (le reste est calculé). */
 export interface ClubInput {
   nom: string
+  categorie: string
   description: string
   teacherId: string | null
   intervenantNom: string
-  jour: JourClub
-  heureDebut: string
-  heureFin: string
-  salleId: string | null
+  seances: ClubSeance[]
   placesMax: number | null
   niveaux: string[]
   mensualiteCentimes: number
@@ -358,15 +365,20 @@ export interface ClubInput {
 }
 
 function clubToRow(input: ClubInput) {
+  const seances = seancesTriees(input)
+  // L'ancienne séance unique reste renseignée avec la première séance, pour qu'un retour en arrière du code ne perde rien.
+  const premiere = seances[0]
   return {
     nom: input.nom,
+    categorie: input.categorie.trim(),
     description: input.description,
     teacher_id: input.teacherId,
     intervenant_nom: input.intervenantNom,
-    jour: input.jour,
-    heure_debut: input.heureDebut,
-    heure_fin: input.heureFin,
-    salle_id: input.salleId,
+    seances,
+    jour: premiere?.jour ?? null,
+    heure_debut: premiere?.heureDebut ?? null,
+    heure_fin: premiere?.heureFin ?? null,
+    salle_id: premiere?.salleId ?? null,
     places_max: input.placesMax,
     niveaux: input.niveaux,
     mensualite_centimes: input.mensualiteCentimes,
@@ -473,8 +485,9 @@ export function useReconduireClubs() {
       const precedente = courante ? annees.find((a) => a.anneeDebut === courante.anneeDebut - 1) : undefined
       if (!courante || !precedente) throw new Error('Aucune année précédente à reconduire.')
       const sources = (await fetchClubs(precedente.id)).filter((c) => !c.archive)
-      const dejaLa = new Set(cachedClubs.map((c) => c.nom.trim().toLowerCase()))
-      const aCreer = sources.filter((c) => !dejaLa.has(c.nom.trim().toLowerCase()))
+      const cle = (c: Club) => libelleClub(c).trim().toLowerCase()
+      const dejaLa = new Set(cachedClubs.map(cle))
+      const aCreer = sources.filter((c) => !dejaLa.has(cle(c)))
       const decalage = 12 * (courante.anneeDebut - precedente.anneeDebut)
       if (aCreer.length > 0) {
         const { error } = await supabase.from('clubs').insert(
@@ -559,7 +572,7 @@ async function inscrireUnEleve(club: Club, input: InscrireInput, inscriptions: C
   }
   const inscription = rowToInscription(data as InscriptionRow)
   await synchroniserEcheances(club, facturables([inscription]))
-  await logAudit({ tableName: 'club_inscriptions', recordId: inscription.id, action: existante ? 'update' : 'insert', newData: { club: club.nom, student_id: input.studentId, ...champs } })
+  await logAudit({ tableName: 'club_inscriptions', recordId: inscription.id, action: existante ? 'update' : 'insert', newData: { club: libelleClub(club), student_id: input.studentId, ...champs } })
   return { inscription, statut }
 }
 
@@ -628,14 +641,14 @@ export function useArreterInscription() {
       if (inscription.statut === 'attente') {
         const { error } = await supabase.from('club_inscriptions').delete().eq('id', id)
         if (error) throw error
-        await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'delete', oldData: { club: club?.nom, student_id: inscription.studentId, statut: 'attente' } })
+        await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'delete', oldData: { club: club ? libelleClub(club) : undefined, student_id: inscription.studentId, statut: 'attente' } })
         return
       }
       const date = dateArret || aujourdhuiLocalISO()
       const { error } = await supabase.from('club_inscriptions').update({ statut: 'arrete', date_arret: date }).eq('id', id)
       if (error) throw error
       if (club) await synchroniserEcheances(club, [{ ...inscription, statut: 'arrete', dateArret: date }])
-      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { statut: inscription.statut }, newData: { statut: 'arrete', date_arret: date, club: club?.nom } })
+      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { statut: inscription.statut }, newData: { statut: 'arrete', date_arret: date, club: club ? libelleClub(club) : undefined } })
     },
     onSuccess: invalidate,
   })
@@ -655,7 +668,7 @@ export function usePromouvoirInscription() {
       const { error } = await supabase.from('club_inscriptions').update({ statut: 'actif', date_inscription: date }).eq('id', id)
       if (error) throw error
       await synchroniserEcheances(club, [{ ...inscription, statut: 'actif', dateInscription: date }])
-      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { statut: 'attente' }, newData: { statut: 'actif', club: club.nom, date_inscription: date } })
+      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { statut: 'attente' }, newData: { statut: 'actif', club: libelleClub(club), date_inscription: date } })
     },
     onSuccess: invalidate,
   })
@@ -673,7 +686,7 @@ export function useSetExoneration() {
       if (error) throw error
       const club = cachedClubs.find((c) => c.id === inscription.clubId)
       if (club) await synchroniserEcheances(club, facturables([{ ...inscription, exonere, motifExoneration: motifNet }]))
-      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { exonere: inscription.exonere }, newData: { exonere, motif_exoneration: motifNet, club: club?.nom } })
+      await logAudit({ tableName: 'club_inscriptions', recordId: id, action: 'update', oldData: { exonere: inscription.exonere }, newData: { exonere, motif_exoneration: motifNet, club: club ? libelleClub(club) : undefined } })
     },
     onSuccess: invalidate,
   })

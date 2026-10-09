@@ -342,13 +342,11 @@ describe('paiements et lignes de mensualités', () => {
   const clubA: Club = {
     id: 'c1',
     nom: 'Robotique',
+    categorie: '',
     description: '',
     teacherId: null,
     intervenantNom: '',
-    jour: 'MERCREDI',
-    heureDebut: '14:00',
-    heureFin: '15:30',
-    salleId: null,
+    seances: [{ jour: 'MERCREDI', heureDebut: '14:00', heureFin: '15:30', salleId: null }],
     placesMax: null,
     niveaux: [],
     mensualiteCentimes: 15000,
@@ -391,6 +389,19 @@ describe('paiements et lignes de mensualités', () => {
     expect(parId.get('a2')?.statut).toBe('en_retard')
     expect(parId.get('c1')?.statut).toBe('exoneree')
     expect(parId.get('c2')?.statut).toBe('a_venir')
+  })
+
+  it('lignesMensualites : le club d’une catégorie s’affiche avec sa catégorie (« Football U9 »)', () => {
+    const foot: Club = { ...clubA, id: 'f9', nom: 'Football', categorie: 'U9' }
+    const l = lignesMensualites({
+      clubs: [foot],
+      inscriptions: [{ ...inscription('i9', 's1'), clubId: 'f9' }],
+      echeances: [echeance('x9', 'i9', '2026-10-01')],
+      paiements: new Map(),
+      eleves,
+      aujourdhui: '2026-10-09',
+    })
+    expect(l.map((x) => x.clubNom)).toEqual(['Football U9'])
   })
 
   it('lignesMensualites : ignore une mensualité dont l’inscription est inconnue', () => {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Trophy, TriangleAlert, X } from 'lucide-react'
-import type { Club, JourClub } from '../../data/clubs'
+import { Plus, Trophy, TriangleAlert, X } from 'lucide-react'
+import type { Club, ClubSeance, JourClub } from '../../data/clubs'
 import { NIVEAUX } from '../../data/referentiel'
 import { fullLabel } from '../../data/salles'
 import { JOURS_SOUTIEN, JOUR_LABELS } from '../../data/soutien'
@@ -15,6 +15,8 @@ import TeacherSearchSelect from '../TeacherSearchSelect'
 interface Props {
   /** Club à modifier ; absent pour une création. */
   club?: Club
+  /** Fiche sœur dont on reprend le nom, l'encadrant, le tarif et les mois pour créer une nouvelle catégorie (U9 → U12…). */
+  modele?: Club
   onClose: () => void
   /** Message à afficher dans la page après l'enregistrement. */
   onSaved?: (message: string) => void
@@ -42,36 +44,40 @@ function resumeTexte(r: ResumeSynchro): string {
   return parts.join(', ')
 }
 
-/** Création et modification d'un club : encadrant, créneau, salle, places, niveaux, tarif et mois facturés. */
-export default function ClubModal({ club, onClose, onSaved }: Props) {
+const SEANCE_PAR_DEFAUT: ClubSeance = { jour: 'MERCREDI', heureDebut: '14:00', heureFin: '15:30', salleId: null }
+
+const seanceValide = (s: ClubSeance) => !!s.heureDebut && !!s.heureFin && s.heureFin > s.heureDebut
+
+/** Création et modification d'un club : encadrant, séances de la semaine (jour, heures, salle), places, niveaux, tarif et mois facturés. */
+export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
   const { data: teachers = [] } = useTeachers()
   const { data: salles = [] } = useSalles()
   const add = useAddClub()
   const update = useUpdateClub()
   const defauts = useMemo(moisParDefaut, [])
+  // Les réglages communs à toutes les catégories d'une activité viennent du club modifié, ou de la fiche sœur d'une nouvelle catégorie.
+  const source = club ?? modele
 
-  const [nom, setNom] = useState(club?.nom ?? '')
-  const [description, setDescription] = useState(club?.description ?? '')
-  const [encadrant, setEncadrant] = useState<'ecole' | 'externe'>(club && !club.teacherId && club.intervenantNom ? 'externe' : 'ecole')
-  const [teacherId, setTeacherId] = useState(club?.teacherId ?? '')
-  const [intervenantNom, setIntervenantNom] = useState(club?.intervenantNom ?? '')
-  const [jour, setJour] = useState<JourClub>(club?.jour ?? 'MERCREDI')
-  const [heureDebut, setHeureDebut] = useState(club?.heureDebut ?? '14:00')
-  const [heureFin, setHeureFin] = useState(club?.heureFin ?? '15:30')
-  const [salleId, setSalleId] = useState(club?.salleId ?? '')
+  const [nom, setNom] = useState(source?.nom ?? '')
+  const [categorie, setCategorie] = useState(club?.categorie ?? '')
+  const [description, setDescription] = useState(source?.description ?? '')
+  const [encadrant, setEncadrant] = useState<'ecole' | 'externe'>(source && !source.teacherId && source.intervenantNom ? 'externe' : 'ecole')
+  const [teacherId, setTeacherId] = useState(source?.teacherId ?? '')
+  const [intervenantNom, setIntervenantNom] = useState(source?.intervenantNom ?? '')
+  const [seances, setSeances] = useState<ClubSeance[]>(club && club.seances.length > 0 ? club.seances : [SEANCE_PAR_DEFAUT])
   const [placesMax, setPlacesMax] = useState(club?.placesMax != null ? String(club.placesMax) : '')
   const [niveaux, setNiveaux] = useState<string[]>(club?.niveaux ?? [])
-  const [mensualite, setMensualite] = useState(club ? dhEnTexte(club.mensualiteCentimes) : '')
-  const [moisDebut, setMoisDebut] = useState(club?.moisDebut ?? defauts.debut)
-  const [moisFin, setMoisFin] = useState(club?.moisFin ?? defauts.fin)
-  const [jourEcheance, setJourEcheance] = useState(String(club?.jourEcheance ?? 5))
-  const [delaiGrace, setDelaiGrace] = useState(String(club?.delaiGraceJours ?? 5))
+  const [mensualite, setMensualite] = useState(source ? dhEnTexte(source.mensualiteCentimes) : '')
+  const [moisDebut, setMoisDebut] = useState(source?.moisDebut ?? defauts.debut)
+  const [moisFin, setMoisFin] = useState(source?.moisFin ?? defauts.fin)
+  const [jourEcheance, setJourEcheance] = useState(String(source?.jourEcheance ?? 5))
+  const [delaiGrace, setDelaiGrace] = useState(String(source?.delaiGraceJours ?? 5))
   const [erreur, setErreur] = useState('')
   const [aConfirmer, setAConfirmer] = useState<ResumeSynchro | null>(null)
   const [verification, setVerification] = useState(false)
 
   const centimes = dhVersCentimes(mensualite)
-  const heuresValides = !!heureDebut && !!heureFin && heureFin > heureDebut
+  const seancesValides = seances.length > 0 && seances.every(seanceValide)
   const moisValides = !!moisDebut && !!moisFin && moisFin >= moisDebut
   const echeance = Number(jourEcheance)
   const grace = Number(delaiGrace)
@@ -80,37 +86,43 @@ export default function ClubModal({ club, onClose, onSaved }: Props) {
   const tarifValide = centimes !== null
   const echeanceValide = Number.isInteger(echeance) && echeance >= 1 && echeance <= 28
   const graceValide = Number.isInteger(grace) && grace >= 0
-  const canSubmit = nom.trim() !== '' && heuresValides && moisValides && tarifValide && echeanceValide && graceValide && placesValides && !add.isPending && !update.isPending && !verification
+  const canSubmit = nom.trim() !== '' && seancesValides && moisValides && tarifValide && echeanceValide && graceValide && placesValides && !add.isPending && !update.isPending && !verification
 
   const conflits = useMemo(
     () =>
       conflitsClub({
         id: club?.id,
         nom: nom.trim() || 'Club',
-        jour,
-        heureDebut,
-        heureFin,
+        categorie,
+        seances,
         teacherId: encadrant === 'ecole' ? teacherId || null : null,
-        salleId: salleId || null,
         moisDebut,
         moisFin,
       }),
-    [club, nom, jour, heureDebut, heureFin, encadrant, teacherId, salleId, moisDebut, moisFin],
+    [club, nom, categorie, seances, encadrant, teacherId, moisDebut, moisFin],
   )
 
   const toggleNiveau = (n: string) => setNiveaux((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+
+  const modifierSeance = (index: number, patch: Partial<ClubSeance>) => setSeances((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)))
+  const retirerSeance = (index: number) => setSeances((prev) => prev.filter((_, i) => i !== index))
+  /** Nouvelle séance : même horaire et même salle que la dernière, le jour ouvré suivant. */
+  const ajouterSeance = () =>
+    setSeances((prev) => {
+      const derniere = prev[prev.length - 1] ?? SEANCE_PAR_DEFAUT
+      const suivant = JOURS_SOUTIEN[(JOURS_SOUTIEN.indexOf(derniere.jour) + 1) % JOURS_SOUTIEN.length]
+      return [...prev, { ...derniere, jour: suivant }]
+    })
 
   const handleSubmit = async () => {
     if (!canSubmit || centimes === null) return
     const input: ClubInput = {
       nom: nom.trim(),
+      categorie: categorie.trim(),
       description: description.trim(),
       teacherId: encadrant === 'ecole' ? teacherId || null : null,
       intervenantNom: encadrant === 'externe' ? intervenantNom.trim() : '',
-      jour,
-      heureDebut,
-      heureFin,
-      salleId: salleId || null,
+      seances,
       placesMax: places,
       niveaux,
       mensualiteCentimes: centimes,
@@ -151,7 +163,7 @@ export default function ClubModal({ club, onClose, onSaved }: Props) {
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
             <Trophy className="h-5 w-5 text-amber-500" />
-            {club ? 'Modifier le club' : 'Nouveau club'}
+            {club ? 'Modifier le club' : modele ? `Nouvelle catégorie — ${modele.nom}` : 'Nouveau club'}
           </h2>
           <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100">
             <X className="h-4 w-4" />
@@ -159,16 +171,21 @@ export default function ClubModal({ club, onClose, onSaved }: Props) {
         </div>
 
         <div className="space-y-5 overflow-y-auto px-6 py-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Nom du club*</label>
               <input value={nom} onChange={(e) => setNom(e.target.value)} className={INPUT} placeholder="Ex. Robotique, Théâtre, Football…" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Catégorie (facultatif)</label>
+              <input value={categorie} onChange={(e) => setCategorie(e.target.value)} className={INPUT} placeholder="Ex. U9, U12, U14…" />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">Description (facultatif)</label>
               <input value={description} onChange={(e) => setDescription(e.target.value)} className={INPUT} />
             </div>
           </div>
+          {modele && !club && <p className="-mt-3 text-[11px] text-slate-400">Nom, encadrant, tarif et mois repris de « {modele.nom}{modele.categorie ? ` ${modele.categorie}` : ''} » : modifiez ce qui diffère pour cette catégorie (séances, niveaux, places).</p>}
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">Encadrant</label>
@@ -191,38 +208,64 @@ export default function ClubModal({ club, onClose, onSaved }: Props) {
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Jour*</label>
-              <select value={jour} onChange={(e) => setJour(e.target.value as JourClub)} className={INPUT}>
-                {JOURS_SOUTIEN.map((j) => (
-                  <option key={j} value={j}>
-                    {JOUR_LABELS[j]}
-                  </option>
-                ))}
-              </select>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="block text-sm font-semibold text-slate-700">Séances de la semaine*</label>
+              <button type="button" onClick={ajouterSeance} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter une séance
+              </button>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Début*</label>
-              <input type="time" value={heureDebut} onChange={(e) => setHeureDebut(e.target.value)} className={INPUT} />
+            <div className="space-y-2">
+              {seances.map((s, i) => (
+                <div key={i} className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_1.6fr_auto]">
+                    <div>
+                      {i === 0 && <label className="mb-1 block text-[11px] font-semibold text-slate-500">Jour*</label>}
+                      <select value={s.jour} onChange={(e) => modifierSeance(i, { jour: e.target.value as JourClub })} className={INPUT} aria-label={`Jour de la séance ${i + 1}`}>
+                        {JOURS_SOUTIEN.map((j) => (
+                          <option key={j} value={j}>
+                            {JOUR_LABELS[j]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      {i === 0 && <label className="mb-1 block text-[11px] font-semibold text-slate-500">Début*</label>}
+                      <input type="time" value={s.heureDebut} onChange={(e) => modifierSeance(i, { heureDebut: e.target.value })} className={INPUT} aria-label={`Début de la séance ${i + 1}`} />
+                    </div>
+                    <div>
+                      {i === 0 && <label className="mb-1 block text-[11px] font-semibold text-slate-500">Fin*</label>}
+                      <input type="time" value={s.heureFin} onChange={(e) => modifierSeance(i, { heureFin: e.target.value })} className={INPUT} aria-label={`Fin de la séance ${i + 1}`} />
+                    </div>
+                    <div>
+                      {i === 0 && <label className="mb-1 block text-[11px] font-semibold text-slate-500">Salle</label>}
+                      <select value={s.salleId ?? ''} onChange={(e) => modifierSeance(i, { salleId: e.target.value || null })} className={INPUT} aria-label={`Salle de la séance ${i + 1}`}>
+                        <option value="">— Aucune —</option>
+                        {salles.map((salle) => (
+                          <option key={salle.id} value={salle.id}>
+                            {fullLabel(salle)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => retirerSeance(i)}
+                      disabled={seances.length === 1}
+                      title={seances.length === 1 ? 'Un club a au moins une séance' : 'Retirer cette séance'}
+                      aria-label={`Retirer la séance ${i + 1}`}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {!seanceValide(s) && <p className="mt-1 text-[11px] text-amber-600">L'heure de fin doit être après l'heure de début.</p>}
+                </div>
+              ))}
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Fin*</label>
-              <input type="time" value={heureFin} onChange={(e) => setHeureFin(e.target.value)} className={INPUT} />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Salle</label>
-              <select value={salleId} onChange={(e) => setSalleId(e.target.value)} className={INPUT}>
-                <option value="">— Aucune —</option>
-                {salles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {fullLabel(s)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <p className="mt-1 text-[11px] text-slate-400">La mensualité est la même quel que soit le nombre de séances par semaine.</p>
           </div>
-          {!heuresValides && <p className="-mt-3 text-[11px] text-amber-600">L'heure de fin doit être après l'heure de début.</p>}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Banknote, CheckCircle2, MessageCircle, Printer, TriangleAlert, X } from 'lucide-react'
+import { libelleClub } from '../../data/clubs'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { useClubRelances, useEnregistrerRelance } from '../../services/clubsPaiementsService'
 import { formatDH, impayesParFamille, joursEntre, libelleMois, type ImpayeFamille } from '../../utils/clubsFinance'
@@ -112,7 +113,8 @@ export default function RecouvrementPanel({ canEdit, onEncaisser }: Props) {
   const total = impayes.reduce((n, f) => n + f.resteCentimes, 0)
   const jamaisRelancees = impayes.filter((f) => !derniereRelance.has(f.familleCle)).length
   const plusAncien = impayes.reduce((max, f) => Math.max(max, f.joursRetardMax), 0)
-  const portee = club ? (clubs.find((c) => c.id === club)?.nom ?? 'Club') : 'Tous les clubs'
+  const clubChoisi = club ? clubs.find((c) => c.id === club) : undefined
+  const portee = club ? (clubChoisi ? libelleClub(clubChoisi) : 'Club') : 'Tous les clubs'
 
   const tuiles = [
     { label: 'Familles en retard', valeur: String(impayes.length), ton: impayes.length > 0 ? 'text-rose-600' : 'text-slate-900' },
@@ -136,10 +138,10 @@ export default function RecouvrementPanel({ canEdit, onEncaisser }: Props) {
             <option value="">Tous les clubs</option>
             {clubs
               .slice()
-              .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+              .sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true }))
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nom}
+                  {libelleClub(c)}
                 </option>
               ))}
           </select>

@@ -1,4 +1,4 @@
-import type { Club, ClubEcheance, ClubImputation, ClubInscription, ClubReglement } from '../data/clubs'
+import { libelleClub, type Club, type ClubEcheance, type ClubImputation, type ClubInscription, type ClubReglement } from '../data/clubs'
 import type { StudentIdentity } from '../data/studentIdentity'
 import { ajouterJours } from './soutienSeances'
 import { normalizeText } from './textMatch'
@@ -277,7 +277,7 @@ export function lignesMensualites(args: {
       echeanceId: e.id,
       inscriptionId: inscription.id,
       clubId: club.id,
-      clubNom: club.nom,
+      clubNom: libelleClub(club),
       studentId: inscription.studentId,
       studentNom: eleve?.name ?? 'Élève introuvable',
       classe: eleve?.classe ?? '',

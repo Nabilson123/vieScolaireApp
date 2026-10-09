@@ -1,5 +1,8 @@
+import { libelleClub } from '../../data/clubs'
 import { JOUR_LABELS } from '../../data/soutien'
-import type { FeuilleClub } from '../../utils/clubsContexte'
+import { seancesDuJour } from '../../utils/clubs'
+import { nomSalle, type FeuilleClub } from '../../utils/clubsContexte'
+import { jourDeDate } from '../../utils/soutienSeances'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import { ACCENT_SOFT, EnTeteClubs, Fait, INK, LIGNES_PAR_BLOC, MUTED, MUTED2, PAGE_STYLE, PiedClubs, RULE, TableauClub, dateLongue, morceaux } from './clubsPrintKit'
 
@@ -13,15 +16,21 @@ function Case() {
 
 function blocsDeLaSeance(f: FeuilleClub, date: string): PaginatedBlock[] {
   const { club } = f
+  // Un club peut avoir plusieurs séances par semaine : on affiche celle(s) de ce jour-là, avec leur propre salle.
+  const jour = jourDeDate(date)
+  const duJour = jour ? seancesDuJour(club, jour) : []
+  const heures = duJour.map((s) => `${s.heureDebut} – ${s.heureFin}`).join(' et ') || '—'
+  const prevu = duJour.map((s) => `${JOUR_LABELS[s.jour]} ${s.heureDebut} – ${s.heureFin}`).join(' et ')
+  const salle = [...new Set(duJour.map((s) => nomSalle(s.salleId)).filter(Boolean))].join(', ') || f.salle
   const blocks: PaginatedBlock[] = [
     {
       key: 'faits',
       node: (
         <div className="grid grid-cols-4 gap-2">
           <Fait label="Séance du" valeur={dateLongue(date)} />
-          <Fait label="Heures" valeur={`${club.heureDebut} – ${club.heureFin}`} />
+          <Fait label="Heures" valeur={heures} />
           <Fait label="Encadrant" valeur={f.encadrant} />
-          <Fait label="Salle" valeur={f.salle} />
+          <Fait label="Salle" valeur={salle} />
         </div>
       ),
     },
@@ -75,7 +84,7 @@ function blocsDeLaSeance(f: FeuilleClub, date: string): PaginatedBlock[] {
     node: (
       <div className="flex items-end justify-between gap-6 pt-2 text-[9.5px]" style={{ color: MUTED2 }}>
         <span>
-          Durée réelle de la séance : ____ h ____ min · {JOUR_LABELS[club.jour]} {club.heureDebut} – {club.heureFin} prévu
+          Durée réelle de la séance : ____ h ____ min{prevu ? ` · ${prevu} prévu` : ''}
         </span>
         <span className="w-56 border-t pt-1 text-center" style={{ borderColor: MUTED }}>
           Signature de l'encadrant
@@ -95,8 +104,8 @@ function PagesDeLaSeance({ feuille, date }: { feuille: FeuilleClub; date: string
       paddingYPx={30}
       gapPx={10}
       pageStyle={PAGE_STYLE}
-      renderHeader={(pageIndex) => <EnTeteClubs document="Feuille de présence" objet={feuille.club.nom} pageIndex={pageIndex} />}
-      renderFooter={(pageIndex, pageCount) => <PiedClubs libelle={`Clubs — ${feuille.club.nom} — ${date.split('-').reverse().join('/')}`} pageIndex={pageIndex} pageCount={pageCount} />}
+      renderHeader={(pageIndex) => <EnTeteClubs document="Feuille de présence" objet={libelleClub(feuille.club)} pageIndex={pageIndex} />}
+      renderFooter={(pageIndex, pageCount) => <PiedClubs libelle={`Clubs — ${libelleClub(feuille.club)} — ${date.split('-').reverse().join('/')}`} pageIndex={pageIndex} pageCount={pageCount} />}
     />
   )
 }

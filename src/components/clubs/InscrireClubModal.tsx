@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Bus, TriangleAlert, Trophy, Users, X } from 'lucide-react'
+import { libelleClub } from '../../data/clubs'
 import { getActiveClassNamesSnapshot } from '../../services/classesService'
 import { getStudentsSnapshot } from '../../services/studentsService'
 import { useClubInscriptions, useClubs, useInscrireClubLot } from '../../services/clubsService'
@@ -32,7 +33,7 @@ export default function InscrireClubModal({ clubId: clubInitial, studentId: elev
   const students = getStudentsSnapshot()
   const classes = getActiveClassNamesSnapshot()
 
-  const clubsOuverts = useMemo(() => clubs.filter((c) => !c.archive).sort((a, b) => a.nom.localeCompare(b.nom, 'fr')), [clubs])
+  const clubsOuverts = useMemo(() => clubs.filter((c) => !c.archive).sort((a, b) => libelleClub(a).localeCompare(libelleClub(b), 'fr', { numeric: true })), [clubs])
   const [clubId, setClubId] = useState(clubInitial ?? clubsOuverts[0]?.id ?? '')
   const [studentIds, setStudentIds] = useState<string[]>(eleveInitial ? [eleveInitial] : [])
   const [dateInscription, setDateInscription] = useState(aujourdhuiLocalISO())
@@ -93,13 +94,13 @@ export default function InscrireClubModal({ clubId: clubInitial, studentId: elev
       }
       if (aInscrire.length === 1 && r.echecs.length === 0) {
         const nom = aInscrire[0].eleve.name
-        onDone?.(r.enAttente > 0 ? `${nom} est sur la liste d'attente du club « ${club.nom} » (club complet).` : `${nom} est inscrit(e) au club « ${club.nom} ».`)
+        onDone?.(r.enAttente > 0 ? `${nom} est sur la liste d'attente du club « ${libelleClub(club)} » (club complet).` : `${nom} est inscrit(e) au club « ${libelleClub(club)} ».`)
       } else {
         const parties: string[] = []
         if (r.inscrits > 0) parties.push(`${r.inscrits} élève${r.inscrits > 1 ? 's inscrits' : ' inscrit'}`)
         if (r.enAttente > 0) parties.push(`${r.enAttente} sur la liste d'attente (club complet)`)
         if (r.echecs.length > 0) parties.push(`${r.echecs.length} non inscrit${r.echecs.length > 1 ? 's' : ''} (${r.echecs[0].raison})`)
-        onDone?.(`Club « ${club.nom} » : ${parties.join(', ')}.`)
+        onDone?.(`Club « ${libelleClub(club)} » : ${parties.join(', ')}.`)
       }
       onClose()
     } catch (e) {
@@ -135,7 +136,7 @@ export default function InscrireClubModal({ clubId: clubInitial, studentId: elev
               {clubsOuverts.length === 0 && <option value="">Aucun club ouvert</option>}
               {clubsOuverts.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nom}
+                  {libelleClub(c)}
                 </option>
               ))}
             </select>

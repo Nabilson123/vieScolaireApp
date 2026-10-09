@@ -1,4 +1,5 @@
-import { JOUR_LABELS } from '../../data/soutien'
+import { libelleClub } from '../../data/clubs'
+import { libelleSeances } from '../../utils/clubs'
 import type { FeuilleClub } from '../../utils/clubsContexte'
 import { formatDH, libelleMois } from '../../utils/clubsFinance'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
@@ -11,7 +12,7 @@ function blocsDuClub(f: FeuilleClub): PaginatedBlock[] {
       key: 'faits',
       node: (
         <div className="grid grid-cols-4 gap-2">
-          <Fait label="Jour et heures" valeur={`${JOUR_LABELS[club.jour]} ${club.heureDebut} – ${club.heureFin}`} />
+          <Fait label={club.seances.length > 1 ? 'Séances' : 'Jour et heures'} valeur={libelleSeances(club)} />
           <Fait label="Encadrant" valeur={f.encadrant} />
           <Fait label="Salle" valeur={f.salle} />
           <Fait label="Places" valeur={club.placesMax === null ? `${f.inscrits.length} inscrits (illimité)` : `${f.inscrits.length} / ${club.placesMax}`} />
@@ -102,8 +103,8 @@ function PagesDuClub({ feuille }: { feuille: FeuilleClub }) {
       paddingYPx={30}
       gapPx={10}
       pageStyle={PAGE_STYLE}
-      renderHeader={(pageIndex) => <EnTeteClubs document="Liste des inscrits" objet={feuille.club.nom} pageIndex={pageIndex} />}
-      renderFooter={(pageIndex, pageCount) => <PiedClubs libelle={`Clubs — ${feuille.club.nom}`} pageIndex={pageIndex} pageCount={pageCount} />}
+      renderHeader={(pageIndex) => <EnTeteClubs document="Liste des inscrits" objet={libelleClub(feuille.club)} pageIndex={pageIndex} />}
+      renderFooter={(pageIndex, pageCount) => <PiedClubs libelle={`Clubs — ${libelleClub(feuille.club)}`} pageIndex={pageIndex} pageCount={pageCount} />}
     />
   )
 }

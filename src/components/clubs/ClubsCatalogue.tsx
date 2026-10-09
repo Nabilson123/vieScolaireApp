@@ -5,7 +5,7 @@ import { JOUR_LABELS } from '../../data/soutien'
 import { useArchiveClub, useClubInscriptions, useClubs, useDeleteClub, useReconduireClubs } from '../../services/clubsService'
 import { useSalles } from '../../services/sallesService'
 import { useTeachers } from '../../services/teachersService'
-import { datesDuClub, datesDuMois, inscritsActifs, listeAttente, placesRestantes } from '../../utils/clubs'
+import { datesDuClub, datesDuMois, inscritsActifs, listeAttente, placesRestantes, seancesTriees } from '../../utils/clubs'
 import { encadrantDuClub, feuilleDuClub, salleDuClub } from '../../utils/clubsContexte'
 import { formatDH, libelleMois, moisDuClub } from '../../utils/clubsFinance'
 import { aujourdhuiLocalISO } from '../../utils/soutienSeances'
@@ -14,6 +14,30 @@ import ClubModal from './ClubModal'
 import InscrireClubModal from './InscrireClubModal'
 
 type ChoixPresence = 'prochaine' | 'mois' | 'periode'
+
+/** Ligne du catalogue : l'en-tête d'une activité qui a des catégories, ou la fiche d'un club. */
+type ElementCatalogue = { kind: 'groupe'; nom: string; modele: Club; nombre: number } | { kind: 'club'; club: Club; dansGroupe: boolean }
+
+/**
+ * Range les fiches par activité : les fiches qui portent le même nom (« Football U9 », « Football U12 »…) sont regroupées sous
+ * un en-tête ; un club sans catégorie reste une fiche seule.
+ */
+function elementsDuCatalogue(clubs: Club[]): ElementCatalogue[] {
+  const parNom = new Map<string, Club[]>()
+  for (const c of clubs) {
+    const cle = c.nom.trim().toLowerCase()
+    const liste = parNom.get(cle)
+    if (liste) liste.push(c)
+    else parNom.set(cle, [c])
+  }
+  const groupes = [...parNom.values()].map((liste) => liste.sort((a, b) => Number(a.archive) - Number(b.archive) || a.categorie.localeCompare(b.categorie, 'fr', { numeric: true })))
+  groupes.sort((a, b) => Number(a.every((c) => c.archive)) - Number(b.every((c) => c.archive)) || a[0].nom.localeCompare(b[0].nom, 'fr'))
+  return groupes.flatMap((liste): ElementCatalogue[] => {
+    const seul = liste.length === 1 && !liste[0].categorie
+    const fiches = liste.map((club): ElementCatalogue => ({ kind: 'club', club, dansGroupe: !seul }))
+    return seul ? fiches : [{ kind: 'groupe', nom: liste[0].nom, modele: liste.find((c) => !c.archive) ?? liste[0], nombre: liste.length }, ...fiches]
+  })
+}
 
 interface Props {
   isEditable: boolean
@@ -32,7 +56,7 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
   const supprimer = useDeleteClub()
   const reconduire = useReconduireClubs()
 
-  const [modal, setModal] = useState<{ club?: Club } | null>(null)
+  const [modal, setModal] = useState<{ club?: Club; modele?: Club } | null>(null)
   const [inscrireClubId, setInscrireClubId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [erreur, setErreur] = useState('')
@@ -45,6 +69,7 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
   const aujourdhui = aujourdhuiLocalISO()
   const archives = clubs.filter((c) => c.archive).length
   const visibles = useMemo(() => clubs.filter((c) => voirArchives || !c.archive), [clubs, voirArchives])
+  const elements = useMemo(() => elementsDuCatalogue(visibles), [visibles])
 
   const ouvrirPresence = (club: Club, choix: ChoixPresence, mois: string) => {
     const dates = choix === 'prochaine' ? datesDuClub(club, { depuis: aujourdhui, max: 1 }) : choix === 'mois' ? datesDuMois(club, mois) : datesDuClub(club)
@@ -83,7 +108,7 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
             <Trophy className="h-5 w-5 text-amber-500" />
             Clubs de l'année
           </h2>
-          <p className="text-xs text-slate-500">Chaque club a lieu chaque semaine sur sa période, avec une mensualité unique pour tous ses inscrits.</p>
+          <p className="text-xs text-slate-500">Chaque club a lieu chaque semaine sur sa période, avec une mensualité unique pour tous ses inscrits. Une activité peut avoir plusieurs séances et plusieurs catégories (U9, U12…).</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {archives > 0 && (
@@ -159,10 +184,26 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {visibles
-            .slice()
-            .sort((a, b) => Number(a.archive) - Number(b.archive) || a.nom.localeCompare(b.nom, 'fr'))
-            .map((club) => {
+          {elements.map((element) => {
+              if (element.kind === 'groupe') {
+                return (
+                  <div key={`groupe-${element.nom}`} className="flex flex-wrap items-center justify-between gap-2 lg:col-span-2">
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-700">
+                      {element.nom}
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-slate-500">
+                        {element.nombre} catégorie{element.nombre > 1 ? 's' : ''}
+                      </span>
+                    </h3>
+                    {isEditable && (
+                      <button type="button" onClick={() => setModal({ modele: element.modele })} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                        <PlusCircle className="h-3.5 w-3.5" />
+                        Ajouter une catégorie
+                      </button>
+                    )}
+                  </div>
+                )
+              }
+              const { club, dansGroupe } = element
               const actifs = inscritsActifs(inscriptions, club.id).length
               const attente = listeAttente(inscriptions, club.id).length
               const restantes = placesRestantes(club, inscriptions)
@@ -175,13 +216,19 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-base font-bold text-slate-900">
-                        {club.nom}
+                        {dansGroupe ? club.categorie || club.nom : club.nom}
                         {club.archive && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Archivé</span>}
                       </p>
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-700">
-                        <Clock className="h-3.5 w-3.5" />
-                        {JOUR_LABELS[club.jour]} {club.heureDebut} – {club.heureFin}
-                      </p>
+                      <div className="flex items-start gap-1.5 text-sm font-semibold text-amber-700">
+                        <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <div>
+                          {seancesTriees(club).map((s, i) => (
+                            <p key={i}>
+                              {JOUR_LABELS[s.jour]} {s.heureDebut} – {s.heureFin}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button type="button" title="Imprimer la liste des inscrits" aria-label="Imprimer la liste des inscrits" onClick={() => setDocument({ type: 'liste', feuilles: [feuilleDuClub(club)] })} className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200">
@@ -329,7 +376,7 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
         </div>
       )}
 
-      {modal && <ClubModal club={modal.club} onClose={() => setModal(null)} onSaved={setNotice} />}
+      {modal && <ClubModal club={modal.club} modele={modal.modele} onClose={() => setModal(null)} onSaved={setNotice} />}
       {inscrireClubId && <InscrireClubModal clubId={inscrireClubId} onClose={() => setInscrireClubId(null)} onDone={setNotice} />}
       {document && <ClubsPrintPreviewModal document={document} onClose={() => setDocument(null)} />}
     </div>

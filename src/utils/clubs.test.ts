@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Club, ClubInscription } from '../data/clubs'
+import { libelleClub, type Club, type ClubInscription, type ClubSeance } from '../data/clubs'
 import {
   clubALieuLe,
   blocsClubParJour,
@@ -13,25 +13,30 @@ import {
   intervallesClubEnseignant,
   intervallesClubSalle,
   libelleBlocClub,
+  libelleSeances,
   listeAttente,
   niveauAutorise,
   niveauDeClasse,
+  occurrencesDuClub,
   placesRestantes,
   promouvoirSuivant,
+  seancesClubEnSalleLe,
+  seancesDuJour,
+  seancesTriees,
   statutPourNouvelInscrit,
 } from './clubs'
+
+const seance = (over: Partial<ClubSeance> = {}): ClubSeance => ({ jour: 'MERCREDI', heureDebut: '14:00', heureFin: '15:30', salleId: 'r1', ...over })
 
 // 2026-10-07 est un mercredi.
 const club = (over: Partial<Club> = {}): Club => ({
   id: 'c1',
   nom: 'Robotique',
+  categorie: '',
   description: '',
   teacherId: 't1',
   intervenantNom: '',
-  jour: 'MERCREDI',
-  heureDebut: '14:00',
-  heureFin: '15:30',
-  salleId: 'r1',
+  seances: [seance()],
   placesMax: 2,
   niveaux: [],
   mensualiteCentimes: 15000,
@@ -205,7 +210,7 @@ describe('blocsClubParJour', () => {
 
   it('les clubs de l’enseignant rangés par jour, avec le nombre d’inscrits actifs', () => {
     const b = blocsClubParJour([club()], inscrits, { teacherId: 't1', aPartirDe: '2026-10-09' })
-    expect(b.MERCREDI).toEqual([{ clubId: 'c1', label: 'Club – Robotique · 2 inscrits', start: '14:00', end: '15:30', nbInscrits: 2 }])
+    expect(b.MERCREDI).toEqual([{ clubId: 'c1', label: 'Club – Robotique · 2 inscrits', start: '14:00', end: '15:30', nbInscrits: 2, salleId: 'r1' }])
     expect(b.LUNDI).toEqual([])
   })
 
@@ -218,7 +223,7 @@ describe('blocsClubParJour', () => {
   })
 
   it('tri par heure dans la journée', () => {
-    const tot = club({ id: 'c0', nom: 'Échecs', heureDebut: '12:30', heureFin: '13:30' })
+    const tot = club({ id: 'c0', nom: 'Échecs', seances: [seance({ heureDebut: '12:30', heureFin: '13:30' })] })
     expect(blocsClubParJour([club(), tot], [], { teacherId: 't1', aPartirDe: '2026-10-09' }).MERCREDI.map((x) => x.start)).toEqual(['12:30', '14:00'])
   })
 
@@ -226,5 +231,83 @@ describe('blocsClubParJour', () => {
     expect(libelleBlocClub('Robotique', 1)).toBe('Club – Robotique · 1 inscrit')
     expect(libelleBlocClub('Robotique', 0)).toBe('Club – Robotique · 0 inscrit')
     expect(libelleBlocClub('Robotique', 12)).toBe('Club – Robotique · 12 inscrits')
+  })
+})
+
+describe('plusieurs séances par semaine et catégories', () => {
+  // Football U9 : lundi et mercredi, chacune dans sa salle (2026-10-05 est un lundi).
+  const foot = club({
+    id: 'f9',
+    nom: 'Football',
+    categorie: 'U9',
+    seances: [seance({ jour: 'MERCREDI', heureDebut: '14:00', heureFin: '15:30', salleId: 'terrain' }), seance({ jour: 'LUNDI', heureDebut: '16:00', heureFin: '17:30', salleId: 'gymnase' })],
+  })
+
+  it('libelleClub : activité et catégorie, ou le nom seul', () => {
+    expect(libelleClub(foot)).toBe('Football U9')
+    expect(libelleClub(club())).toBe('Robotique')
+    expect(libelleClub({ nom: 'Football', categorie: '  U12 ' })).toBe('Football U12')
+  })
+
+  it('seancesTriees et libelleSeances : par jour de semaine puis par heure', () => {
+    expect(seancesTriees(foot).map((s) => s.jour)).toEqual(['LUNDI', 'MERCREDI'])
+    expect(libelleSeances(foot)).toBe('Lundi 16:00 – 17:30 · Mercredi 14:00 – 15:30')
+  })
+
+  it('seancesDuJour : celles de ce jour de semaine, par heure', () => {
+    const deuxLeLundi = club({ seances: [seance({ jour: 'LUNDI', heureDebut: '17:00', heureFin: '18:00' }), seance({ jour: 'LUNDI', heureDebut: '12:00', heureFin: '13:00' })] })
+    expect(seancesDuJour(deuxLeLundi, 'LUNDI').map((s) => s.heureDebut)).toEqual(['12:00', '17:00'])
+    expect(seancesDuJour(deuxLeLundi, 'MARDI')).toEqual([])
+  })
+
+  it('clubALieuLe : vrai les deux jours de séance, faux ailleurs', () => {
+    expect(clubALieuLe(foot, '2026-10-05')).toBe(true)
+    expect(clubALieuLe(foot, '2026-10-07')).toBe(true)
+    expect(clubALieuLe(foot, '2026-10-06')).toBe(false)
+  })
+
+  it('datesDuClub : les dates des deux séances, triées, une fois chacune', () => {
+    const dates = datesDuClub(foot, { depuis: '2026-10-05', jusqua: '2026-10-14' })
+    expect(dates).toEqual(['2026-10-05', '2026-10-07', '2026-10-12', '2026-10-14'])
+    expect(datesDuClub(foot, { depuis: '2026-10-05', max: 1 })).toEqual(['2026-10-05'])
+  })
+
+  it('datesDuClub : deux séances le même jour ne donnent qu’une date', () => {
+    const deuxLeMercredi = club({ seances: [seance({ heureDebut: '12:00', heureFin: '13:00' }), seance({ heureDebut: '16:00', heureFin: '17:00' })] })
+    expect(datesDuClub(deuxLeMercredi, { depuis: '2026-10-07', jusqua: '2026-10-13' })).toEqual(['2026-10-07'])
+    expect(occurrencesDuClub(deuxLeMercredi, { depuis: '2026-10-07', jusqua: '2026-10-13' }).map((o) => o.seance.heureDebut)).toEqual(['12:00', '16:00'])
+  })
+
+  it('l’enseignant est occupé pendant chaque séance, chacune à son jour', () => {
+    expect(intervallesClubEnseignant([foot], 't1', 'LUNDI')).toEqual([{ start: '16:00', end: '17:30' }])
+    expect(intervallesClubEnseignant([foot], 't1', 'MERCREDI')).toEqual([{ start: '14:00', end: '15:30' }])
+    expect(intervallesClubEnseignant([foot], 't1', 'VENDREDI')).toEqual([])
+    expect(intervallesClubEnseignant([foot], 't1', 'MERCREDI', '2026-10-05')).toEqual([{ start: '16:00', end: '17:30' }])
+  })
+
+  it('chaque séance a sa salle : une salle n’est occupée que par la séance qui l’utilise', () => {
+    expect(intervallesClubSalle([foot], 'terrain', 'MERCREDI')).toEqual([{ start: '14:00', end: '15:30' }])
+    expect(intervallesClubSalle([foot], 'terrain', 'LUNDI')).toEqual([])
+    expect(intervallesClubSalle([foot], 'gymnase', 'LUNDI')).toEqual([{ start: '16:00', end: '17:30' }])
+  })
+
+  it('seancesClubEnSalleLe : la séance du jour dans cette salle, période comprise', () => {
+    expect(seancesClubEnSalleLe([foot], 'gymnase', '2026-10-05').map((x) => x.seance.heureDebut)).toEqual(['16:00'])
+    expect(seancesClubEnSalleLe([foot], 'gymnase', '2026-10-07')).toEqual([])
+    expect(seancesClubEnSalleLe([foot], 'gymnase', '2026-12-07')).toEqual([])
+    expect(seancesClubEnSalleLe([foot], '', '2026-10-05')).toEqual([])
+  })
+
+  it('blocsClubParJour : un bloc par séance, avec le nom de la catégorie et la salle de la séance', () => {
+    const b = blocsClubParJour([foot], [], { teacherId: 't1', aPartirDe: '2026-10-01' })
+    expect(b.LUNDI).toEqual([{ clubId: 'f9', label: 'Club – Football U9 · 0 inscrit', start: '16:00', end: '17:30', nbInscrits: 0, salleId: 'gymnase' }])
+    expect(b.MERCREDI.map((x) => x.salleId)).toEqual(['terrain'])
+  })
+
+  it('deux catégories d’un même club sont deux fiches distinctes, chacune avec ses inscrits et ses places', () => {
+    const u12 = club({ id: 'f12', nom: 'Football', categorie: 'U12', placesMax: 1 })
+    const inscrits = [insc({ clubId: 'f9' }), insc({ id: 'i2', clubId: 'f12', studentId: 'e2' })]
+    expect(placesRestantes(u12, inscrits)).toBe(0)
+    expect(placesRestantes(foot, inscrits)).toBe(1)
   })
 })

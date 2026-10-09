@@ -1,5 +1,5 @@
 import { timeToMinutes } from '../data/classSchedules'
-import { MODE_REGLEMENT_LABELS, type Club, type ClubInscription, type ClubReglement, type JourClub } from '../data/clubs'
+import { MODE_REGLEMENT_LABELS, libelleClub, type Club, type ClubInscription, type ClubReglement, type ClubSeance } from '../data/clubs'
 import { fullLabel } from '../data/salles'
 import { JOUR_LABELS } from '../data/soutien'
 import { teacherName } from '../data/teachers'
@@ -25,10 +25,16 @@ export function encadrantDuClub(club: Pick<Club, 'teacherId' | 'intervenantNom'>
   return club.intervenantNom.trim()
 }
 
-export function salleDuClub(club: Pick<Club, 'salleId'>): string {
-  if (!club.salleId) return ''
-  const salle = getSallesSnapshot().find((s) => s.id === club.salleId)
+/** Nom d'une salle (« Bâtiment Primaire - Salle 5 »), vide si elle n'est pas renseignée ou n'existe plus. */
+export function nomSalle(salleId: string | null): string {
+  if (!salleId) return ''
+  const salle = getSallesSnapshot().find((s) => s.id === salleId)
   return salle ? fullLabel(salle) : ''
+}
+
+/** Salles du club : celles de ses séances, sans doublon (« Terrain, Salle 3 »), vide si aucune n'est renseignée. */
+export function salleDuClub(club: Pick<Club, 'seances'>): string {
+  return [...new Set(club.seances.map((s) => nomSalle(s.salleId)).filter(Boolean))].join(', ')
 }
 
 // ───────────────────────── Avertissements de conflit ─────────────────────────
@@ -37,11 +43,9 @@ export interface BrouillonClub {
   /** Absent à la création ; sert à ne pas comparer le club avec lui-même à la modification. */
   id?: string
   nom: string
-  jour: JourClub
-  heureDebut: string
-  heureFin: string
+  categorie: string
+  seances: ClubSeance[]
   teacherId: string | null
-  salleId: string | null
   moisDebut: string
   moisFin: string
 }
@@ -50,37 +54,66 @@ function seChevauchent(aStart: string, aEnd: string, bStart: string, bEnd: strin
   return timeToMinutes(aStart) < timeToMinutes(bEnd) && timeToMinutes(bStart) < timeToMinutes(aEnd)
 }
 
+const seanceValide = (s: ClubSeance) => !!s.heureDebut && !!s.heureFin && timeToMinutes(s.heureFin) > timeToMinutes(s.heureDebut)
+
 /**
- * Avertissements (jamais bloquants) quand on crée ou modifie un club : l'enseignant a cours, un rendez-vous, un soutien ou
- * un autre club au même moment ; la salle est prise par un cours, une réservation, un soutien ou un autre club.
+ * Avertissements (jamais bloquants) quand on crée ou modifie un club, séance par séance : l'enseignant a cours, un
+ * rendez-vous, un soutien ou un autre club au même moment ; la salle est prise par un cours, une réservation, un soutien ou
+ * un autre club ; deux séances du club se chevauchent.
  */
 export function conflitsClub(b: BrouillonClub): ConflitSeance[] {
-  if (!b.heureDebut || !b.heureFin || timeToMinutes(b.heureFin) <= timeToMinutes(b.heureDebut)) return []
   const debut = debutDuClub(b)
   const fin = finDuClub(b)
   if (!debut || !fin || fin < debut) return []
+  const seances = b.seances.filter(seanceValide)
+  const contexte = buildConflitsContext()
+  const nom = libelleClub(b)
 
-  const out = conflitsSeance(
-    { matiere: b.nom, jour: b.jour, heureDebut: b.heureDebut, heureFin: b.heureFin, teacherId: b.teacherId, salleId: b.salleId, dateDebut: debut, dateFin: fin, datesAnnulees: [], studentIds: [] },
-    buildConflitsContext(),
-  )
+  const out: ConflitSeance[] = []
+  for (const s of seances) {
+    out.push(
+      ...conflitsSeance(
+        { matiere: nom, jour: s.jour, heureDebut: s.heureDebut, heureFin: s.heureFin, teacherId: b.teacherId, salleId: s.salleId, dateDebut: debut, dateFin: fin, datesAnnulees: [], studentIds: [] },
+        contexte,
+      ),
+    )
+  }
 
-  const jourTxt = JOUR_LABELS[b.jour].toLowerCase()
-  const autres = getClubsSnapshot().filter((c) => c.id !== b.id && !c.archive && c.jour === b.jour && seChevauchent(b.heureDebut, b.heureFin, c.heureDebut, c.heureFin) && debut <= finDuClub(c) && debutDuClub(c) <= fin)
-  for (const c of autres) {
-    if (b.teacherId && c.teacherId === b.teacherId) {
-      out.push({ type: 'enseignant_autre_seance', message: `L'enseignant encadre déjà le club « ${c.nom} » ${jourTxt} de ${c.heureDebut} à ${c.heureFin}.` })
-    }
-    if (b.salleId && c.salleId === b.salleId) {
-      out.push({ type: 'salle_autre_seance', message: `La salle est déjà utilisée par le club « ${c.nom} » ${jourTxt} de ${c.heureDebut} à ${c.heureFin}.` })
+  // Deux séances du même club ne peuvent pas se chevaucher (même encadrant, même groupe).
+  seances.forEach((s, i) => {
+    seances.slice(i + 1).forEach((t) => {
+      if (s.jour === t.jour && seChevauchent(s.heureDebut, s.heureFin, t.heureDebut, t.heureFin)) {
+        out.push({ type: 'enseignant_autre_seance', message: `Deux séances du club se chevauchent le ${JOUR_LABELS[s.jour].toLowerCase()} (${s.heureDebut}–${s.heureFin} et ${t.heureDebut}–${t.heureFin}).` })
+      }
+    })
+  })
+
+  const autres = getClubsSnapshot().filter((c) => c.id !== b.id && !c.archive && debut <= finDuClub(c) && debutDuClub(c) <= fin)
+  for (const s of seances) {
+    const jourTxt = JOUR_LABELS[s.jour].toLowerCase()
+    for (const c of autres) {
+      for (const cs of c.seances) {
+        if (cs.jour !== s.jour || !seChevauchent(s.heureDebut, s.heureFin, cs.heureDebut, cs.heureFin)) continue
+        if (b.teacherId && c.teacherId === b.teacherId) {
+          out.push({ type: 'enseignant_autre_seance', message: `L'enseignant encadre déjà le club « ${libelleClub(c)} » ${jourTxt} de ${cs.heureDebut} à ${cs.heureFin}.` })
+        }
+        if (s.salleId && cs.salleId === s.salleId) {
+          out.push({ type: 'salle_autre_seance', message: `La salle est déjà utilisée par le club « ${libelleClub(c)} » ${jourTxt} de ${cs.heureDebut} à ${cs.heureFin}.` })
+        }
+      }
     }
   }
   return out
 }
 
-/** Heure de départ du transport du soir de l'élève si le club se termine après (sinon `null`) : simple avertissement. */
-export function alerteTransportClub(club: Pick<Club, 'heureFin'>, studentId: string): string | null {
-  return alerteCar({ heureFin: club.heureFin }, transportInfoOf(studentId))
+/** Heure de départ du transport du soir de l'élève si une séance du club se termine après (sinon `null`) : simple avertissement. */
+export function alerteTransportClub(club: Pick<Club, 'seances'>, studentId: string): string | null {
+  const transport = transportInfoOf(studentId)
+  for (const s of club.seances) {
+    const depart = alerteCar({ heureFin: s.heureFin }, transport)
+    if (depart) return depart
+  }
+  return null
 }
 
 // ───────────────────────── Listes imprimables ─────────────────────────
@@ -181,7 +214,7 @@ export function recuDuReglement(reglement: ClubReglement): DonneesRecu {
     const club = inscription ? clubParId.get(inscription.clubId) : undefined
     if (!echeance || !inscription || !club) continue
     const eleve = eleves.get(inscription.studentId)
-    lignes.push({ studentNom: eleve?.name ?? 'Élève introuvable', classe: eleve?.classe ?? '', clubNom: club.nom, mois: echeance.mois, montantCentimes: imp.montantCentimes })
+    lignes.push({ studentNom: eleve?.name ?? 'Élève introuvable', classe: eleve?.classe ?? '', clubNom: libelleClub(club), mois: echeance.mois, montantCentimes: imp.montantCentimes })
   }
   lignes.sort((a, b) => a.mois.localeCompare(b.mois) || a.clubNom.localeCompare(b.clubNom, 'fr') || a.studentNom.localeCompare(b.studentNom, 'fr'))
 

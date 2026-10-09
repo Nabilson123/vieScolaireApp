@@ -61,7 +61,7 @@ import ClubModal from '../components/clubs/ClubModal'
 import type { Club, JourClub } from '../data/clubs'
 import { getClubInscriptionsSnapshot, getClubsSnapshot, useClubInscriptions, useClubs } from '../services/clubsService'
 import { blocsClubParJour } from '../utils/clubs'
-import { salleDuClub } from '../utils/clubsContexte'
+import { nomSalle } from '../utils/clubsContexte'
 
 const QUOTA_HEURES = 20
 
@@ -298,19 +298,17 @@ export default function EmploiDuTempsGlobal() {
   const blocsClubEnseignant =
     showSoutien && vue === 'enseignant' && selectedTeacher ? blocsClubParJour(clubs, getClubInscriptionsSnapshot(), { teacherId: selectedTeacher.id, aPartirDe: aujourdhui }) : null
   const clubSlots = (day: string): TimeGridSlot[] =>
-    (blocsClubEnseignant?.[day as JourClub] ?? []).map((b) => {
-      const club = clubs.find((c) => c.id === b.clubId)
-      return {
-        id: `club-${b.clubId}`,
-        subject: b.label,
-        start: b.start,
-        end: b.end,
-        hours: (timeToMinutes(b.end) - timeToMinutes(b.start)) / 60,
-        subtitle: (club && salleDuClub(club)) || 'Club',
-        variant: 'club' as const,
-        onClick: () => setClubDetail(b.clubId),
-      }
-    })
+    (blocsClubEnseignant?.[day as JourClub] ?? []).map((b) => ({
+      // Un club peut avoir plusieurs séances le même jour : l'heure de début les distingue.
+      id: `club-${b.clubId}-${b.start}`,
+      subject: b.label,
+      start: b.start,
+      end: b.end,
+      hours: (timeToMinutes(b.end) - timeToMinutes(b.start)) / 60,
+      subtitle: nomSalle(b.salleId) || 'Club',
+      variant: 'club' as const,
+      onClick: () => setClubDetail(b.clubId),
+    }))
   const classGridSchedule: Record<string, TimeGridSlot[]> = Object.fromEntries(
     SCHEDULE_DAYS.map((day) => [
       day,
