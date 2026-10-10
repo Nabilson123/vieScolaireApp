@@ -107,7 +107,7 @@ export default function ClubsTab({ studentId, studentName }: { studentId: string
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {duClub.map((l) => (
                       <span key={l.echeanceId} title={`${STATUT_ECHEANCE_LABELS[l.statut]} — ${formatDH(l.montantCentimes)}, payé ${formatDH(l.payeCentimes)}`} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${STATUT_STYLE[l.statut]}`}>
-                        {libelleMois(l.mois).replace(/ \d{4}$/, '')} · {STATUT_ECHEANCE_LABELS[l.statut]}
+                        {l.type === 'inscription' ? "Frais d'inscription" : libelleMois(l.mois).replace(/ \d{4}$/, '')} · {STATUT_ECHEANCE_LABELS[l.statut]}
                       </span>
                     ))}
                   </div>

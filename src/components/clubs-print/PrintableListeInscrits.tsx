@@ -18,6 +18,7 @@ function blocsDuClub(f: FeuilleClub): PaginatedBlock[] {
           <Fait label="Places" valeur={club.placesMax === null ? `${f.inscrits.length} inscrits (illimité)` : `${f.inscrits.length} / ${club.placesMax}`} />
           <div className="col-span-4 text-[9.5px]" style={{ color: MUTED2 }}>
             Période : de {libelleMois(club.moisDebut)} à {libelleMois(club.moisFin)} · Mensualité : {formatDH(club.mensualiteCentimes)}
+            {club.fraisInscriptionCentimes > 0 && <> · Frais d'inscription : {formatDH(club.fraisInscriptionCentimes)}</>}
             {club.niveaux.length > 0 && <> · Niveaux : {club.niveaux.join(', ')}</>}
           </div>
           {club.description && (

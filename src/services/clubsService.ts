@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabaseClient'
-import { libelleClub, type Club, type ClubEcheance, type ClubInscription, type ClubSeance, type JourClub, type StatutInscriptionClub } from '../data/clubs'
+import { libelleClub, type Club, type ClubEcheance, type ClubInscription, type ClubSeance, type JourClub, type StatutInscriptionClub, type TypeEcheance } from '../data/clubs'
 import { ajouterMois, echeancesPourInscription, moisDe, reconcilerEcheances } from '../utils/clubsFinance'
 import { clubComplet, seancesTriees, statutPourNouvelInscrit } from '../utils/clubs'
 import { aujourdhuiLocalISO } from '../utils/soutienSeances'
@@ -25,6 +25,7 @@ interface ClubRow {
   places_max: number | null
   niveaux: string[]
   mensualite_centimes: number
+  frais_inscription_centimes: number | null
   mois_debut: string
   mois_fin: string
   jour_echeance: number
@@ -49,6 +50,7 @@ interface InscriptionRow {
 interface EcheanceRow {
   id: string
   inscription_id: string
+  type: TypeEcheance | null
   mois: string
   montant_centimes: number
   date_echeance: string
@@ -77,6 +79,7 @@ function rowToClub(row: ClubRow): Club {
     placesMax: row.places_max,
     niveaux: row.niveaux ?? [],
     mensualiteCentimes: row.mensualite_centimes,
+    fraisInscriptionCentimes: row.frais_inscription_centimes ?? 0,
     moisDebut: row.mois_debut,
     moisFin: row.mois_fin,
     jourEcheance: row.jour_echeance,
@@ -105,6 +108,7 @@ function rowToEcheance(row: EcheanceRow): ClubEcheance {
   return {
     id: row.id,
     inscriptionId: row.inscription_id,
+    type: row.type ?? 'mensualite',
     mois: row.mois,
     montantCentimes: row.montant_centimes,
     dateEcheance: row.date_echeance,
@@ -261,7 +265,7 @@ export interface ResumeSynchro {
 }
 
 interface PlanSynchro {
-  aAjouter: { inscription_id: string; mois: string; montant_centimes: number; date_echeance: string }[]
+  aAjouter: { inscription_id: string; type: TypeEcheance; mois: string; montant_centimes: number; date_echeance: string }[]
   aMettreAJour: { id: string; montant_centimes: number; date_echeance: string }[]
   aSupprimer: string[]
 }
@@ -279,7 +283,7 @@ async function planifierSynchro(club: Club, inscriptions: ClubInscription[]): Pr
     const voulues = echeancesPourInscription(club, inscription)
     const siennes = existantes.filter((e) => e.inscriptionId === inscription.id)
     const r = reconcilerEcheances(siennes, voulues, payees, moisDe(inscription.dateInscription))
-    r.aAjouter.forEach((v) => plan.aAjouter.push({ inscription_id: inscription.id, mois: v.mois, montant_centimes: v.montantCentimes, date_echeance: v.dateEcheance }))
+    r.aAjouter.forEach((v) => plan.aAjouter.push({ inscription_id: inscription.id, type: v.type, mois: v.mois, montant_centimes: v.montantCentimes, date_echeance: v.dateEcheance }))
     r.aMettreAJour.forEach((m) => plan.aMettreAJour.push({ id: m.id, montant_centimes: m.montantCentimes, date_echeance: m.dateEcheance }))
     plan.aSupprimer.push(...r.aSupprimer)
   }
@@ -357,6 +361,8 @@ export interface ClubInput {
   placesMax: number | null
   niveaux: string[]
   mensualiteCentimes: number
+  /** 0 = pas de frais d'inscription. */
+  fraisInscriptionCentimes: number
   moisDebut: string
   moisFin: string
   jourEcheance: number
@@ -381,6 +387,7 @@ function clubToRow(input: ClubInput) {
     places_max: input.placesMax,
     niveaux: input.niveaux,
     mensualite_centimes: input.mensualiteCentimes,
+    frais_inscription_centimes: input.fraisInscriptionCentimes,
     mois_debut: input.moisDebut,
     mois_fin: input.moisFin,
     jour_echeance: input.jourEcheance,
@@ -388,9 +395,15 @@ function clubToRow(input: ClubInput) {
   }
 }
 
-/** Le changement touche-t-il les mensualités (tarif, mois facturés, jour d'échéance) ? */
-export function tarifOuPeriodeModifie(avant: Club, apres: Pick<ClubInput, 'mensualiteCentimes' | 'moisDebut' | 'moisFin' | 'jourEcheance'>): boolean {
-  return avant.mensualiteCentimes !== apres.mensualiteCentimes || avant.moisDebut !== apres.moisDebut || avant.moisFin !== apres.moisFin || avant.jourEcheance !== apres.jourEcheance
+/** Le changement touche-t-il les sommes dues (mensualité, frais d'inscription, mois facturés, jour d'échéance) ? */
+export function tarifOuPeriodeModifie(avant: Club, apres: Pick<ClubInput, 'mensualiteCentimes' | 'fraisInscriptionCentimes' | 'moisDebut' | 'moisFin' | 'jourEcheance'>): boolean {
+  return (
+    avant.mensualiteCentimes !== apres.mensualiteCentimes ||
+    avant.fraisInscriptionCentimes !== apres.fraisInscriptionCentimes ||
+    avant.moisDebut !== apres.moisDebut ||
+    avant.moisFin !== apres.moisFin ||
+    avant.jourEcheance !== apres.jourEcheance
+  )
 }
 
 export function useAddClub() {

@@ -39,7 +39,7 @@ function dhEnTexte(centimes: number): string {
 function resumeTexte(r: ResumeSynchro): string {
   const parts: string[] = []
   if (r.modifiees > 0) parts.push(`${r.modifiees} mensualité${r.modifiees > 1 ? 's' : ''} recalculée${r.modifiees > 1 ? 's' : ''}`)
-  if (r.ajoutees > 0) parts.push(`${r.ajoutees} ajoutée${r.ajoutees > 1 ? 's' : ''}`)
+  if (r.ajoutees > 0) parts.push(`${r.ajoutees} échéance${r.ajoutees > 1 ? 's' : ''} ajoutée${r.ajoutees > 1 ? 's' : ''} (frais d'inscription ou nouveaux mois)`)
   if (r.supprimees > 0) parts.push(`${r.supprimees} supprimée${r.supprimees > 1 ? 's' : ''}`)
   return parts.join(', ')
 }
@@ -68,6 +68,7 @@ export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
   const [placesMax, setPlacesMax] = useState(club?.placesMax != null ? String(club.placesMax) : '')
   const [niveaux, setNiveaux] = useState<string[]>(club?.niveaux ?? [])
   const [mensualite, setMensualite] = useState(source ? dhEnTexte(source.mensualiteCentimes) : '')
+  const [frais, setFrais] = useState(source && source.fraisInscriptionCentimes > 0 ? dhEnTexte(source.fraisInscriptionCentimes) : '')
   const [moisDebut, setMoisDebut] = useState(source?.moisDebut ?? defauts.debut)
   const [moisFin, setMoisFin] = useState(source?.moisFin ?? defauts.fin)
   const [jourEcheance, setJourEcheance] = useState(String(source?.jourEcheance ?? 5))
@@ -84,9 +85,12 @@ export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
   const places = placesMax.trim() === '' ? null : Number(placesMax)
   const placesValides = places === null || (Number.isInteger(places) && places > 0)
   const tarifValide = centimes !== null
+  // Frais d'inscription : champ vide = aucun frais.
+  const centimesFrais = frais.trim() === '' ? 0 : dhVersCentimes(frais)
+  const fraisValides = centimesFrais !== null
   const echeanceValide = Number.isInteger(echeance) && echeance >= 1 && echeance <= 28
   const graceValide = Number.isInteger(grace) && grace >= 0
-  const canSubmit = nom.trim() !== '' && seancesValides && moisValides && tarifValide && echeanceValide && graceValide && placesValides && !add.isPending && !update.isPending && !verification
+  const canSubmit = nom.trim() !== '' && seancesValides && moisValides && tarifValide && fraisValides && echeanceValide && graceValide && placesValides && !add.isPending && !update.isPending && !verification
 
   const conflits = useMemo(
     () =>
@@ -126,6 +130,7 @@ export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
       placesMax: places,
       niveaux,
       mensualiteCentimes: centimes,
+      fraisInscriptionCentimes: centimesFrais ?? 0,
       moisDebut,
       moisFin,
       jourEcheance: echeance,
@@ -293,7 +298,7 @@ export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
           </div>
 
           <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-amber-800">Mensualité</p>
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-amber-800">Tarif</p>
             <div className="grid gap-4 sm:grid-cols-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Montant (DH)*</label>
@@ -318,6 +323,16 @@ export default function ClubModal({ club, modele, onClose, onSaved }: Props) {
                   <input type="number" min={0} value={delaiGrace} onChange={(e) => setDelaiGrace(e.target.value)} className={INPUT} />
                 </div>
               </div>
+            </div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">Frais d'inscription (DH)</label>
+                <input value={frais} onChange={(e) => setFrais(e.target.value)} inputMode="decimal" className={INPUT} placeholder="Aucun" />
+                {frais.trim() !== '' && !fraisValides && <p className="mt-1 text-[11px] text-amber-600">Montant illisible (ex. 100 ou 100,50).</p>}
+              </div>
+              <p className="self-end pb-2 text-[11px] text-slate-500 sm:col-span-3">
+                Montant unique par élève, dû à la date d'inscription et payé avant les mensualités. Un élève exonéré ne les doit pas ; un élève qui revient après un arrêt ne les repaie pas.
+              </p>
             </div>
             <p className="mt-2 text-[11px] text-slate-500">
               {moisValides ? `Facturé de ${libelleMois(moisDebut)} à ${libelleMois(moisFin)}. ` : 'Le dernier mois doit être après le premier. '}

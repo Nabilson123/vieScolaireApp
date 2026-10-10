@@ -1,5 +1,5 @@
 import { timeToMinutes } from '../data/classSchedules'
-import { MODE_REGLEMENT_LABELS, libelleClub, type Club, type ClubInscription, type ClubReglement, type ClubSeance } from '../data/clubs'
+import { MODE_REGLEMENT_LABELS, libelleClub, type Club, type ClubInscription, type ClubReglement, type ClubSeance, type TypeEcheance } from '../data/clubs'
 import { fullLabel } from '../data/salles'
 import { JOUR_LABELS } from '../data/soutien'
 import { teacherName } from '../data/teachers'
@@ -10,7 +10,7 @@ import { getStudentIdentitySnapshot } from '../services/studentIdentityService'
 import { getStudentsSnapshot } from '../services/studentsService'
 import { getTeachersSnapshot } from '../services/teachersService'
 import { debutDuClub, finDuClub, inscritsActifs, listeAttente } from './clubs'
-import { cleFamille, formatDH, libelleFamille, libelleMois, lignesMensualites, montantEnLettres, paiementsParEcheance, type EleveFinance } from './clubsFinance'
+import { cleFamille, formatDH, libelleEcheance, libelleFamille, lignesMensualites, montantEnLettres, paiementsParEcheance, type EleveFinance } from './clubsFinance'
 import { alerteCar, conflitsSeance, parClasseNom, type ConflitSeance } from './soutien'
 import { buildConflitsContext, transportInfoOf } from './soutienContexte'
 
@@ -172,6 +172,8 @@ export interface LigneRecu {
   studentNom: string
   classe: string
   clubNom: string
+  /** Mensualité ou frais d'inscription. */
+  type: TypeEcheance
   mois: string
   montantCentimes: number
 }
@@ -214,7 +216,7 @@ export function recuDuReglement(reglement: ClubReglement): DonneesRecu {
     const club = inscription ? clubParId.get(inscription.clubId) : undefined
     if (!echeance || !inscription || !club) continue
     const eleve = eleves.get(inscription.studentId)
-    lignes.push({ studentNom: eleve?.name ?? 'Élève introuvable', classe: eleve?.classe ?? '', clubNom: libelleClub(club), mois: echeance.mois, montantCentimes: imp.montantCentimes })
+    lignes.push({ studentNom: eleve?.name ?? 'Élève introuvable', classe: eleve?.classe ?? '', clubNom: libelleClub(club), type: echeance.type, mois: echeance.mois, montantCentimes: imp.montantCentimes })
   }
   lignes.sort((a, b) => a.mois.localeCompare(b.mois) || a.clubNom.localeCompare(b.clubNom, 'fr') || a.studentNom.localeCompare(b.studentNom, 'fr'))
 
@@ -269,7 +271,7 @@ export function journalEncaissements(): LigneJournal[] {
       statut: r.statut === 'annule' ? 'Annulé' : 'Valide',
       motifAnnulation: r.motifAnnulation,
       detail: recuDuReglement(r)
-        .lignes.map((l) => `${l.studentNom} (${l.clubNom}, ${libelleMois(l.mois)} : ${formatDH(l.montantCentimes)})`)
+        .lignes.map((l) => `${l.studentNom} (${l.clubNom}, ${libelleEcheance(l)} : ${formatDH(l.montantCentimes)})`)
         .join(' ; '),
     }))
 }

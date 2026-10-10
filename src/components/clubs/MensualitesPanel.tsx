@@ -24,6 +24,11 @@ const INPUT = 'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs
 
 const sansUnite = (centimes: number) => formatDH(centimes).replace(/ DH$/, '')
 
+/** Colonne des frais d'inscription, avant les mois : des frais et la mensualité du même mois ne tiennent pas dans une même case. */
+const COLONNE_FRAIS = 'frais'
+
+const cleColonne = (l: LigneMensualite) => (l.type === 'inscription' ? COLONNE_FRAIS : l.mois)
+
 function texteCellule(l: LigneMensualite): string {
   if (l.statut === 'payee') return 'Payée'
   if (l.statut === 'exoneree') return 'Exonérée'
@@ -49,8 +54,9 @@ export default function MensualitesPanel({ canEdit, onEncaisser }: Props) {
 
   const terme = recherche.trim().toLowerCase()
   const duClub = useMemo(() => lignes.filter((l) => !club || l.clubId === club), [lignes, club])
-  const moisDispos = useMemo(() => [...new Set(duClub.map((l) => l.mois))].sort(), [duClub])
-  const colonnes = useMemo(() => moisDispos.filter((m) => !mois || m === mois), [moisDispos, mois])
+  const moisDispos = useMemo(() => [...new Set(duClub.filter((l) => l.type !== 'inscription').map((l) => l.mois))].sort(), [duClub])
+  const avecFrais = useMemo(() => duClub.some((l) => l.type === 'inscription'), [duClub])
+  const colonnes = useMemo(() => [...(avecFrais ? [COLONNE_FRAIS] : []), ...moisDispos.filter((m) => !mois || m === mois)], [avecFrais, moisDispos, mois])
 
   const familles = useMemo<FamilleAffichee[]>(() => {
     const visibles = duClub.filter((l) => (!mois || l.mois === mois) && (!terme || `${l.studentNom} ${l.familleLibelle} ${l.classe}`.toLowerCase().includes(terme)))
@@ -90,7 +96,7 @@ export default function MensualitesPanel({ canEdit, onEncaisser }: Props) {
             <CalendarClock className="h-5 w-5 text-amber-500" />
             Mensualités
           </h2>
-          <p className="text-xs text-slate-500">Une ligne par élève et par club, une colonne par mois. Les familles qui doivent le plus d'abord.</p>
+          <p className="text-xs text-slate-500">Une ligne par élève et par club, une colonne par mois (et une colonne Inscription pour les frais). Les familles qui doivent le plus d'abord.</p>
         </div>
         {canEdit && (
           <button type="button" onClick={() => onEncaisser()} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:from-emerald-500 hover:to-teal-500">
@@ -152,7 +158,7 @@ export default function MensualitesPanel({ canEdit, onEncaisser }: Props) {
                 <th className="min-w-[14rem] px-3 py-2">Famille / élève</th>
                 {colonnes.map((m) => (
                   <th key={m} className="min-w-[5.5rem] px-2 py-2 text-center">
-                    {libelleMois(m)}
+                    {m === COLONNE_FRAIS ? 'Inscription' : libelleMois(m)}
                   </th>
                 ))}
               </tr>
@@ -201,7 +207,7 @@ function FamilleBloc({ famille, colonnes, canEdit, onEncaisser }: { famille: Fam
         </td>
       </tr>
       {famille.rangees.map((ls) => {
-        const parMois = new Map(ls.map((l) => [l.mois, l]))
+        const parMois = new Map(ls.map((l) => [cleColonne(l), l]))
         return (
           <tr key={ls[0].inscriptionId} className="border-t border-slate-50">
             <td className="px-3 py-1.5 text-slate-700">

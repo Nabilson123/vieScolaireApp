@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { MODE_REGLEMENT_LABELS } from '../../data/clubs'
 import { useAssociationIdentity } from '../../services/schoolIdentityService'
 import type { DonneesRecu } from '../../utils/clubsContexte'
-import { formatDH, libelleMois } from '../../utils/clubsFinance'
+import { formatDH, libelleEcheance } from '../../utils/clubsFinance'
 import { dateCourte } from './clubsPrintKit'
 
 const PX_PAR_MM = 96 / 25.4
@@ -112,7 +112,7 @@ export default function PrintableRecuTicket({ recu }: { recu: DonneesRecu }) {
               {e.classe ? ` (${e.classe})` : ''}
             </p>
             {e.lignes.map((l, i) => (
-              <Ligne key={i} gauche={`${l.clubNom} · ${libelleMois(l.mois)}`} droite={formatDH(l.montantCentimes)} />
+              <Ligne key={i} gauche={`${l.clubNom} · ${libelleEcheance(l)}`} droite={formatDH(l.montantCentimes)} />
             ))}
           </div>
         ))}

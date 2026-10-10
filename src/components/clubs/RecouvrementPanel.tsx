@@ -3,7 +3,7 @@ import { Banknote, CheckCircle2, MessageCircle, Printer, TriangleAlert, X } from
 import { libelleClub } from '../../data/clubs'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { useClubRelances, useEnregistrerRelance } from '../../services/clubsPaiementsService'
-import { formatDH, impayesParFamille, joursEntre, libelleMois, type ImpayeFamille } from '../../utils/clubsFinance'
+import { formatDH, impayesParFamille, joursEntre, libelleEcheance, type ImpayeFamille } from '../../utils/clubsFinance'
 import { parentsDeLEleve, type ParentEleve } from '../../utils/soutienMessage'
 import { buildClubRelanceMessage } from '../../utils/whatsapp'
 import ClubsFinancePrintPreviewModal, { type DocumentFinance } from '../clubs-print/ClubsFinancePrintPreviewModal'
@@ -35,7 +35,7 @@ function RelanceModal({ famille, onClose, onDone }: { famille: ImpayeFamille; on
   const parents = parentsDeLEleve(famille.lignes[0].studentId)
   const parent = parents.find((p) => p.key === parentKey) ?? parents.find((p) => p.phone) ?? parents[0] ?? null
   const message = buildClubRelanceMessage(
-    { parentNom: parent?.nom ?? '', lignes: famille.lignes.map((l) => ({ eleve: l.studentNom, club: l.clubNom, mois: l.mois, resteCentimes: l.resteCentimes })) },
+    { parentNom: parent?.nom ?? '', lignes: famille.lignes.map((l) => ({ eleve: l.studentNom, club: l.clubNom, mois: l.mois, type: l.type, resteCentimes: l.resteCentimes })) },
     lang,
   )
 
@@ -210,7 +210,7 @@ export default function RecouvrementPanel({ canEdit, onEncaisser }: Props) {
                 <ul className="mt-3 flex flex-wrap gap-1.5">
                   {f.lignes.map((l) => (
                     <li key={l.echeanceId} className="rounded-md bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700">
-                      {l.studentNom} ({l.clubNom}) — {libelleMois(l.mois)} : {formatDH(l.resteCentimes)}
+                      {l.studentNom} ({l.clubNom}) — {libelleEcheance(l)} : {formatDH(l.resteCentimes)}
                     </li>
                   ))}
                 </ul>

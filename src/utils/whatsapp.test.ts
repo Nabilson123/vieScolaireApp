@@ -383,6 +383,18 @@ describe('buildClubRelanceMessage', () => {
     expect(buildClubRelanceMessage({ ...info, parentNom: '  ' }, 'fr').startsWith('Bonjour,\n')).toBe(true)
   })
 
+  it('frais d’inscription : nommés à la place du mois, et la phrase d’introduction ne parle plus que de mensualités', () => {
+    const avecFrais = { parentNom: 'Karim ALAMI', lignes: [{ eleve: 'Adam ALAMI', club: 'Football U9', mois: '2026-10-01', type: 'inscription' as const, resteCentimes: 10000 }, info.lignes[0]] }
+    const fr = buildClubRelanceMessage(avecFrais, 'fr')
+    // Les montants s'écrivent avec une espace insécable avant « DH ».
+    expect(fr).toContain("- *Adam ALAMI* — Football U9, frais d'inscription : 100,00 DH")
+    expect(fr).toContain('les sommes suivantes restent à régler')
+    expect(fr).not.toContain('les mensualités suivantes')
+    const ar = buildClubRelanceMessage(avecFrais, 'ar')
+    expect(ar).toContain('- *Adam ALAMI* — Football U9، رسوم التسجيل : 100,00 درهم')
+    expect(ar).toContain('المبالغ التالية')
+  })
+
   it('arabe : mois en arabe du Maroc, montants en dirhams, total', () => {
     const m = buildClubRelanceMessage(info, 'ar')
     expect(m.startsWith('السلام عليكم')).toBe(true)

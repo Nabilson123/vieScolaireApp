@@ -40,6 +40,7 @@ const club = (over: Partial<Club> = {}): Club => ({
   placesMax: 2,
   niveaux: [],
   mensualiteCentimes: 15000,
+  fraisInscriptionCentimes: 0,
   moisDebut: '2026-10-01',
   moisFin: '2026-11-01',
   jourEcheance: 5,

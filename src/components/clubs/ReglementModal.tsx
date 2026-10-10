@@ -3,7 +3,7 @@ import { Banknote, TriangleAlert, X } from 'lucide-react'
 import { MODES_REGLEMENT, MODE_REGLEMENT_LABELS, type ModeReglement } from '../../data/clubs'
 import { useClubsFinance } from '../../hooks/useClubsFinance'
 import { useEnregistrerReglement } from '../../services/clubsPaiementsService'
-import { dhVersCentimes, formatDH, imputerReglement, libelleMois, mensualitesOuvertes, soldeDeLignes } from '../../utils/clubsFinance'
+import { dhVersCentimes, formatDH, imputerReglement, libelleEcheance, mensualitesOuvertes, soldeDeLignes } from '../../utils/clubsFinance'
 import { aujourdhuiLocalISO } from '../../utils/soutienSeances'
 
 interface Props {
@@ -130,7 +130,7 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
               <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Mensualités à payer ({ouvertes.length}){selectionActive && <span className="ml-1 normal-case text-emerald-700">· {retenues.length} choisie{retenues.length > 1 ? 's' : ''}</span>}
+                    Sommes à payer ({ouvertes.length}){selectionActive && <span className="ml-1 normal-case text-emerald-700">· {retenues.length} choisie{retenues.length > 1 ? 's' : ''}</span>}
                   </p>
                   <div className="flex shrink-0 gap-3 text-[11px] font-medium">
                     <button type="button" onClick={() => setChoisies(ouvertes.map((o) => o.echeanceId))} className="text-slate-500 hover:text-slate-700 hover:underline">
@@ -154,7 +154,7 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
                         <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 ${coche ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-white hover:bg-slate-50'}`}>
                           <input type="checkbox" checked={coche} onChange={() => basculer(o.echeanceId)} className="shrink-0" />
                           <span className="min-w-0 flex-1 truncate text-slate-700">
-                            {o.ligne.studentNom} <span className="text-slate-400">({o.ligne.clubNom})</span> — {libelleMois(o.mois)}
+                            {o.ligne.studentNom} <span className="text-slate-400">({o.ligne.clubNom})</span> — {libelleEcheance(o.ligne)}
                           </span>
                           <span className={`shrink-0 font-semibold ${o.ligne.statut === 'en_retard' ? 'text-rose-600' : 'text-slate-600'}`}>
                             {formatDH(o.resteCentimes)}
@@ -221,7 +221,7 @@ export default function ReglementModal({ familleCle: familleInitiale, onClose, o
                         const complete = !!l && i.montantCentimes >= l.resteCentimes
                         return (
                           <li key={i.echeanceId} className="flex items-center justify-between gap-2">
-                            <span className="min-w-0 truncate text-slate-700">{l ? `${l.studentNom} (${l.clubNom}) — ${libelleMois(l.mois)}` : 'Mensualité'}</span>
+                            <span className="min-w-0 truncate text-slate-700">{l ? `${l.studentNom} (${l.clubNom}) — ${libelleEcheance(l)}` : 'Mensualité'}</span>
                             <span className="shrink-0 font-semibold text-slate-700">
                               {formatDH(i.montantCentimes)} <span className="font-normal text-slate-400">{complete ? 'soldée' : 'partiel'}</span>
                             </span>

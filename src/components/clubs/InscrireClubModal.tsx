@@ -6,7 +6,7 @@ import { getStudentsSnapshot } from '../../services/studentsService'
 import { useClubInscriptions, useClubs, useInscrireClubLot } from '../../services/clubsService'
 import { alerteTransportClub } from '../../utils/clubsContexte'
 import { niveauAutorise, placesRestantes } from '../../utils/clubs'
-import { libelleMois, moisDe } from '../../utils/clubsFinance'
+import { formatDH, libelleMois, moisDe } from '../../utils/clubsFinance'
 import { aujourdhuiLocalISO } from '../../utils/soutienSeances'
 import StudentSearchSelect from '../StudentSearchSelect'
 
@@ -237,6 +237,15 @@ export default function InscrireClubModal({ clubId: clubInitial, studentId: elev
             <input type="date" value={dateInscription} onChange={(e) => setDateInscription(e.target.value)} className={INPUT} />
             {club && dateValide && (
               <p className="mt-1 text-[11px] text-slate-400">Le mois d'inscription est dû en entier : première mensualité {libelleMois(moisDe(dateInscription) > club.moisDebut ? moisDe(dateInscription) : club.moisDebut)}.</p>
+            )}
+            {club && club.fraisInscriptionCentimes > 0 && (
+              <p className={`mt-1 text-[11px] font-medium ${exonere || (aInscrire.length > 0 && reinscrits === aInscrire.length) ? 'text-slate-400' : 'text-amber-700'}`}>
+                {exonere
+                  ? `Frais d'inscription (${formatDH(club.fraisInscriptionCentimes)}) non dus : élève exonéré.`
+                  : aInscrire.length > 0 && reinscrits === aInscrire.length
+                    ? "Les frais d'inscription ont déjà été facturés à la première inscription : rien de plus à payer."
+                    : `Frais d'inscription : ${formatDH(club.fraisInscriptionCentimes)}, dus à la date d'inscription${reinscrits > 0 ? ` (sauf pour les ${reinscrits} réinscrit${reinscrits > 1 ? 's' : ''}, déjà facturé${reinscrits > 1 ? 's' : ''})` : ''}.`}
+              </p>
             )}
           </div>
 

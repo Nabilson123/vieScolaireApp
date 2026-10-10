@@ -1,6 +1,6 @@
 import { MODE_REGLEMENT_LABELS } from '../../data/clubs'
 import type { DonneesRecu } from '../../utils/clubsContexte'
-import { formatDH, libelleMois } from '../../utils/clubsFinance'
+import { formatDH, libelleEcheance } from '../../utils/clubsFinance'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import { ACCENT, ACCENT_SOFT, AMBER, EnTeteClubs, Fait, GREEN, HEAD_BG, INK, MUTED, MUTED2, PAGE_STYLE, PiedClubs, RED, RULE, TableauClub, dateCourte } from './clubsPrintKit'
 
@@ -54,7 +54,7 @@ function blocsDuRecu(d: DonneesRecu): PaginatedBlock[] {
               {l.clubNom}
             </td>
             <td className="px-3 py-1" style={{ color: MUTED2 }}>
-              {libelleMois(l.mois)}
+              {libelleEcheance(l)}
             </td>
             <td className="px-3 py-1 text-right font-semibold" style={{ color: INK }}>
               {formatDH(l.montantCentimes)}

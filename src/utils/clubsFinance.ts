@@ -1,4 +1,4 @@
-import { libelleClub, type Club, type ClubEcheance, type ClubImputation, type ClubInscription, type ClubReglement } from '../data/clubs'
+import { libelleClub, type Club, type ClubEcheance, type ClubImputation, type ClubInscription, type ClubReglement, type TypeEcheance } from '../data/clubs'
 import type { StudentIdentity } from '../data/studentIdentity'
 import { ajouterJours } from './soutienSeances'
 import { normalizeText } from './textMatch'
@@ -48,6 +48,21 @@ export function libelleMois(mois: string): string {
   return m ? `${MOIS_FR[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : mois
 }
 
+export const LIBELLE_FRAIS_INSCRIPTION = "Frais d'inscription"
+
+/** Ce que paie une échéance, pour l'affichage : « octobre 2026 » pour une mensualité, « Frais d'inscription » pour les frais. */
+export function libelleEcheance(e: { type: TypeEcheance; mois: string }): string {
+  return e.type === 'inscription' ? LIBELLE_FRAIS_INSCRIPTION : libelleMois(e.mois)
+}
+
+/** Ordre de paiement dans un même mois : les frais d'inscription (dus à l'inscription) avant la mensualité. */
+const RANG_TYPE: Record<TypeEcheance, number> = { inscription: 0, mensualite: 1 }
+
+/** Ordre dans lequel un règlement paie les échéances : mois, puis frais avant mensualité, puis date d'échéance. */
+function comparerEcheances(a: { mois: string; type?: TypeEcheance; dateEcheance: string }, b: { mois: string; type?: TypeEcheance; dateEcheance: string }): number {
+  return a.mois.localeCompare(b.mois) || RANG_TYPE[a.type ?? 'mensualite'] - RANG_TYPE[b.type ?? 'mensualite'] || a.dateEcheance.localeCompare(b.dateEcheance)
+}
+
 /** « 1 200,50 DH » (espaces insécables) ; les centimes sont toujours affichés. */
 export function formatDH(centimes: number): string {
   const negatif = centimes < 0
@@ -66,18 +81,20 @@ export function dhVersCentimes(texte: string): number | null {
 // ───────────────────────── Échéancier d'une inscription ─────────────────────────
 
 export interface EcheanceVoulue {
+  type: TypeEcheance
   mois: string
   montantCentimes: number
   dateEcheance: string
 }
 
-type ClubTarif = Pick<Club, 'moisDebut' | 'moisFin' | 'mensualiteCentimes' | 'jourEcheance'>
+type ClubTarif = Pick<Club, 'moisDebut' | 'moisFin' | 'mensualiteCentimes' | 'fraisInscriptionCentimes' | 'jourEcheance'>
 type InscriptionFacturable = Pick<ClubInscription, 'statut' | 'dateInscription' | 'dateArret' | 'exonere'>
 
 /**
- * Mensualités dues pour une inscription : du mois d'inscription (dû en entier) au dernier mois du club, ou au mois
- * d'arrêt (dû aussi) si l'élève a quitté le club. Rien n'est dû en liste d'attente. Un élève exonéré garde ses
- * échéances à 0, ce qui conserve l'historique des mois couverts.
+ * Sommes dues pour une inscription : les frais d'inscription (une seule fois, dus à la date d'inscription, s'il y en a),
+ * puis les mensualités du mois d'inscription (dû en entier) au dernier mois du club, ou au mois d'arrêt (dû aussi) si
+ * l'élève a quitté le club. Rien n'est dû en liste d'attente. Un élève exonéré garde ses échéances à 0, ce qui conserve
+ * l'historique des mois couverts.
  */
 export function echeancesPourInscription(club: ClubTarif, inscription: InscriptionFacturable): EcheanceVoulue[] {
   if (inscription.statut === 'attente') return []
@@ -93,11 +110,13 @@ export function echeancesPourInscription(club: ClubTarif, inscription: Inscripti
     if (moisArret && moisArret < dernier) dernier = moisArret
   }
   const montant = inscription.exonere ? 0 : club.mensualiteCentimes
-  const out: EcheanceVoulue[] = []
-  for (let m = premier; m <= dernier && out.length < 120; m = ajouterMois(m, 1)) {
-    out.push({ mois: m, montantCentimes: montant, dateEcheance: dateEcheance(m, club.jourEcheance) })
+  const mensualites: EcheanceVoulue[] = []
+  for (let m = premier; m <= dernier && mensualites.length < 120; m = ajouterMois(m, 1)) {
+    mensualites.push({ type: 'mensualite', mois: m, montantCentimes: montant, dateEcheance: dateEcheance(m, club.jourEcheance) })
   }
-  return out
+  // Inscrit après la fin du club : rien n'est dû, pas même les frais.
+  if (mensualites.length === 0 || club.fraisInscriptionCentimes <= 0) return mensualites
+  return [{ type: 'inscription', mois: moisInscription, montantCentimes: inscription.exonere ? 0 : club.fraisInscriptionCentimes, dateEcheance: inscription.dateInscription }, ...mensualites]
 }
 
 export interface ReconciliationEcheances {
@@ -119,11 +138,14 @@ export function reconcilerEcheances(
   payees: ReadonlySet<string> = new Set(),
   moisPlancher = '',
 ): ReconciliationEcheances {
-  const parMois = new Map(existantes.map((e) => [e.mois, e]))
-  const voulueParMois = new Map(voulues.map((v) => [v.mois, v]))
+  const mensualitesExistantes = existantes.filter((e) => e.type !== 'inscription')
+  const fraisExistants = existantes.filter((e) => e.type === 'inscription')
+  const parMois = new Map(mensualitesExistantes.map((e) => [e.mois, e]))
+  const voulueParMois = new Map(voulues.filter((v) => v.type !== 'inscription').map((v) => [v.mois, v]))
   const resultat: ReconciliationEcheances = { aAjouter: [], aMettreAJour: [], aSupprimer: [] }
 
   for (const v of voulues) {
+    if (v.type === 'inscription') continue
     const e = parMois.get(v.mois)
     if (!e) {
       resultat.aAjouter.push(v)
@@ -133,12 +155,26 @@ export function reconcilerEcheances(
       resultat.aMettreAJour.push({ id: e.id, montantCentimes: v.montantCentimes, dateEcheance: v.dateEcheance })
     }
   }
-  for (const e of existantes) {
+  for (const e of mensualitesExistantes) {
     if (voulueParMois.has(e.mois)) continue
     if (payees.has(e.id)) continue
     if (moisPlancher && e.mois < moisPlancher) continue
     resultat.aSupprimer.push(e.id)
   }
+
+  // Frais d'inscription : une seule échéance par inscription, quel que soit son mois. Un élève réinscrit après un arrêt
+  // garde les frais déjà facturés (sa date et son mois ne bougent pas) au lieu d'en recevoir de nouveaux.
+  const fraisVoulus = voulues.find((v) => v.type === 'inscription')
+  const [frais, ...doublons] = fraisExistants
+  if (fraisVoulus) {
+    if (!frais) resultat.aAjouter.push(fraisVoulus)
+    else if (!payees.has(frais.id) && frais.montantCentimes !== fraisVoulus.montantCentimes) {
+      resultat.aMettreAJour.push({ id: frais.id, montantCentimes: fraisVoulus.montantCentimes, dateEcheance: frais.dateEcheance })
+    }
+  } else if (frais && !payees.has(frais.id)) {
+    resultat.aSupprimer.push(frais.id)
+  }
+  for (const d of doublons) if (!payees.has(d.id)) resultat.aSupprimer.push(d.id)
   return resultat
 }
 
@@ -247,6 +283,8 @@ export interface LigneMensualite {
   classe: string
   familleCle: string
   familleLibelle: string
+  /** Mensualité ou frais d'inscription. */
+  type: TypeEcheance
   mois: string
   dateEcheance: string
   montantCentimes: number
@@ -283,6 +321,7 @@ export function lignesMensualites(args: {
       classe: eleve?.classe ?? '',
       familleCle: eleve?.familleCle ?? `eleve:${inscription.studentId}`,
       familleLibelle: eleve?.familleLibelle ?? 'Famille',
+      type: e.type,
       mois: e.mois,
       dateEcheance: e.dateEcheance,
       montantCentimes: e.montantCentimes,
@@ -291,7 +330,7 @@ export function lignesMensualites(args: {
       statut: statutEcheance(e, paye, args.aujourdhui, club.delaiGraceJours),
     })
   }
-  return lignes.sort((a, b) => a.mois.localeCompare(b.mois) || a.clubNom.localeCompare(b.clubNom, 'fr') || a.studentNom.localeCompare(b.studentNom, 'fr'))
+  return lignes.sort((a, b) => a.mois.localeCompare(b.mois) || RANG_TYPE[a.type] - RANG_TYPE[b.type] || a.clubNom.localeCompare(b.clubNom, 'fr') || a.studentNom.localeCompare(b.studentNom, 'fr'))
 }
 
 export interface SoldeFamille {
@@ -342,6 +381,8 @@ export function impayesParFamille(lignes: LigneMensualite[], aujourdhui: string)
 
 export interface MensualiteOuverte {
   echeanceId: string
+  /** Mensualité (par défaut) ou frais d'inscription, que l'on paie avant la mensualité du même mois. */
+  type?: TypeEcheance
   mois: string
   dateEcheance: string
   resteCentimes: number
@@ -363,16 +404,17 @@ export interface ResultatImputation {
 export function mensualitesOuvertes(lignes: LigneMensualite[], familleCle: string): (MensualiteOuverte & { ligne: LigneMensualite })[] {
   return lignes
     .filter((l) => l.familleCle === familleCle && l.resteCentimes > 0)
-    .map((l) => ({ echeanceId: l.echeanceId, mois: l.mois, dateEcheance: l.dateEcheance, resteCentimes: l.resteCentimes, ligne: l }))
-    .sort((a, b) => a.mois.localeCompare(b.mois) || a.dateEcheance.localeCompare(b.dateEcheance))
+    .map((l) => ({ echeanceId: l.echeanceId, type: l.type, mois: l.mois, dateEcheance: l.dateEcheance, resteCentimes: l.resteCentimes, ligne: l }))
+    .sort(comparerEcheances)
 }
 
 /**
- * Répartit un règlement sur les mensualités ouvertes : les plus anciennes impayées d'abord, puis les mois à venir (un
- * paiement d'avance est accepté). Ne dépasse jamais ce qu'il reste à payer sur chaque mensualité.
+ * Répartit un règlement sur les sommes ouvertes : les plus anciennes impayées d'abord (les frais d'inscription avant la
+ * mensualité du même mois), puis les mois à venir (un paiement d'avance est accepté). Ne dépasse jamais ce qu'il reste à
+ * payer sur chaque échéance.
  */
 export function imputerReglement(montantCentimes: number, ouvertes: MensualiteOuverte[]): ResultatImputation {
-  const triees = [...ouvertes].sort((a, b) => a.mois.localeCompare(b.mois) || a.dateEcheance.localeCompare(b.dateEcheance))
+  const triees = [...ouvertes].sort(comparerEcheances)
   const imputations: ImputationPrevue[] = []
   let restant = Math.max(0, Math.round(montantCentimes))
   for (const o of triees) {

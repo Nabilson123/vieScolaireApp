@@ -1,4 +1,4 @@
-import { formatDH, joursEntre, libelleMois, type ImpayeFamille } from '../../utils/clubsFinance'
+import { formatDH, joursEntre, libelleEcheance, type ImpayeFamille } from '../../utils/clubsFinance'
 import PaginatedPrintDocument, { type PaginatedBlock } from '../print/PaginatedPrintDocument'
 import { ACCENT, ACCENT_SOFT, EnTeteClubs, Fait, GREEN, HEAD_BG, INK, LIGNES_PAR_BLOC, MUTED, MUTED2, PAGE_STYLE, PiedClubs, RED, RULE, TableauClub, dateCourte, morceaux } from './clubsPrintKit'
 
@@ -47,7 +47,7 @@ function blocsImpayes(impayes: ImpayeFamille[], aujourdhui: string): PaginatedBl
                   {l.clubNom}
                 </td>
                 <td className="px-3 py-1" style={{ color: MUTED2 }}>
-                  {libelleMois(l.mois)}
+                  {libelleEcheance(l)}
                 </td>
                 <td className="px-3 py-1" style={{ color: MUTED2 }}>
                   {dateCourte(l.dateEcheance)}

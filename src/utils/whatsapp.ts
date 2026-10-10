@@ -591,6 +591,8 @@ export interface ClubRelanceLigne {
   club: string
   /** AAAA-MM-01 */
   mois: string
+  /** `inscription` pour des frais d'inscription ; une mensualité par défaut. */
+  type?: 'mensualite' | 'inscription'
   resteCentimes: number
 }
 
@@ -614,8 +616,9 @@ function montantAr(centimes: number): string {
 function buildClubRelanceFr(info: ClubRelanceWhatsAppInfo): string {
   const total = info.lignes.reduce((n, l) => n + l.resteCentimes, 0)
   const lines = [info.parentNom.trim() ? `Bonjour ${info.parentNom.trim()},` : 'Bonjour,', '']
-  lines.push('Nous revenons vers vous au sujet des clubs de votre enfant. Selon nos registres, les mensualités suivantes restent à régler :', '')
-  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}, ${libelleMois(l.mois)} : ${formatDH(l.resteCentimes)}`))
+  const avecFrais = info.lignes.some((l) => l.type === 'inscription')
+  lines.push(`Nous revenons vers vous au sujet des clubs de votre enfant. Selon nos registres, ${avecFrais ? 'les sommes suivantes' : 'les mensualités suivantes'} restent à régler :`, '')
+  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}, ${l.type === 'inscription' ? "frais d'inscription" : libelleMois(l.mois)} : ${formatDH(l.resteCentimes)}`))
   lines.push('', `*Total à régler : ${formatDH(total)}*`, '')
   lines.push("Merci de passer régler cette somme auprès de l'administration. Si le paiement a déjà été effectué, merci de nous le signaler afin que nous corrigions nos registres.")
   lines.push(...SIGNATURE)
@@ -625,8 +628,9 @@ function buildClubRelanceFr(info: ClubRelanceWhatsAppInfo): string {
 function buildClubRelanceAr(info: ClubRelanceWhatsAppInfo): string {
   const total = info.lignes.reduce((n, l) => n + l.resteCentimes, 0)
   const lines = ['السلام عليكم،', '']
-  lines.push('نعود إليكم بخصوص أندية ابنكم (ابنتكم). حسب سجلاتنا، الأقساط الشهرية التالية لم تُسدَّد بعد :', '')
-  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}، ${moisAr(l.mois)} : ${montantAr(l.resteCentimes)}`))
+  const avecFrais = info.lignes.some((l) => l.type === 'inscription')
+  lines.push(`نعود إليكم بخصوص أندية ابنكم (ابنتكم). حسب سجلاتنا، ${avecFrais ? 'المبالغ التالية' : 'الأقساط الشهرية التالية'} لم تُسدَّد بعد :`, '')
+  info.lignes.forEach((l) => lines.push(`- *${l.eleve}* — ${l.club}، ${l.type === 'inscription' ? 'رسوم التسجيل' : moisAr(l.mois)} : ${montantAr(l.resteCentimes)}`))
   lines.push('', `*المبلغ الإجمالي المستحق : ${montantAr(total)}*`, '')
   lines.push('نرجو منكم المرور إلى الإدارة لتسوية هذا المبلغ. وإذا كان الأداء قد تم بالفعل، نرجو إشعارنا بذلك حتى نصحح سجلاتنا.')
   lines.push(...SIGNATURE_AR)

@@ -60,6 +60,11 @@ export interface Club {
   /** Niveaux admis (ex. « CE1 »), vide = tous les niveaux. */
   niveaux: string[]
   mensualiteCentimes: number
+  /**
+   * Frais d'inscription : un montant unique par élève, dû à la date d'inscription (0 = aucun frais). Un élève exonéré ne les
+   * doit pas ; un élève qui revient après un arrêt ne les repaie pas.
+   */
+  fraisInscriptionCentimes: number
   /** AAAA-MM-01 : premier mois facturé. */
   moisDebut: string
   /** AAAA-MM-01 : dernier mois facturé. */
@@ -94,11 +99,15 @@ export interface ClubInscription {
   createdAt: string
 }
 
-/** Une mensualité à payer pour une inscription. */
+/** Ce que paie une échéance : une mensualité du club, ou les frais d'inscription (une seule fois par inscription). */
+export type TypeEcheance = 'mensualite' | 'inscription'
+
+/** Une somme à payer pour une inscription : une mensualité, ou les frais d'inscription. */
 export interface ClubEcheance {
   id: string
   inscriptionId: string
-  /** AAAA-MM-01 */
+  type: TypeEcheance
+  /** AAAA-MM-01 ; pour les frais d'inscription, le mois de l'inscription. */
   mois: string
   montantCentimes: number
   /** AAAA-MM-JJ */

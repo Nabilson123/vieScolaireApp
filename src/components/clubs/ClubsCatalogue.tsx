@@ -281,6 +281,12 @@ export default function ClubsCatalogue({ isEditable, onVoirInscrits }: Props) {
                     </p>
                     <p className="text-slate-500">
                       De {libelleMois(club.moisDebut)} à {libelleMois(club.moisFin)} · <span className="font-semibold text-slate-700">{formatDH(club.mensualiteCentimes)}</span> par mois, due le {club.jourEcheance}
+                      {club.fraisInscriptionCentimes > 0 && (
+                        <>
+                          {' '}
+                          · <span className="font-semibold text-slate-700">{formatDH(club.fraisInscriptionCentimes)}</span> de frais d'inscription
+                        </>
+                      )}
                     </p>
                   </div>
 

@@ -12,6 +12,7 @@ import {
   imputerReglement,
   impayesParFamille,
   joursEntre,
+  libelleEcheance,
   libelleFamille,
   libelleMois,
   lignesMensualites,
@@ -30,7 +31,7 @@ import {
   type LigneMensualite,
 } from './clubsFinance'
 
-const club = { moisDebut: '2026-10-01', moisFin: '2027-01-01', mensualiteCentimes: 15000, jourEcheance: 5 }
+const club = { moisDebut: '2026-10-01', moisFin: '2027-01-01', mensualiteCentimes: 15000, fraisInscriptionCentimes: 0, jourEcheance: 5 }
 const insc = (over: Partial<Parameters<typeof echeancesPourInscription>[1]> = {}) => ({
   statut: 'actif' as const,
   dateInscription: '2026-10-14',
@@ -154,6 +155,7 @@ describe('reconcilerEcheances', () => {
   const existante = (mois: string, id: string, montant = 15000, date?: string): ClubEcheance => ({
     id,
     inscriptionId: 'i1',
+    type: 'mensualite',
     mois,
     montantCentimes: montant,
     dateEcheance: date ?? `${mois.slice(0, 8)}05`,
@@ -228,6 +230,137 @@ describe('reconcilerEcheances', () => {
     const nouvelles = echeancesPourInscription({ ...club, jourEcheance: 10 }, insc())
     const r = reconcilerEcheances(existantes, nouvelles, new Set(['e0']))
     expect(r.aMettreAJour.map((x) => x.dateEcheance)).toEqual(['2026-11-10', '2026-12-10', '2027-01-10'])
+  })
+})
+
+describe('frais d’inscription', () => {
+  const avecFrais = { ...club, fraisInscriptionCentimes: 10000 }
+  const frais = (id: string, mois: string, montant = 10000, date = `${mois.slice(0, 8)}14`): ClubEcheance => ({ id, inscriptionId: 'i1', type: 'inscription', mois, montantCentimes: montant, dateEcheance: date })
+  const mensualite = (id: string, mois: string): ClubEcheance => ({ id, inscriptionId: 'i1', type: 'mensualite', mois, montantCentimes: 15000, dateEcheance: `${mois.slice(0, 8)}05` })
+  const toutesLesMensualites = ['2026-10-01', '2026-11-01', '2026-12-01', '2027-01-01'].map((m, i) => mensualite(`m${i}`, m))
+  const ligneDe = (id: string, type: 'mensualite' | 'inscription', dateEch: string, reste: number): LigneMensualite => ({
+    echeanceId: id,
+    inscriptionId: 'i1',
+    clubId: 'c1',
+    clubNom: 'Robotique',
+    studentId: 's1',
+    studentNom: 'Adam ALAMI',
+    classe: 'CE1-A',
+    familleCle: 'f',
+    familleLibelle: 'Famille ALAMI',
+    type,
+    mois: '2026-10-01',
+    dateEcheance: dateEch,
+    montantCentimes: reste,
+    payeCentimes: 0,
+    resteCentimes: reste,
+    statut: 'due',
+  })
+  const clubAvecFrais: Club = {
+    id: 'c1',
+    nom: 'Robotique',
+    categorie: '',
+    description: '',
+    teacherId: null,
+    intervenantNom: '',
+    seances: [{ jour: 'MERCREDI', heureDebut: '14:00', heureFin: '15:30', salleId: null }],
+    placesMax: null,
+    niveaux: [],
+    mensualiteCentimes: 15000,
+    fraisInscriptionCentimes: 10000,
+    moisDebut: '2026-10-01',
+    moisFin: '2027-01-01',
+    jourEcheance: 5,
+    delaiGraceJours: 5,
+    archive: false,
+    createdAt: '',
+  }
+
+  it('dus à la date d’inscription, une seule fois, avant les mensualités', () => {
+    const e = echeancesPourInscription(avecFrais, insc())
+    expect(e[0]).toEqual({ type: 'inscription', mois: '2026-10-01', montantCentimes: 10000, dateEcheance: '2026-10-14' })
+    expect(e.slice(1).every((x) => x.type === 'mensualite')).toBe(true)
+    expect(e).toHaveLength(5)
+  })
+
+  it('un club sans frais (0) ne génère aucune échéance d’inscription', () => {
+    expect(echeancesPourInscription(club, insc()).some((x) => x.type === 'inscription')).toBe(false)
+  })
+
+  it('exonéré : les frais existent mais à 0, comme les mensualités', () => {
+    const e = echeancesPourInscription(avecFrais, insc({ exonere: true }))
+    expect(e[0].type).toBe('inscription')
+    expect(e.every((x) => x.montantCentimes === 0)).toBe(true)
+  })
+
+  it('liste d’attente : aucun frais ; arrêté : les frais restent dus', () => {
+    expect(echeancesPourInscription(avecFrais, insc({ statut: 'attente' }))).toEqual([])
+    const arrete = echeancesPourInscription(avecFrais, insc({ statut: 'arrete', dateArret: '2026-10-20' }))
+    expect(arrete.map((x) => x.type)).toEqual(['inscription', 'mensualite'])
+  })
+
+  it('inscrit après la fin du club : rien n’est dû, pas même les frais', () => {
+    expect(echeancesPourInscription(avecFrais, insc({ dateInscription: '2027-03-01' }))).toEqual([])
+  })
+
+  it('un club qui reçoit des frais : ils sont ajoutés aux inscrits qui n’en ont pas encore', () => {
+    const r = reconcilerEcheances(toutesLesMensualites, echeancesPourInscription(avecFrais, insc()))
+    expect(r.aAjouter.map((x) => x.type)).toEqual(['inscription'])
+    expect(r.aMettreAJour).toEqual([])
+    expect(r.aSupprimer).toEqual([])
+  })
+
+  it('rien à faire quand les frais correspondent déjà', () => {
+    const r = reconcilerEcheances([frais('f0', '2026-10-01'), ...toutesLesMensualites], echeancesPourInscription(avecFrais, insc()))
+    expect(r).toEqual({ aAjouter: [], aMettreAJour: [], aSupprimer: [] })
+  })
+
+  it('élève réinscrit après un arrêt : il ne repaie pas les frais, même si le mois d’inscription change', () => {
+    // Les frais ont été facturés en octobre ; il revient en janvier : aucun nouveau frais ne doit apparaître.
+    const reinscrit = echeancesPourInscription(avecFrais, insc({ dateInscription: '2027-01-12' }))
+    const r = reconcilerEcheances([frais('f0', '2026-10-01'), ...toutesLesMensualites.slice(0, 2)], reinscrit, new Set(), '2027-01-01')
+    expect(r.aAjouter.map((x) => x.type)).toEqual(['mensualite'])
+    expect(r.aSupprimer).toEqual([])
+  })
+
+  it('changement du montant : les frais sans paiement sont recalculés (leur date ne bouge pas), ceux payés non', () => {
+    const nouveaux = echeancesPourInscription({ ...avecFrais, fraisInscriptionCentimes: 12000 }, insc())
+    const existants = [frais('f0', '2026-10-01'), ...toutesLesMensualites]
+    expect(reconcilerEcheances(existants, nouveaux).aMettreAJour).toEqual([{ id: 'f0', montantCentimes: 12000, dateEcheance: '2026-10-14' }])
+    expect(reconcilerEcheances(existants, nouveaux, new Set(['f0'])).aMettreAJour).toEqual([])
+  })
+
+  it('frais retirés du club : l’échéance impayée disparaît, celle qui a été payée reste', () => {
+    const sansFrais = echeancesPourInscription(club, insc())
+    const existants = [frais('f0', '2026-10-01'), ...toutesLesMensualites]
+    expect(reconcilerEcheances(existants, sansFrais).aSupprimer).toEqual(['f0'])
+    expect(reconcilerEcheances(existants, sansFrais, new Set(['f0'])).aSupprimer).toEqual([])
+  })
+
+  it('un règlement paie les frais avant la mensualité du même mois', () => {
+    const lignes = mensualitesOuvertes([ligneDe('m0', 'mensualite', '2026-10-05', 15000), ligneDe('f0', 'inscription', '2026-10-14', 10000)], 'f')
+    expect(lignes.map((o) => o.echeanceId)).toEqual(['f0', 'm0'])
+    expect(imputerReglement(12000, lignes).imputations).toEqual([
+      { echeanceId: 'f0', montantCentimes: 10000 },
+      { echeanceId: 'm0', montantCentimes: 2000 },
+    ])
+  })
+
+  it('libelleEcheance : « Frais d’inscription » ou le mois', () => {
+    expect(libelleEcheance({ type: 'inscription', mois: '2026-10-01' })).toBe("Frais d'inscription")
+    expect(libelleEcheance({ type: 'mensualite', mois: '2026-10-01' })).toBe('octobre 2026')
+  })
+
+  it('lignesMensualites : le type est repris et les frais passent avant la mensualité du même mois', () => {
+    const lignes = lignesMensualites({
+      clubs: [clubAvecFrais],
+      inscriptions: [{ id: 'i1', clubId: 'c1', studentId: 's1', statut: 'actif', dateInscription: '2026-10-14', dateArret: null, exonere: false, motifExoneration: '', derogationNiveau: false, createdAt: '' }],
+      echeances: [mensualite('m0', '2026-10-01'), frais('f0', '2026-10-01')],
+      paiements: new Map(),
+      eleves: new Map([['s1', { name: 'Adam ALAMI', classe: 'CE1-A', familleCle: 'f-alami', familleLibelle: 'Famille ALAMI' }]]),
+      aujourdhui: '2026-10-20',
+    })
+    expect(lignes.map((l) => l.type)).toEqual(['inscription', 'mensualite'])
   })
 })
 
@@ -350,6 +483,7 @@ describe('paiements et lignes de mensualités', () => {
     placesMax: null,
     niveaux: [],
     mensualiteCentimes: 15000,
+    fraisInscriptionCentimes: 0,
     moisDebut: '2026-10-01',
     moisFin: '2026-12-01',
     jourEcheance: 5,
@@ -358,7 +492,7 @@ describe('paiements et lignes de mensualités', () => {
     createdAt: '',
   }
   const inscription = (id: string, studentId: string): ClubInscription => ({ id, clubId: 'c1', studentId, statut: 'actif', dateInscription: '2026-10-01', dateArret: null, exonere: false, motifExoneration: '', derogationNiveau: false, createdAt: '' })
-  const echeance = (id: string, inscriptionId: string, mois: string, montant = 15000): ClubEcheance => ({ id, inscriptionId, mois, montantCentimes: montant, dateEcheance: `${mois.slice(0, 8)}05` })
+  const echeance = (id: string, inscriptionId: string, mois: string, montant = 15000): ClubEcheance => ({ id, inscriptionId, type: 'mensualite', mois, montantCentimes: montant, dateEcheance: `${mois.slice(0, 8)}05` })
   const eleves = new Map<string, EleveFinance>([
     ['s1', { name: 'Adam ALAMI', classe: 'CE1-A', familleCle: 'f-alami', familleLibelle: 'Famille ALAMI' }],
     ['s2', { name: 'Lina ALAMI', classe: 'CE3-B', familleCle: 'f-alami', familleLibelle: 'Famille ALAMI' }],
@@ -588,6 +722,7 @@ describe('bilans', () => {
     classe: 'CE1-A',
     familleCle: 'f',
     familleLibelle: 'Famille X',
+    type: 'mensualite',
     mois: '2026-10-01',
     dateEcheance: '2026-10-05',
     montantCentimes: 15000,
